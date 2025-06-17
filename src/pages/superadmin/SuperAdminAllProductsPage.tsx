@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom'; 
 import { Card } from '@/components/ui/Card';
@@ -7,7 +6,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Product, User } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
-import { ChartPieIcon } from '@/constants.tsx'; 
+import { ChartPieIcon } from '../../constants.tsx'; 
 import { superAdminService } from '@/services/superAdminService'; 
 
 const formatCurrency = (valueInCents: number): string => {

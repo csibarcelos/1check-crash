@@ -1,11 +1,10 @@
-
 import React, { createContext, useState, useContext, useEffect, ReactNode, useCallback, useRef, useMemo } from 'react';
 import { AuthUser, Session } from '@supabase/supabase-js';
 import { supabase } from '@/supabaseClient';
-import { User as BaseUser } from '@/types'; // Aliased User to BaseUser
-import { SUPER_ADMIN_EMAIL } from '../constants.tsx';
+import { User as BaseUser } from '../types'; // Changed from '@/types' to relative path
+import { SUPER_ADMIN_EMAIL } from '../constants.tsx'; 
 
-export interface AppUser extends BaseUser { // AppUser now extends BaseUser
+export interface AppUser extends BaseUser {
   isSuperAdmin: boolean;
   isActive: boolean;
   isFallback?: boolean;
@@ -18,7 +17,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isSuperAdmin: boolean;
   login: (email: string, password_not_name: string) => Promise<void>;
-  register: (email: string, name: string, password_not_name: string) => Promise<void>;
+  register: (email: string, name: string, password_not_name: string) => Promise<{ success: boolean; needsEmailConfirmation: boolean } | void>;
   logout: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
   isLoading: boolean;
@@ -139,13 +138,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } else {
           console.log(`${logPrefix} - Perfil encontrado com sucesso`);
           fetchedUser = {
-            id: userId, // from User
-            email: supabaseUser.email || '', // from User
-            name: profileData.name || supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0] || 'Usuário', // from User
-            isSuperAdmin: (profileData.is_super_admin ?? false) || (supabaseUser.email === SUPER_ADMIN_EMAIL), // from AppUser
-            isActive: profileData.is_active ?? true, // from AppUser
-            createdAt: profileData.created_at || supabaseUser.created_at, // from User
-            isFallback: false, // from AppUser
+            id: userId, 
+            email: supabaseUser.email || '', 
+            name: profileData.name || supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0] || 'Usuário', 
+            isSuperAdmin: (profileData.is_super_admin ?? false) || (supabaseUser.email === SUPER_ADMIN_EMAIL), 
+            isActive: profileData.is_active ?? true, 
+            createdAt: profileData.created_at || supabaseUser.created_at, 
+            isFallback: false, 
           };
         }
         profileCache.set(userId, { profile: fetchedUser, timestamp: Date.now() });
@@ -276,37 +275,62 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, []);
 
-  const register = useCallback(async (email: string, name: string, password: string) => {
+  const register = useCallback(async (email: string, name: string, password: string): Promise<{ success: boolean; needsEmailConfirmation: boolean } | void> => {
     console.log("AuthContext:register - Iniciando registro para", email);
     if (!mountedRef.current) return;
+    
     try {
-      const { data, error: signUpError } = await supabase.auth.signUp({ email, password, options: { data: { name } } });
+      const { data, error: signUpError } = await supabase.auth.signUp({ 
+        email, 
+        password, 
+        options: { data: { name } } 
+      });
+      
       if (signUpError) {
         console.error("AuthContext:register - Supabase signUp retornou erro:", signUpError);
         throw signUpError;
       }
-      if (data.user && !data.session) {
-         console.warn("AuthContext:register - Usuário retornado sem sessão (provavelmente já existe e/ou está confirmado):", email);
-         throw new Error("USER_ALREADY_CONFIRMED"); 
+      
+      // Usuário criado com sucesso - precisa confirmar email
+      if (data.user && !data.session && data.user.email_confirmed_at === null) {
+        console.log("AuthContext:register - ✅ Usuário criado com sucesso! Aguardando confirmação de e-mail. ID:", data.user.id);
+        return { success: true, needsEmailConfirmation: true };
       }
+      
+      // Usuário já existe e está confirmado (Supabase pode retornar user sem session neste caso também)
+      if (data.user && !data.session && data.user.email_confirmed_at !== null) {
+        console.warn("AuthContext:register - Usuário já existe e está confirmado:", email);
+        throw new Error("USER_ALREADY_CONFIRMED");
+      }
+      
+      // Login automático (confirmação de email desabilitada OU usuário já existente e confirmado sendo "re-registrado" com a mesma senha)
       if (data.user && data.session) {
-         console.log("AuthContext:register - Registro bem-sucedido com sessão. Supabase user ID:", data.user.id);
-      } else if (data.user && !data.session && data.user.email_confirmed_at === null) {
-        console.log("AuthContext:register - Registro iniciado (aguardando confirmação de e-mail). Supabase user ID:", data.user.id);
-      } else {
-        console.error("AuthContext:register - Registro falhou, estado inesperado.");
-        throw new Error("REGISTRATION_UNEXPECTED_STATE");
+        console.log("AuthContext:register - ✅ Registro e login automático bem-sucedidos. ID:", data.user.id);
+        return { success: true, needsEmailConfirmation: false };
       }
+      
+      // Estado inesperado
+      console.error("AuthContext:register - Estado inesperado:", { user: !!data.user, session: !!data.session, confirmed_at: data.user?.email_confirmed_at });
+      throw new Error("REGISTRATION_UNEXPECTED_STATE");
+      
     } catch (error: any) {
       console.error("AuthContext:register - Erro capturado:", error);
+      
       let displayMessage = 'Falha no registro.';
       if (error.message) {
-        if (error.message.includes("User already registered") || error.message === "USER_ALREADY_CONFIRMED") displayMessage = "Este e-mail já está cadastrado.";
-        else if (error.message.includes("Password should be at least 6 characters")) displayMessage = "A senha deve ter no mínimo 6 caracteres.";
-        else if (error.message.includes("Unable to validate email address")) displayMessage = "E-mail inválido.";
-        else if (error.message.includes("Database error saving new user")) displayMessage = "Ocorreu um erro ao finalizar seu cadastro. Tente novamente ou contate o suporte.";
-        else if (error.message === "REGISTRATION_UNEXPECTED_STATE") displayMessage = "Registro falhou, estado inesperado.";
-        else displayMessage = error.message;
+        if (error.message.includes("User already registered") || error.message === "USER_ALREADY_CONFIRMED") {
+          displayMessage = "Este e-mail já está cadastrado.";
+        } else if (error.message.includes("Password should be at least 6 characters")) {
+          displayMessage = "A senha deve ter no mínimo 6 caracteres.";
+        } else if (error.message.includes("Unable to validate email address")) {
+          displayMessage = "E-mail inválido.";
+        } else if (error.message.includes("Database error saving new user")) {
+          displayMessage = "Ocorreu um erro ao finalizar seu cadastro. Tente novamente ou contate o suporte.";
+        } else if (error.message === "REGISTRATION_UNEXPECTED_STATE") {
+          displayMessage = "Registro falhou, estado inesperado.";
+        } else {
+          displayMessage = error.message;
+        }
       }
       throw new Error(displayMessage);
     }

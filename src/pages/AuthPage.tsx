@@ -83,11 +83,23 @@ export const AuthPage: React.FC = () => {
       if (currentView === 'register') {
         if (password !== confirmPassword) throw new Error('As senhas não coincidem.');
         if (password.length < 6) throw new Error('A senha deve ter no mínimo 6 caracteres.');
-        await register(email, name, password);
-        setCurrentView('emailVerification');
-        setSuccessMessage(`Cadastro quase completo! Enviamos um e-mail de confirmação para ${email}. Por favor, verifique sua caixa de entrada (e spam) para ativar sua conta.`);
+        
+        const result = await register(email, name, password);
+        
+        if (result?.success) {
+          if (result.needsEmailConfirmation) {
+            setCurrentView('emailVerification');
+            setSuccessMessage(`Cadastro realizado com sucesso! Enviamos um e-mail de confirmação para ${email}. Por favor, verifique sua caixa de entrada (e spam) para ativar sua conta.`);
+          } else {
+            // Login automático, o useEffect cuidará do redirecionamento
+            // Opcionalmente, limpe os campos aqui se desejar, embora a navegação possa ocorrer antes.
+          }
+        }
+        // Se result for void ou !result.success, o AuthContext já lançou um erro que será pego abaixo.
+
       } else if (currentView === 'login') {
         await login(email, password);
+        // Se o login for bem-sucedido, isAuthenticated se tornará true e o useEffect cuidará do redirecionamento.
       } else if (currentView === 'forgotPassword') {
         await requestPasswordReset(email);
         setSuccessMessage(`Se uma conta com o e-mail ${email} existir, um link para redefinição de senha foi enviado.`);

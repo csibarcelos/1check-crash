@@ -1,5 +1,6 @@
 
 import { User, Sale, SaleProductItem, PaymentMethod, PaymentStatus, Product as AppProduct, AuditLogEntry, ProductCheckoutCustomization, OrderBumpOffer, UpsellOffer, Coupon } from '@/types';
+import { adminSupabase } from '@/adminSupabase' // Adicione esta linha
 import { supabase } from '@/supabaseClient';
 import { Database, Json } from '@/types/supabase';
 
@@ -92,7 +93,7 @@ const fromSupabaseAuditLogRow = (row: AuditLogEntryRow): AuditLogEntry => ({
 export const superAdminService = {
     getAllPlatformUsers: async (token: string): Promise<User[]> => {
         if (!token) throw new Error("Token de autenticação de super admin é necessário.");
-        const { data: usersList, error: usersError } = await supabase.auth.admin.listUsers();
+        const { data: usersList, error: usersError } = await adminSupabase.auth.admin.listUsers();
         if (usersError) throw new Error(usersError.message || "Falha ao buscar usuários da plataforma.");
         
         const profilePromises = usersList.users.map(user => 

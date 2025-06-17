@@ -3,7 +3,7 @@ import React, { Fragment } from 'react';
 import { Menu, Transition } from '@headlessui/react';
 import { useAuth } from '@/contexts/AuthContext'; 
 import { useNavigate } from "react-router-dom"; 
-import { CogIcon, LogoutIcon, Bars3IconHero } from '../../constants.tsx'; 
+import { CogIcon, LogoutIcon, Bars3IconHero } from '@/constants'; 
 
 interface HeaderProps {
   setSidebarOpen: (open: boolean) => void;

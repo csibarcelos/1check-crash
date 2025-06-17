@@ -1,0 +1,219 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Tema Dark Premium - Luxo Tecnológico */
+  --color-bg-main: #0F0F0F; /* Preto absoluto */
+  --color-bg-surface: rgba(255, 255, 255, 0.03); /* Glassmorphism BG */
+  --color-border-subtle: rgba(255, 255, 255, 0.1);
+
+  /* Cores de Destaque e Ação */
+  --color-accent-gold: #FFD700;
+  --color-accent-blue-neon: #00FFFF;
+
+  /* Cores de Texto */
+  --color-text-strong: #FFFFFF;
+  --color-text-default: #A1A1A1;
+  --color-text-muted: #6B7280;
+
+  /* Cores de Feedback */
+  --color-status-success: #22C55E; /* Verde Neon */
+  --color-status-error: #EF4444;   /* Vermelho Vibrante */
+  --color-status-warning: #EAB308; /* Amarelo Ouro */
+
+  /* Cores para TailwindCSS (para manter consistência com a config) */
+  --color-primary-DEFAULT: var(--color-accent-blue-neon);
+  --color-primary-light: #7FFEFF; /* Azul Neon mais claro */
+  --color-primary-dark: #00B8B8;  /* Azul Neon mais escuro */
+  
+  --color-secondary-DEFAULT: var(--color-accent-gold); /* Dourado para secundário */
+  --color-secondary-light: #FFEE75;
+  --color-secondary-dark: #D4AF37;
+
+  /* Neutros para Tailwind (baseado no solicitado) */
+  --color-neutral-50: #1A1A1A;   /* Cinza muito escuro, quase preto */
+  --color-neutral-100: #2A2A2A;  /* Grafite para superfícies neutras */
+  --color-neutral-200: #3B3B3B;
+  --color-neutral-300: var(--color-text-muted); /* #6B7280 Muted text */
+  --color-neutral-400: var(--color-text-default); /* #A1A1A1 Secondary text */
+  --color-neutral-500: #C0C0C0; /* Cinza mais claro para contraste se necessário */
+  --color-neutral-600: var(--color-text-strong); /* #FFFFFF Principal Text */
+  --color-neutral-700: var(--color-bg-surface); /* Glass bg, or a slightly lighter dark for non-glass cards */
+  --color-neutral-800: var(--color-bg-main); /* Main bg */
+  --color-neutral-900: #0A0A0A; /* Deepest bg */
+  --color-neutral-950: #050505;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /* CheckoutPage Light Theme Variables */
+  --checkout-color-bg-main: #F3F4F6; /* neutral-100 */
+  --checkout-color-bg-surface: #FFFFFF; /* white */
+  --checkout-color-border-subtle: #E5E7EB; /* neutral-200 */
+  
+  --checkout-color-text-strong: #1F2937; /* neutral-800 */
+  --checkout-color-text-default: #374151; /* neutral-700 */
+  --checkout-color-text-muted: #6B7280; /* neutral-500 */
+  
+  --checkout-color-primary-DEFAULT: #0D9488; /* Verde antigo */
+  --checkout-color-primary-cta-text: #FFFFFF;
+}
+
+body {
+  @apply bg-bg-main text-text-default; /* Base dark theme */
+  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+}
+
+/* Estilos de scrollbar para tema dark */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg-main);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  border: 2px solid var(--color-bg-main);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+
+/* MiniEditor placeholder - ajustado para o novo tema */
+div[contenteditable="true"][data-placeholder].is-empty-placeholder::before {
+    content: attr(data-placeholder);
+    position: absolute;
+    left: 0.75rem; 
+    top: 0.625rem;  
+    font-style: normal;
+    color: var(--color-text-muted); /* Usar cor de texto muted do novo tema */
+    pointer-events: none;
+    opacity: 0.8;
+    max-width: calc(100% - 1.5rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap; 
+}
+
+/* Checkout Page Light Theme Specifics */
+.checkout-light-theme {
+  background-color: var(--checkout-color-bg-main) !important;
+  color: var(--checkout-color-text-default) !important;
+
+  /* Redefine as variáveis globais para o escopo do checkout */
+  --color-bg-main: var(--checkout-color-bg-main);
+  --color-bg-surface: var(--checkout-color-bg-surface);
+  --color-border-subtle: var(--checkout-color-border-subtle);
+
+  --color-text-strong: var(--checkout-color-text-strong);
+  --color-text-default: var(--checkout-color-text-default);
+  --color-text-muted: var(--checkout-color-text-muted);
+  
+  --color-primary-DEFAULT: var(--checkout-color-primary-DEFAULT);
+  --color-accent-blue-neon: var(--checkout-color-primary-DEFAULT); /* Reutiliza a primária do checkout */
+}
+
+.checkout-light-theme h1, 
+.checkout-light-theme h2, 
+.checkout-light-theme h3, 
+.checkout-light-theme h4 {
+  color: var(--checkout-color-text-strong) !important;
+}
+.checkout-light-theme p,
+.checkout-light-theme span,
+.checkout-light-theme div:not([class*="bg-"]):not([style*="background-color"]) { /* Evitar sobrescrever bg explícitos */
+  color: var(--checkout-color-text-default) !important;
+}
+.checkout-light-theme label {
+  color: var(--checkout-color-text-default) !important;
+}
+.checkout-light-theme .prose { 
+  color: var(--checkout-color-text-default) !important;
+}
+.checkout-light-theme .prose h1,
+.checkout-light-theme .prose h2,
+.checkout-light-theme .prose h3,
+.checkout-light-theme .prose strong {
+   color: var(--checkout-color-text-strong) !important;
+}
+
+/* Classes específicas para componentes dentro do checkout-light-theme */
+.checkout-light-theme .card-checkout-specific {
+  background-color: var(--checkout-color-bg-surface) !important;
+  border-color: var(--checkout-color-border-subtle) !important;
+  color: var(--checkout-color-text-default) !important;
+}
+.checkout-light-theme .card-checkout-specific h3 { /* Título do card no checkout */
+  color: var(--checkout-color-text-strong) !important;
+}
+
+.checkout-light-theme .input-checkout-specific {
+   background-color: var(--checkout-color-bg-surface) !important;
+   border-color: var(--checkout-color-border-subtle) !important;
+   color: var(--checkout-color-text-strong) !important;
+}
+.checkout-light-theme .input-checkout-specific::placeholder {
+  color: var(--checkout-color-text-muted) !important;
+}
+.checkout-light-theme .input-checkout-specific:focus {
+  border-color: var(--checkout-color-primary-DEFAULT) !important;
+  box-shadow: 0 0 0 2px var(--checkout-color-primary-DEFAULT) !important; /* simula ring */
+}
+
+.checkout-light-theme .button-checkout-specific.primary {
+  background-color: var(--checkout-color-primary-DEFAULT) !important;
+  color: var(--checkout-color-primary-cta-text) !important;
+}
+.checkout-light-theme .button-checkout-specific.outline {
+  border-color: var(--checkout-color-border-subtle) !important;
+  color: var(--checkout-color-text-default) !important;
+}
+.checkout-light-theme .button-checkout-specific.outline:hover {
+  border-color: var(--checkout-color-primary-DEFAULT) !important;
+  color: var(--checkout-color-primary-DEFAULT) !important;
+}
+
+.checkout-light-theme .select-checkout-specific {
+  background-color: var(--checkout-color-bg-surface) !important;
+  border-color: var(--checkout-color-border-subtle) !important;
+  color: var(--checkout-color-text-strong) !important;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") !important; /* Seta do Tailwind, cor ajustada */
+}
+.checkout-light-theme .select-checkout-specific:focus {
+  border-color: var(--checkout-color-primary-DEFAULT) !important;
+  box-shadow: 0 0 0 2px var(--checkout-color-primary-DEFAULT) !important; /* simula ring */
+}
+
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Animação de pulsação sutil */
+@keyframes pulse-subtle {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.03);
+    opacity: 0.95;
+  }
+}
+.animate-pulse-subtle {
+  animation: pulse-subtle 2.5s infinite ease-in-out;
+}

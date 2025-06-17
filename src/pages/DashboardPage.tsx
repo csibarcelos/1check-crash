@@ -2,17 +2,16 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { Sale, Product, Customer, PaymentStatus, SaleProductItem } from '@/types';
+import { Sale, Product, Customer, PaymentStatus } from '@/types';
 import { salesService } from '@/services/salesService';
 import { productService } from '@/services/productService';
 import { customerService } from '@/services/customerService';
 import { dashboardService, DashboardData } from '@/services/dashboardService';
 import { 
-    PresentationChartLineIcon, 
     ShoppingCartIcon, 
     UserGroupIcon, 
     CurrencyDollarIcon,
-} from '@/constants'; 
+} from '@/constants.tsx'; 
 import { useAuth } from '@/contexts/AuthContext';
 
 const formatCurrency = (valueInCents: number, showSymbol = true): string => {
@@ -236,7 +235,7 @@ export const DashboardPage: React.FC = () => {
                   <div className="text-right">
                      <span className="text-sm font-semibold text-accent-blue-neon">{formatCurrency(sale.totalAmountInCents)}</span>
                      <span className={`ml-2 px-2 py-0.5 inline-flex text-[11px] leading-4 font-semibold rounded-full ${getStatusClass(sale.status)}`}>
-                        {sale.status.replace(/_/g, ' ').toUpperCase()}
+                        {(sale.status as string).replace(/_/g, ' ').toUpperCase()}
                      </span>
                   </div>
                 </div>

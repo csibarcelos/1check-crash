@@ -8,7 +8,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Customer, FunnelStage, Product as ProductType } from '@/types';
 import { customerService } from '@/services/customerService';
 import { productService } from '@/services/productService'; 
-import { UsersIcon, WhatsAppIcon, generateWhatsAppLink } from '@/constants';
+import { UsersIcon, WhatsAppIcon, generateWhatsAppLink } from '@/constants.tsx';
 import { useAuth } from '@/contexts/AuthContext'; 
 
 
@@ -151,8 +151,8 @@ export const ClientesPage: React.FC = () => {
               className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-neutral-600 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm rounded-md bg-neutral-700 text-neutral-200"
             >
               <option value="">Todas Etapas</option>
-              {Object.values(FunnelStage).map(stage => (
-                <option key={stage} value={stage}>{getFunnelStageLabel(stage)}</option>
+              {Object.values(FunnelStage).map((stage: FunnelStage) => (
+                <option key={stage} value={stage}>{getFunnelStageLabel(stage as FunnelStage)}</option>
               ))}
             </select>
           </div>
@@ -201,8 +201,8 @@ export const ClientesPage: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-primary">{formatCurrency(customer.totalSpentInCents)}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getFunnelStageClass(customer.funnelStage)}`}>
-                      {getFunnelStageLabel(customer.funnelStage)}
+                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getFunnelStageClass(customer.funnelStage as FunnelStage)}`}>
+                      {getFunnelStageLabel(customer.funnelStage as FunnelStage)}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-400">{new Date(customer.lastPurchaseDate).toLocaleDateString()}</td>
@@ -245,7 +245,7 @@ export const ClientesPage: React.FC = () => {
               <InfoItem label="Total de Pedidos" value={selectedCustomer.totalOrders} />
               <InfoItem label="Primeira Compra" value={new Date(selectedCustomer.firstPurchaseDate).toLocaleDateString()} />
               <InfoItem label="Última Compra" value={new Date(selectedCustomer.lastPurchaseDate).toLocaleDateString()} />
-              <InfoItem label="Etapa do Funil" value={<span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${getFunnelStageClass(selectedCustomer.funnelStage)}`}>{getFunnelStageLabel(selectedCustomer.funnelStage)}</span>} />
+              <InfoItem label="Etapa do Funil" value={<span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${getFunnelStageClass(selectedCustomer.funnelStage as FunnelStage)}`}>{getFunnelStageLabel(selectedCustomer.funnelStage as FunnelStage)}</span>} />
             </section>
             <section>
               <h3 className="text-md font-semibold text-neutral-100 border-b border-neutral-600 pb-1 mb-2">Produtos Comprados</h3>

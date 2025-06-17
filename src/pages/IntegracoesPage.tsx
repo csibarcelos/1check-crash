@@ -7,7 +7,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Modal } from '@/components/ui/Modal';
 import { settingsService } from '@/services/settingsService';
 import { AppSettings, PixelIntegration, PixelType } from '@/types';
-import { LinkIcon, KeyIcon, PlusIcon, PencilIcon, TrashIcon, TagIcon } from '@/constants';
+import { LinkIcon, KeyIcon, PlusIcon, PencilIcon, TrashIcon, TagIcon } from '@/constants.tsx';
 import { useAuth } from '@/contexts/AuthContext';
 
 const PIXEL_TYPES: PixelType[] = ['Facebook Pixel', 'Google Ads', 'GTM', 'TikTok Pixel'];
@@ -290,7 +290,7 @@ export const IntegracoesPage: React.FC = () => {
                            <TagIcon className="h-5 w-5 mr-2 text-primary"/> {pixel.type}
                         </h4>
                         <p className="text-xs text-neutral-400">
-                            {Object.entries(pixel.settings).map(([key, val]) => `${key}: ${val.substring(0,20)}${val.length > 20 ? '...' : ''}`).join(', ')}
+                            {Object.entries(pixel.settings).map(([key, val]) => `${key}: ${(val as string).substring(0,20)}${(val as string).length > 20 ? '...' : ''}`).join(', ')}
                         </p>
                     </div>
                     <div className="flex items-center space-x-2">

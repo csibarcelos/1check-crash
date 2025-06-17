@@ -7,7 +7,7 @@ import { Button, ToggleSwitch } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { User } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
-import { UsersIcon, SUPER_ADMIN_EMAIL } from '@/constants'; 
+import { UsersIcon, SUPER_ADMIN_EMAIL } from '@/constants.tsx'; 
 import { superAdminService } from '@/services/superAdminService'; 
 
 export const SuperAdminUsersPage: React.FC = () => {
@@ -74,7 +74,7 @@ export const SuperAdminUsersPage: React.FC = () => {
     setIsSavingUser(true);
 
     const updates: Partial<Pick<User, 'name' | 'isActive' | 'isSuperAdmin'>> = {};
-    if (modalUserName !== (selectedUser.name || '')) updates.name = modalUserName.trim() || null; 
+    if (modalUserName !== (selectedUser.name || '')) updates.name = modalUserName.trim() || undefined; 
     if (modalIsActive !== (selectedUser.isActive !== undefined ? selectedUser.isActive : true)) updates.isActive = modalIsActive;
     
     const isMainSuperAdmin = selectedUser.email === SUPER_ADMIN_EMAIL;

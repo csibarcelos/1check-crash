@@ -1,5 +1,5 @@
 
-import { Sale, Customer, Product, PaymentStatus, SaleProductItem } from '@/types'; // Ajustado para alias @
+import { Sale, Customer, Product, PaymentStatus } from '@/types'; // Ajustado para alias @
 
 export interface DashboardData {
   totalRevenue: number;
@@ -81,11 +81,11 @@ export const dashboardService = {
   getDashboardData: (params: {
     sales: Sale[];
     customers: Customer[];
-    products: Product[];
+    products: Product[]; // Kept in type for potential future use / consistency, but not used in current logic
     dateRange: string;
     productId: string;
   }): DashboardData => {
-    const { sales, customers, products, dateRange, productId } = params;
+    const { sales, customers, dateRange, productId } = params;
 
     let filteredSales = filterSalesByDateRange(sales, dateRange);
     filteredSales = filterSalesByProduct(filteredSales, productId);

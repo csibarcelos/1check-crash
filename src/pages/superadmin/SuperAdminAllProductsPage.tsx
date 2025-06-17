@@ -1,13 +1,13 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom'; 
+import { useNavigate } from 'react-router-dom'; 
 import { Card } from '@/components/ui/Card';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
-import { Product, User, Coupon, OrderBumpOffer, UpsellOffer } from '@/types';
+import { Product, User } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
-import { CubeIcon, ChartPieIcon } from '@/constants.tsx'; 
+import { ChartPieIcon } from '@/constants.tsx'; 
 import { superAdminService } from '@/services/superAdminService'; 
 
 const formatCurrency = (valueInCents: number): string => {
@@ -226,4 +226,14 @@ export const SuperAdminAllProductsPage: React.FC = () => {
               </pre>
             </>)}
             {selectedProduct.coupons && selectedProduct.coupons.length > 0 && (<>
-              <h4 className="font-semibold text-text-default pt-2 border-t border-border-subtle mt
+              <h4 className="font-semibold text-text-default pt-2 border-t border-border-subtle mt-2">Cupons:</h4>
+              <pre className="bg-neutral-700/30 p-2 rounded text-xs max-h-40 overflow-auto border border-border-subtle text-text-muted">
+                {JSON.stringify(selectedProduct.coupons, null, 2)}
+              </pre>
+            </>)}
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};

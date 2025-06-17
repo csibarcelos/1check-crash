@@ -7,7 +7,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Modal } from '@/components/ui/Modal';
 import { Sale, PaymentStatus, PaymentMethod, SaleProductItem } from '@/types';
 import { salesService } from '@/services/salesService';
-import { ShoppingCartIcon, WhatsAppIcon, generateWhatsAppLink } from '@/constants';
+import { ShoppingCartIcon, WhatsAppIcon, generateWhatsAppLink } from '@/constants.tsx';
 import { useAuth } from '@/contexts/AuthContext';
 
 const getStatusClass = (status: PaymentStatus) => {
@@ -151,8 +151,8 @@ export const VendasPage: React.FC = () => {
               className="block w-full px-4 py-2.5 border rounded-xl shadow-sm focus:outline-none sm:text-sm transition-all duration-150 ease-in-out bg-white/5 backdrop-blur-sm border-border-subtle focus:border-accent-blue-neon focus:ring-2 focus:ring-accent-blue-neon/70 text-text-strong placeholder-text-muted"
             >
               <option value="">Todos Status</option>
-              {Object.values(PaymentStatus).map(status => (
-                <option key={status} value={status}>{status.replace(/_/g, ' ').toUpperCase()}</option>
+              {Object.values(PaymentStatus).map((status: PaymentStatus) => (
+                <option key={status} value={status}>{(status as string).replace(/_/g, ' ').toUpperCase()}</option>
               ))}
             </select>
           </div>
@@ -165,8 +165,8 @@ export const VendasPage: React.FC = () => {
               className="block w-full px-4 py-2.5 border rounded-xl shadow-sm focus:outline-none sm:text-sm transition-all duration-150 ease-in-out bg-white/5 backdrop-blur-sm border-border-subtle focus:border-accent-blue-neon focus:ring-2 focus:ring-accent-blue-neon/70 text-text-strong placeholder-text-muted"
             >
               <option value="">Todos Métodos</option>
-              {Object.values(PaymentMethod).map(method => (
-                <option key={method} value={method}>{getPaymentMethodLabel(method)}</option>
+              {Object.values(PaymentMethod).map((method: PaymentMethod) => (
+                <option key={method} value={method}>{getPaymentMethodLabel(method as PaymentMethod)}</option>
               ))}
             </select>
           </div>
@@ -207,10 +207,10 @@ export const VendasPage: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-accent-blue-neon font-semibold">{formatCurrency(sale.totalAmountInCents)}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusClass(sale.status)}`}>
-                        {sale.status.replace(/_/g, ' ').toUpperCase()}
+                        {(sale.status as string).replace(/_/g, ' ').toUpperCase()}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-default">{getPaymentMethodLabel(sale.paymentMethod)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-default">{getPaymentMethodLabel(sale.paymentMethod as PaymentMethod)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-text-muted">{new Date(sale.createdAt).toLocaleDateString()}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <Button variant="ghost" size="sm" onClick={() => handleOpenDetailsModal(sale)} className="text-accent-blue-neon hover:text-opacity-80">Ver Detalhes</Button>
@@ -237,8 +237,8 @@ export const VendasPage: React.FC = () => {
                         <InfoItem label="ID da Venda" value={selectedSale.id} />
                         <InfoItem label="Data" value={new Date(selectedSale.createdAt).toLocaleString()} />
                         <InfoItem label="Valor Total" value={<span className="font-bold text-accent-blue-neon text-lg">{formatCurrency(selectedSale.totalAmountInCents)}</span>} />
-                        <InfoItem label="Método de Pagamento" value={getPaymentMethodLabel(selectedSale.paymentMethod)} />
-                        <InfoItem label="Status" value={<span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusClass(selectedSale.status)}`}>{selectedSale.status.replace(/_/g, ' ').toUpperCase()}</span>} />
+                        <InfoItem label="Método de Pagamento" value={getPaymentMethodLabel(selectedSale.paymentMethod as PaymentMethod)} />
+                        <InfoItem label="Status" value={<span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusClass(selectedSale.status)}`}>{(selectedSale.status as string).replace(/_/g, ' ').toUpperCase()}</span>} />
                         {selectedSale.paidAt && <InfoItem label="Pago em" value={new Date(selectedSale.paidAt).toLocaleString()} />}
                         {selectedSale.couponCodeUsed && <InfoItem label="Cupom Usado" value={selectedSale.couponCodeUsed} />}
                         {selectedSale.discountAppliedInCents && selectedSale.discountAppliedInCents > 0 && <InfoItem label="Desconto Aplicado" value={<span className="text-status-error">-{formatCurrency(selectedSale.discountAppliedInCents)}</span>} />}

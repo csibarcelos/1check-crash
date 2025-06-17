@@ -7,7 +7,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Modal } from '@/components/ui/Modal';
 import { AbandonedCart, AbandonedCartStatus } from '@/types';
 import { abandonedCartService } from '@/services/abandonedCartService';
-import { ArchiveBoxXMarkIcon, WhatsAppIcon, generateWhatsAppLink } from '@/constants';
+import { ArchiveBoxXMarkIcon, WhatsAppIcon, generateWhatsAppLink } from '@/constants.tsx';
 import { useAuth } from '@/contexts/AuthContext';
 
 const getStatusLabel = (status: AbandonedCartStatus) => {
@@ -175,8 +175,8 @@ export const CarrinhosAbandonadosPage: React.FC = () => {
               className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-neutral-600 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm rounded-md bg-neutral-700 text-neutral-200"
             >
               <option value="">Todos Status</option>
-              {Object.values(AbandonedCartStatus).map(status => (
-                <option key={status} value={status}>{getStatusLabel(status)}</option>
+              {Object.values(AbandonedCartStatus).map((status: AbandonedCartStatus) => (
+                <option key={status} value={status}>{getStatusLabel(status as AbandonedCartStatus)}</option>
               ))}
             </select>
           </div>
@@ -235,8 +235,8 @@ export const CarrinhosAbandonadosPage: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-300">{cart.productName}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-primary">{formatCurrency(cart.potentialValueInCents)}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusClass(cart.status)}`}>
-                      {getStatusLabel(cart.status)}
+                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusClass(cart.status as AbandonedCartStatus)}`}>
+                      {getStatusLabel(cart.status as AbandonedCartStatus)}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-400">{new Date(cart.lastInteractionAt).toLocaleString()}</td>
@@ -277,7 +277,7 @@ export const CarrinhosAbandonadosPage: React.FC = () => {
               <h3 className="text-md font-semibold text-neutral-100 border-b border-neutral-600 pb-1 mb-2">Detalhes do Carrinho</h3>
               <InfoItem label="Produto" value={selectedCart.productName} />
               <InfoItem label="Valor Potencial" value={<span className="font-bold text-primary">{formatCurrency(selectedCart.potentialValueInCents)}</span>} />
-              <InfoItem label="Status Atual" value={<span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${getStatusClass(selectedCart.status)}`}>{getStatusLabel(selectedCart.status)}</span>} />
+              <InfoItem label="Status Atual" value={<span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${getStatusClass(selectedCart.status as AbandonedCartStatus)}`}>{getStatusLabel(selectedCart.status as AbandonedCartStatus)}</span>} />
               <InfoItem label="Criado em" value={new Date(selectedCart.date).toLocaleString()} />
               <InfoItem label="Última Interação" value={new Date(selectedCart.lastInteractionAt).toLocaleString()} />
             </section>
@@ -299,12 +299,12 @@ export const CarrinhosAbandonadosPage: React.FC = () => {
                     key={statusValue}
                     variant={selectedCart.status === statusValue ? 'primary' : 'secondary'}
                     size="sm"
-                    onClick={() => handleUpdateStatus(selectedCart.id, statusValue)}
+                    onClick={() => handleUpdateStatus(selectedCart.id, statusValue as AbandonedCartStatus)}
                     isLoading={isUpdatingStatus && selectedCart.status !== statusValue}
                     disabled={isUpdatingStatus || selectedCart.status === statusValue}
                     className={selectedCart.status === statusValue ? 'ring-2 ring-offset-1 ring-primary ring-offset-neutral-800' : ''}
                   >
-                    {getStatusLabel(statusValue)}
+                    {getStatusLabel(statusValue as AbandonedCartStatus)}
                   </Button>
                 ))}
               </div>

@@ -1,12 +1,12 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, Link, useLocation, useNavigate } from "react-router-dom"; 
+import { useParams, useLocation, useNavigate } from "react-router-dom"; 
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { salesService } from '@/services/salesService'; 
 import { productService } from '@/services/productService';
-import { Sale, SaleProductItem, Product, UpsellOffer, PaymentStatus, PushInPayPixRequest, PushInPayPixResponseData, PushInPayPixResponse, AppSettings } from '@/types'; 
+import { Sale, SaleProductItem, Product, UpsellOffer, PushInPayPixRequest, PushInPayPixResponseData, PushInPayPixResponse, AppSettings } from '@/types'; 
 import { CheckCircleIcon, DocumentDuplicateIcon, MOCK_WEBHOOK_URL } from '../constants.tsx'; 
 import { supabase } from '@/supabaseClient'; 
 import { Input } from '@/components/ui/Input'; 
@@ -241,7 +241,7 @@ export const ThankYouPage: React.FC = () => {
           <CheckCircleIcon className="h-16 w-16 text-green-500 mx-auto mb-4" />
           <h1 className="text-3xl font-bold text-[var(--checkout-color-text-strong)] mb-3">Obrigado pela sua compra!</h1>
           <p className="text-[var(--checkout-color-text-default)] mb-2">
-            Seu pedido <span className="font-semibold text-[var(--checkout-color-primary-DEFAULT)]">#{mainSaleTransactionId.substring(0, 12)}...</span> foi confirmado.
+            Seu pedido <span className="font-semibold text-[var(--checkout-color-primary-DEFAULT)]">#{(mainSaleTransactionId || 'INVÁLIDO').substring(0, 12)}...</span> foi confirmado.
           </p>
           <p className="text-[var(--checkout-color-text-muted)] mb-6">
             Enviamos um e-mail para <span className="font-semibold text-[var(--checkout-color-text-default)]">{mainSaleDetails.customer.email}</span> com os detalhes do seu pedido e instruções de acesso.

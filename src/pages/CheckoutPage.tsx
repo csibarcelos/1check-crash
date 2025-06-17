@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from "react-router-dom"; 
 import { v4 as uuidv4 } from 'uuid'; 
-import { Product, PaymentStatus, Coupon, OrderBumpOffer, PushInPayPixResponseData, PushInPayPixResponse, AppSettings, PlatformSettings, SaleProductItem, PaymentMethod, Sale, UtmifyOrderPayload, AbandonedCartStatus, PushInPayPixRequest, PushInPayTransactionStatusResponse } from '@/types'; 
+import { Product, PaymentStatus, Coupon, PushInPayPixResponseData, PushInPayPixResponse, AppSettings, PlatformSettings, SaleProductItem, PaymentMethod, Sale, UtmifyOrderPayload, AbandonedCartStatus, PushInPayPixRequest, PushInPayTransactionStatusResponse } from '@/types'; 
 import { productService } from '@/services/productService';
 import { abandonedCartService, CreateAbandonedCartPayload } from '@/services/abandonedCartService';
 import { Button } from '@/components/ui/Button';
@@ -12,7 +12,6 @@ import { CheckCircleIcon, PHONE_COUNTRY_CODES, DocumentDuplicateIcon, TagIcon, M
 import { settingsService } from '@/services/settingsService';
 import { salesService } from '@/services/salesService';
 import { utmifyService } from '@/services/utmifyService';
-import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/supabaseClient'; 
 
 
@@ -472,12 +471,13 @@ export const CheckoutPage: React.FC = () => {
   }, [getPrimaryColor]);
 
   useEffect(() => {
-    if (!product?.checkoutCustomization?.countdownTimer?.enabled || !product.checkoutCustomization.countdownTimer.durationMinutes) {
+    const timerConfig = product?.checkoutCustomization?.countdownTimer;
+    if (!timerConfig || !timerConfig.enabled || typeof timerConfig.durationMinutes !== 'number' || timerConfig.durationMinutes <= 0) {
         const timerEl = document.getElementById('checkout-countdown-timer');
         if (timerEl) timerEl.innerHTML = '';
         return;
     }
-    const timerConfig = product.checkoutCustomization.countdownTimer;
+    
     const timerElement = document.getElementById('checkout-countdown-timer');
     if (!timerElement) return;
 

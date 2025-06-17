@@ -1,14 +1,12 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom'; 
-import { Card } from '@/components/ui/Card'; 
+import { Card } from '@/components/ui/Card';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { User, Sale, PaymentStatus, PlatformSettings } from '@/types';
 import { settingsService } from '@/services/settingsService';
-import { superAdminService } from '@/services/superAdminService'; 
+import { superAdminService } from '@/services/superAdminService';
 import { useAuth } from '@/contexts/AuthContext';
-import { UsersIcon, ShoppingCartIcon, CogIcon, CurrencyDollarIcon as CurrencyDollarHeroIcon, PresentationChartLineIcon as ChartBarIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/components/ui/Button';
+import { UsersIcon, ShoppingCartIcon, CurrencyDollarIcon as CurrencyDollarHeroIcon, PresentationChartLineIcon as ChartBarIcon } from '@heroicons/react/24/outline';
 
 const formatCurrency = (valueInCents: number): string => {
     return `R$ ${(valueInCents / 100).toFixed(2).replace('.', ',')}`;
@@ -91,9 +89,6 @@ export const SuperAdminDashboardPage: React.FC = () => {
   const [allSales, setAllSales] = useState<Sale[]>([]);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings | null>(null);
   
-  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
-  const [filteredSales, setFilteredSales] = useState<Sale[]>([]);
-
   const [totalUsersCount, setTotalUsersCount] = useState(0);
   const [newUsersInPeriod, setNewUsersInPeriod] = useState(0);
   const [salesInPeriodCount, setSalesInPeriodCount] = useState(0);
@@ -162,7 +157,6 @@ export const SuperAdminDashboardPage: React.FC = () => {
     if (isLoading || !platformSettings) return; 
 
     const currentFilteredUsers = filterDataByDateRange(allUsers, dateRangeFilter, 'createdAt');
-    setFilteredUsers(currentFilteredUsers);
     setNewUsersInPeriod(currentFilteredUsers.length);
 
     const salesForPeriodMetrics = filterDataByDateRange(allSales, dateRangeFilter, 'paidAt')
@@ -170,8 +164,6 @@ export const SuperAdminDashboardPage: React.FC = () => {
     
     const allSalesCreatedInPeriod = filterDataByDateRange(allSales, dateRangeFilter, 'createdAt');
     setSalesInPeriodCount(allSalesCreatedInPeriod.length);
-
-    setFilteredSales(salesForPeriodMetrics); 
 
     const currentSalesValue = salesForPeriodMetrics.reduce((sum, sale) => sum + sale.totalAmountInCents, 0);
     setSalesValueInPeriod(currentSalesValue);
@@ -204,4 +196,68 @@ export const SuperAdminDashboardPage: React.FC = () => {
 
   if (isLoading && totalUsersCount === 0 && allSales.length === 0) {
     return <div className="flex justify-center items-center h-64"><LoadingSpinner size="lg" /></div>;
-  
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold text-neutral-800">Dashboard Super Admin</h1>
+        <select 
+          value={dateRangeFilter}
+          onChange={(e) => setDateRangeFilter(e.target.value)}
+          className="p-2 border rounded-md bg-white shadow-sm focus:ring-primary focus:border-primary"
+        >
+          {dateRangeOptions.map(option => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </div>
+
+      {error && <p className="text-red-500 bg-red-50 p-3 rounded-md">{error}</p>}
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {stats.map(stat => (
+              <Card key={stat.title} className="p-5 flex flex-col justify-between">
+                  <div className="flex items-start justify-between">
+                    <h3 className="text-sm font-medium text-neutral-500 uppercase">{stat.title}</h3>
+                    <stat.icon className="h-6 w-6 text-neutral-400" />
+                  </div>
+                  <p className="text-3xl font-semibold text-neutral-800 mt-2">{stat.value}</p>
+              </Card>
+          ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <h3 className="text-lg font-semibold mb-4">Vendas Recentes</h3>
+          {recentSales.length > 0 ? (
+            <ul className="divide-y divide-neutral-200">
+              {recentSales.map(sale => (
+                <li key={sale.id} className="py-2 flex justify-between items-center">
+                  <div>
+                    <p className="font-medium">{sale.customer.name}</p>
+                    <p className="text-sm text-neutral-500">{sale.products[0]?.name || 'Produto(s) Indisponível(is)'}</p>
+                  </div>
+                  <span className="font-semibold">{formatCurrency(sale.totalAmountInCents)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-neutral-500">Nenhuma venda recente.</p>}
+        </Card>
+        <Card>
+          <h3 className="text-lg font-semibold mb-4">Novos Usuários</h3>
+          {recentUsers.length > 0 ? (
+            <ul className="divide-y divide-neutral-200">
+              {recentUsers.map(user => (
+                <li key={user.id} className="py-2 flex justify-between items-center">
+                  <span>{user.email}</span>
+                  <span className="text-sm text-neutral-500">{new Date(user.createdAt || 0).toLocaleDateString()}</span>
+                </li>
+              ))}
+            </ul>
+           ) : <p className="text-neutral-500">Nenhum usuário recente.</p>}
+        </Card>
+      </div>
+    </div>
+  );
+};

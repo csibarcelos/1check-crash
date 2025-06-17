@@ -1,6 +1,6 @@
 
 import { UtmifyOrderPayload, UtmifyResponse } from '@/types'; 
-import { UTMIFY_API_BASE } from '../constants.tsx'; 
+// Removed: import { UTMIFY_API_BASE } from '../constants.tsx'; 
 
 export const utmifyService = {
   sendOrderData: async (payload: UtmifyOrderPayload, utmifyToken?: string): Promise<UtmifyResponse> => {
@@ -12,7 +12,7 @@ export const utmifyService = {
       return { success: false, message: errorMessage };
     }
     
-    const utmifyEndpoint = `${UTMIFY_API_BASE}/orders`; 
+    // const utmifyEndpoint = `${UTMIFY_API_BASE}/orders`; // This variable was unused
 
     await new Promise(resolve => setTimeout(resolve, 500)); 
     

@@ -1,18 +1,15 @@
 
 import React, { createContext, useState, useContext, useEffect, ReactNode, useCallback, useRef, useMemo } from 'react';
 import { AuthUser, Session } from '@supabase/supabase-js';
-import { supabase, getSupabaseUserId } from '@/supabaseClient';
-import { User as AppUserType } from '@/types';
-import { Database } from '@/types/supabase';
+import { supabase } from '@/supabaseClient';
+import { User as BaseUser } from '@/types'; // Aliased User to BaseUser
 import { SUPER_ADMIN_EMAIL } from '../constants.tsx';
 
-export interface AppUser extends AppUserType {
+export interface AppUser extends BaseUser { // AppUser now extends BaseUser
   isSuperAdmin: boolean;
   isActive: boolean;
   isFallback?: boolean;
 }
-
-type ProfileRow = Database['public']['Tables']['profiles']['Row'];
 
 interface AuthContextType {
   user: AppUser | null;
@@ -48,7 +45,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const userEmail = supabaseUser?.email || '';
     const fallbackName = supabaseUser.user_metadata?.name || userEmail.split('@')[0] || 'Usuário';
 
-    return {
+    // Ensure all required properties from User and AppUser are present
+    const fallbackProfile: AppUser = {
       id: supabaseUser.id,
       email: userEmail,
       name: `${fallbackName} (${reason})`,
@@ -57,6 +55,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       createdAt: supabaseUser.created_at,
       isFallback: true,
     };
+    return fallbackProfile;
   }, []);
 
   const fetchUserProfile = useCallback(async (supabaseUser: AuthUser | null, sourceCall: string): Promise<AppUser | null> => {
@@ -140,13 +139,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } else {
           console.log(`${logPrefix} - Perfil encontrado com sucesso`);
           fetchedUser = {
-            id: userId,
-            email: supabaseUser.email || '',
-            name: profileData.name || supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0] || 'Usuário',
-            isSuperAdmin: (profileData.is_super_admin ?? false) || (supabaseUser.email === SUPER_ADMIN_EMAIL),
-            isActive: profileData.is_active ?? true,
-            createdAt: profileData.created_at || supabaseUser.created_at,
-            isFallback: false,
+            id: userId, // from User
+            email: supabaseUser.email || '', // from User
+            name: profileData.name || supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0] || 'Usuário', // from User
+            isSuperAdmin: (profileData.is_super_admin ?? false) || (supabaseUser.email === SUPER_ADMIN_EMAIL), // from AppUser
+            isActive: profileData.is_active ?? true, // from AppUser
+            createdAt: profileData.created_at || supabaseUser.created_at, // from User
+            isFallback: false, // from AppUser
           };
         }
         profileCache.set(userId, { profile: fetchedUser, timestamp: Date.now() });

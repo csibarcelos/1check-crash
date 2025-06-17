@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from "react-router-dom"; 
 import { Product, ProductCheckoutCustomization, OrderBumpOffer, UpsellOffer, Coupon } from '@/types';
 import { productService } from '@/services/productService';

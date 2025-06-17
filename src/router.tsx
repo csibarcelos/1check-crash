@@ -1,5 +1,5 @@
 
-import React from 'react';
+
 import { createBrowserRouter, Outlet } from "react-router-dom"; // Corrected import
 import { MainLayout } from '@/components/layout/MainLayout'; // Corrected path
 import { SuperAdminLayout } from '@/components/layout/SuperAdminLayout'; // Corrected path

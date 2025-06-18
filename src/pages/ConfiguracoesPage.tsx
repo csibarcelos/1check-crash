@@ -30,7 +30,6 @@ const initialAppSettings: AppSettings = {
   pixelIntegrations: [],
 };
 
-
 export const ConfiguracoesPage: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(initialAppSettings);
   const [pageLoading, setPageLoading] = useState(true);
@@ -48,26 +47,30 @@ export const ConfiguracoesPage: React.FC = () => {
     setError(null);
     try {
       const fetchedSettings = await settingsService.getAppSettings(accessToken);
-      setSettings(prev => ({
-        ...initialAppSettings, 
-        ...prev, 
-        ...fetchedSettings, 
-        checkoutIdentity: { 
-          ...(initialAppSettings.checkoutIdentity),
-          ...(prev.checkoutIdentity),
-          ...(fetchedSettings.checkoutIdentity),
+      
+      // Garantir que todos os campos obrigatórios existam com valores padrão
+      setSettings(() => ({
+        ...initialAppSettings,
+        ...fetchedSettings,
+        checkoutIdentity: {
+          logoUrl: fetchedSettings.checkoutIdentity?.logoUrl || initialAppSettings.checkoutIdentity.logoUrl,
+          faviconUrl: fetchedSettings.checkoutIdentity?.faviconUrl || initialAppSettings.checkoutIdentity.faviconUrl,
+          brandColor: fetchedSettings.checkoutIdentity?.brandColor || initialAppSettings.checkoutIdentity.brandColor,
         },
         smtpSettings: {
-          ...(initialAppSettings.smtpSettings),
-          ...(prev.smtpSettings),
-          ...(fetchedSettings.smtpSettings),
+          host: fetchedSettings.smtpSettings?.host || initialAppSettings.smtpSettings?.host || '',
+          port: fetchedSettings.smtpSettings?.port || initialAppSettings.smtpSettings?.port || 587,
+          user: fetchedSettings.smtpSettings?.user || initialAppSettings.smtpSettings?.user || '',
+          pass: fetchedSettings.smtpSettings?.pass || initialAppSettings.smtpSettings?.pass || '',
         },
-        apiTokens: { 
-            ...(initialAppSettings.apiTokens),
-            ...(prev.apiTokens),
-            ...(fetchedSettings.apiTokens),
+        apiTokens: {
+          pushinPay: fetchedSettings.apiTokens?.pushinPay || initialAppSettings.apiTokens?.pushinPay || '',
+          utmify: fetchedSettings.apiTokens?.utmify || initialAppSettings.apiTokens?.utmify || '',
+          pushinPayEnabled: fetchedSettings.apiTokens?.pushinPayEnabled ?? initialAppSettings.apiTokens?.pushinPayEnabled ?? false,
+          utmifyEnabled: fetchedSettings.apiTokens?.utmifyEnabled ?? initialAppSettings.apiTokens?.utmifyEnabled ?? false,
         },
-        pixelIntegrations: fetchedSettings.pixelIntegrations || initialAppSettings.pixelIntegrations,
+        pixelIntegrations: fetchedSettings.pixelIntegrations || initialAppSettings.pixelIntegrations || [],
+        customDomain: fetchedSettings.customDomain || initialAppSettings.customDomain || '',
       }));
     } catch (err: any) {
       setError(err.message || 'Falha ao carregar configurações.');
@@ -115,7 +118,6 @@ export const ConfiguracoesPage: React.FC = () => {
     if (error) setError(null);
   }
 
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!accessToken) {
@@ -153,7 +155,6 @@ export const ConfiguracoesPage: React.FC = () => {
       </div>
     );
   }
-
 
   return (
     <div className="space-y-8 text-text-default">

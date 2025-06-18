@@ -1,3 +1,4 @@
+
 import React, { createContext, useState, useContext, useEffect, ReactNode, useCallback, useRef, useMemo } from 'react';
 import { AuthUser, Session } from '@supabase/supabase-js';
 import { supabase } from '@/supabaseClient';
@@ -10,6 +11,13 @@ export interface AppUser extends BaseUser {
   isFallback?: boolean;
 }
 
+interface RegisterData {
+  email: string;
+  password: string;
+  full_name: string;
+  phone?: string;
+}
+
 interface AuthContextType {
   user: AppUser | null;
   session: Session | null;
@@ -17,7 +25,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isSuperAdmin: boolean;
   login: (email: string, password_not_name: string) => Promise<void>;
-  register: (email: string, name: string, password_not_name: string) => Promise<{ success: boolean; needsEmailConfirmation: boolean } | void>;
+  register: (data: RegisterData) => Promise<{ success: boolean; needsEmailConfirmation?: boolean }>;
   logout: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
   isLoading: boolean;
@@ -42,9 +50,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const createFallbackProfile = useCallback((supabaseUser: AuthUser, reason: string): AppUser => {
     const userEmail = supabaseUser?.email || '';
-    const fallbackName = supabaseUser.user_metadata?.name || userEmail.split('@')[0] || 'Usuário';
+    // Prioritize user_metadata.name, then user_metadata.full_name, then split email
+    const fallbackName = supabaseUser.user_metadata?.name || supabaseUser.user_metadata?.full_name || userEmail.split('@')[0] || 'Usuário';
 
-    // Ensure all required properties from User and AppUser are present
     const fallbackProfile: AppUser = {
       id: supabaseUser.id,
       email: userEmail,
@@ -140,7 +148,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           fetchedUser = {
             id: userId, 
             email: supabaseUser.email || '', 
-            name: profileData.name || supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0] || 'Usuário', 
+            name: profileData.name || supabaseUser.user_metadata?.name || supabaseUser.user_metadata?.full_name || supabaseUser.email?.split('@')[0] || 'Usuário', 
             isSuperAdmin: (profileData.is_super_admin ?? false) || (supabaseUser.email === SUPER_ADMIN_EMAIL), 
             isActive: profileData.is_active ?? true, 
             createdAt: profileData.created_at || supabaseUser.created_at, 
@@ -265,60 +273,78 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     setIsLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error, data: loginData } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      console.log("AuthContext:login - Login realizado com sucesso");
+      console.log("AuthContext:login - Login realizado com sucesso", loginData);
+      // processSessionAndUser será chamado pelo onAuthStateChange
     } catch (error: any) {
       console.error("AuthContext:login - Erro:", error);
       if (mountedRef.current) setIsLoading(false);
-      throw new Error(error.message || 'Falha no login.');
+      let displayMessage = 'Falha no login.';
+      if (error.message === 'Invalid login credentials') {
+          displayMessage = 'Credenciais inválidas. Verifique seu e-mail e senha.';
+      } else {
+          displayMessage = error.message || displayMessage;
+      }
+      throw new Error(displayMessage);
     }
   }, []);
 
-  const register = useCallback(async (email: string, name: string, password: string): Promise<{ success: boolean; needsEmailConfirmation: boolean } | void> => {
-    console.log("AuthContext:register - Iniciando registro para", email);
-    if (!mountedRef.current) return;
-    
+  const register = async (
+    data: RegisterData
+  ): Promise<{ success: boolean; needsEmailConfirmation?: boolean }> => {
     try {
-      const { data, error: signUpError } = await supabase.auth.signUp({ 
-        email, 
-        password, 
-        options: { data: { name } } 
-      });
-      
+      console.log(`AuthContext:register - Iniciando registro para ${data.email}`);
+
+      const { data: signUpData, error: signUpError } =
+        await supabase.auth.signUp({
+          email: data.email,
+          password: data.password,
+          options: {
+            data: {
+              full_name: data.full_name,
+              phone: data.phone,
+            },
+          },
+        });
+
       if (signUpError) {
-        console.error("AuthContext:register - Supabase signUp retornou erro:", signUpError);
+        console.error('AuthContext:register - Erro no signUp:', signUpError.message);
+        // Verifica se o erro é de usuário já registrado
+        if (signUpError.message.toLowerCase().includes("user already registered")) {
+          throw new Error("Este e-mail já está cadastrado.");
+        }
         throw signUpError;
       }
       
-      // Usuário criado com sucesso - precisa confirmar email
-      if (data.user && !data.session && data.user.email_confirmed_at === null) {
-        console.log("AuthContext:register - ✅ Usuário criado com sucesso! Aguardando confirmação de e-mail. ID:", data.user.id);
-        return { success: true, needsEmailConfirmation: true };
+      console.log('AuthContext:register - signUpData:', signUpData);
+
+      if (signUpData.user && !signUpData.session) {
+         console.log('AuthContext:register - Usuário criado, confirmação de e-mail pendente:', signUpData.user.email);
+         return { success: true, needsEmailConfirmation: true };
+      }
+
+      if (signUpData.user && signUpData.session) {
+         console.log('AuthContext:register - Usuário registrado e logado (auto-confirmação):', signUpData.user.email);
+         await processSessionAndUser(signUpData.session, 'register');
+         return { success: true, needsEmailConfirmation: false };
       }
       
-      // Usuário já existe e está confirmado (Supabase pode retornar user sem session neste caso também)
-      if (data.user && !data.session && data.user.email_confirmed_at !== null) {
-        console.warn("AuthContext:register - Usuário já existe e está confirmado:", email);
-        throw new Error("USER_ALREADY_CONFIRMED");
+      // Este caso pode ocorrer se o usuário existir, mas não está confirmado, e tenta se registrar novamente.
+      // O Supabase pode reenviar o e-mail de confirmação.
+      if (signUpData.user && !signUpData.session && signUpData.user.email_confirmed_at === null) {
+          console.log('AuthContext:register - Tentativa de registro de usuário existente não confirmado. E-mail de confirmação pode ter sido reenviado para:', signUpData.user.email);
+          return { success: true, needsEmailConfirmation: true };
       }
       
-      // Login automático (confirmação de email desabilitada OU usuário já existente e confirmado sendo "re-registrado" com a mesma senha)
-      if (data.user && data.session) {
-        console.log("AuthContext:register - ✅ Registro e login automático bem-sucedidos. ID:", data.user.id);
-        return { success: true, needsEmailConfirmation: false };
-      }
-      
-      // Estado inesperado
-      console.error("AuthContext:register - Estado inesperado:", { user: !!data.user, session: !!data.session, confirmed_at: data.user?.email_confirmed_at });
-      throw new Error("REGISTRATION_UNEXPECTED_STATE");
-      
+      console.warn('AuthContext:register - Cenário de registro não esperado:', signUpData);
+      return { success: true, needsEmailConfirmation: true };
+
     } catch (error: any) {
-      console.error("AuthContext:register - Erro capturado:", error);
-      
+      console.error(`AuthContext:register - Erro capturado:`, error);
       let displayMessage = 'Falha no registro.';
       if (error.message) {
-        if (error.message.includes("User already registered") || error.message === "USER_ALREADY_CONFIRMED") {
+        if (error.message.toLowerCase().includes("user already registered") || error.message === "Este e-mail já está cadastrado.") {
           displayMessage = "Este e-mail já está cadastrado.";
         } else if (error.message.includes("Password should be at least 6 characters")) {
           displayMessage = "A senha deve ter no mínimo 6 caracteres.";
@@ -326,15 +352,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           displayMessage = "E-mail inválido.";
         } else if (error.message.includes("Database error saving new user")) {
           displayMessage = "Ocorreu um erro ao finalizar seu cadastro. Tente novamente ou contate o suporte.";
-        } else if (error.message === "REGISTRATION_UNEXPECTED_STATE") {
-          displayMessage = "Registro falhou, estado inesperado.";
         } else {
-          displayMessage = error.message;
+          displayMessage = error.message; // Use the Supabase error message directly if not one of the common ones
         }
       }
       throw new Error(displayMessage);
     }
-  }, []);
+  };
+
 
   const logout = useCallback(async () => {
     console.log("AuthContext:logout - Iniciando logout");
@@ -350,8 +375,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const { error } = await supabase.auth.signOut();
       if (error) console.error("AuthContext:logout - Erro:", error);
       console.log("AuthContext:logout - Logout realizado");
+      // processSessionAndUser será chamado pelo onAuthStateChange
     } catch (error: any) {
       console.error("AuthContext:logout - Exceção:", error);
+       if (mountedRef.current) { // Garante que o estado só é atualizado se montado
+        setUser(null);
+        setSession(null);
+        setIsLoading(false);
+      }
     }
   }, [session?.user?.id]);
 
@@ -359,16 +390,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     console.log("AuthContext:requestPasswordReset - Solicitando para", email);
     if (!mountedRef.current) return;
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}${window.location.pathname}#/auth` });
+      // O redirectTo deve ser o URL da sua página de autenticação onde o usuário pode definir uma nova senha.
+      // Se você não tem uma rota específica para reset de senha, redirecione para a página de login e
+      // trate o evento de 'PASSWORD_RECOVERY' lá.
+      const redirectTo = `${window.location.origin}/auth#type=recovery`; 
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
       if (error) throw error;
-      console.log("AuthContext:requestPasswordReset - E-mail enviado");
+      console.log("AuthContext:requestPasswordReset - E-mail enviado com redirect para:", redirectTo);
     } catch (error: any) {
       console.error("AuthContext:requestPasswordReset - Erro:", error);
       throw new Error(error.message || 'Falha ao solicitar redefinição de senha.');
     }
   }, []);
 
-  const isAuthenticatedValue = useMemo(() => !!(session && user && user.isActive), [session, user]);
+  const isAuthenticatedValue = useMemo(() => !!(session && user && user.isActive && !user.isFallback), [session, user]);
   const isSuperAdminValue = useMemo(() => isAuthenticatedValue && (user?.isSuperAdmin ?? false), [isAuthenticatedValue, user?.isSuperAdmin]);
   const accessTokenValue = useMemo(() => session?.access_token || null, [session?.access_token]);
 

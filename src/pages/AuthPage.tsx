@@ -36,7 +36,7 @@ export const AuthPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [name, setName] = useState('');
+  const [fullName, setFullName] = useState(''); // Changed from 'name' to 'fullName'
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [formLoading, setFormLoading] = useState(false);
@@ -63,7 +63,7 @@ export const AuthPage: React.FC = () => {
     setEmail('');
     setPassword('');
     setConfirmPassword('');
-    setName('');
+    setFullName(''); // Changed from 'setName' to 'setFullName'
     setError(null);
     setSuccessMessage(null);
   };
@@ -83,8 +83,15 @@ export const AuthPage: React.FC = () => {
       if (currentView === 'register') {
         if (password !== confirmPassword) throw new Error('As senhas não coincidem.');
         if (password.length < 6) throw new Error('A senha deve ter no mínimo 6 caracteres.');
+        if (!fullName.trim()) throw new Error('O nome completo é obrigatório.');
         
-        const result = await register(email, name, password);
+        const registrationData = {
+          email,
+          password,
+          full_name: fullName,
+          // phone: optional, can be added here if a field for it exists
+        };
+        const result = await register(registrationData);
         
         if (result?.success) {
           if (result.needsEmailConfirmation) {
@@ -92,14 +99,10 @@ export const AuthPage: React.FC = () => {
             setSuccessMessage(`Cadastro realizado com sucesso! Enviamos um e-mail de confirmação para ${email}. Por favor, verifique sua caixa de entrada (e spam) para ativar sua conta.`);
           } else {
             // Login automático, o useEffect cuidará do redirecionamento
-            // Opcionalmente, limpe os campos aqui se desejar, embora a navegação possa ocorrer antes.
           }
         }
-        // Se result for void ou !result.success, o AuthContext já lançou um erro que será pego abaixo.
-
       } else if (currentView === 'login') {
         await login(email, password);
-        // Se o login for bem-sucedido, isAuthenticated se tornará true e o useEffect cuidará do redirecionamento.
       } else if (currentView === 'forgotPassword') {
         await requestPasswordReset(email);
         setSuccessMessage(`Se uma conta com o e-mail ${email} existir, um link para redefinição de senha foi enviado.`);
@@ -159,7 +162,7 @@ export const AuthPage: React.FC = () => {
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
               {currentView === 'register' && (
-                <Input label="Nome Completo" name="name" type="text" autoComplete="name" required value={name} onChange={(e) => setName(e.target.value)} icon={<UserIcon className="h-5 w-5"/>} disabled={formLoading} />
+                <Input label="Nome Completo" name="fullName" type="text" autoComplete="name" required value={fullName} onChange={(e) => setFullName(e.target.value)} icon={<UserIcon className="h-5 w-5"/>} disabled={formLoading} />
               )}
               {(currentView === 'login' || currentView === 'register' || currentView === 'forgotPassword') && (
                 <Input label="Endereço de e-mail" name="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} icon={<EmailIcon className="h-5 w-5"/>} disabled={formLoading} />

@@ -11,7 +11,7 @@ import {
     ShoppingCartIcon, 
     UserGroupIcon, 
     CurrencyDollarIcon,
-} from '@/constants.tsx'; 
+} from '@/constants'; 
 import { useAuth } from '@/contexts/AuthContext';
 
 const formatCurrency = (valueInCents: number, showSymbol = true): string => {

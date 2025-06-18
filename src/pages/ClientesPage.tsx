@@ -8,7 +8,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Customer, FunnelStage, Product as ProductType } from '@/types';
 import { customerService } from '@/services/customerService';
 import { productService } from '@/services/productService'; 
-import { UsersIcon, WhatsAppIcon, generateWhatsAppLink } from '@/constants.tsx';
+import { UsersIcon, WhatsAppIcon, generateWhatsAppLink } from '@/constants';
 import { useAuth } from '@/contexts/AuthContext'; 
 
 

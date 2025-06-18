@@ -7,7 +7,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Modal } from '@/components/ui/Modal';
 import { Sale, PaymentStatus, PaymentMethod, SaleProductItem } from '@/types';
 import { salesService } from '@/services/salesService';
-import { ShoppingCartIcon, WhatsAppIcon, generateWhatsAppLink } from '@/constants.tsx';
+import { ShoppingCartIcon, WhatsAppIcon, generateWhatsAppLink } from '@/constants';
 import { useAuth } from '@/contexts/AuthContext';
 
 const getStatusClass = (status: PaymentStatus) => {

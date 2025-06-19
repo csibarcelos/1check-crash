@@ -1,3 +1,4 @@
+
 // types/supabase.ts
 // This file should ideally be populated by `supabase gen types typescript`.
 // The structure below is based on the assumed database schema.
@@ -66,6 +67,7 @@ export interface Database {
           order_bump: Json | null
           upsell: Json | null
           coupons: Json | null
+          utm_params: Json | null // Novo campo
           created_at: string
           updated_at: string
         }
@@ -87,6 +89,7 @@ export interface Database {
           order_bump?: Json | null
           upsell?: Json | null
           coupons?: Json | null
+          utm_params?: Json | null // Novo campo
           created_at?: string
           updated_at?: string
         }
@@ -108,6 +111,7 @@ export interface Database {
           order_bump?: Json | null
           upsell?: Json | null
           coupons?: Json | null
+          utm_params?: Json | null // Novo campo
           created_at?: string
           updated_at?: string
         }

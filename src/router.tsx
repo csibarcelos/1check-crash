@@ -25,7 +25,7 @@ import { SuperAdminSalesPage } from '@/pages/superadmin/SuperAdminSalesPage'; //
 import { SuperAdminAuditLogPage } from '@/pages/superadmin/SuperAdminAuditLogPage'; // Corrected path
 import { SuperAdminAllProductsPage } from '@/pages/superadmin/SuperAdminAllProductsPage'; // Corrected path
 
-import { ProtectedRoute, SuperAdminProtectedRoute } from '@/App'; // Corrected path
+import { ProtectedRoute, SuperAdminProtectedRoute } from './App'; // Corrected path
 import { ErrorBoundary } from '@/ErrorBoundary'; // Corrected path
 
 const RootLayout = () => {

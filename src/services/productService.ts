@@ -1,5 +1,5 @@
 
-import { Product, Coupon, OrderBumpOffer, UpsellOffer, ProductCheckoutCustomization } from '@/types'; 
+import { Product, Coupon, OrderBumpOffer, UpsellOffer, ProductCheckoutCustomization, UtmParams } from '@/types'; 
 import { supabase, getSupabaseUserId } from '@/supabaseClient';  
 import { Database, Json } from '@/types/supabase'; 
 
@@ -50,6 +50,7 @@ const fromSupabaseRow = (row: ProductRow): Product => {
     orderBump: parseJsonField<OrderBumpOffer | undefined>(row.order_bump, undefined),
     upsell: parseJsonField<UpsellOffer | undefined>(row.upsell, undefined),
     coupons: parseJsonField<Coupon[]>(row.coupons, []),
+    utmParams: parseJsonField<UtmParams | undefined>(row.utm_params, undefined), // Parse utm_params
   };
 };
 
@@ -65,7 +66,7 @@ export const productService = {
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, upsell, coupons, created_at, updated_at')
+        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, upsell, coupons, utm_params, created_at, updated_at')
         .eq('platform_user_id', userId); 
 
       if (error) throw error;
@@ -81,7 +82,7 @@ export const productService = {
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, upsell, coupons, created_at, updated_at')
+        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, upsell, coupons, utm_params, created_at, updated_at')
         .eq('id', id)
         .single<ProductRow>();
 
@@ -113,7 +114,7 @@ export const productService = {
     try {
       const { data, error, status } = await supabase
         .from('products')
-        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, upsell, coupons, created_at, updated_at')
+        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, upsell, coupons, utm_params, created_at, updated_at')
         .eq('slug', slug)
         .single<ProductRow>(); // .single() will error if more than one row, or if RLS prevents access to THE row.
 
@@ -160,6 +161,7 @@ export const productService = {
       order_bump: productData.orderBump as unknown as Json,
       upsell: productData.upsell as unknown as Json,
       coupons: productData.coupons as unknown as Json,
+      utm_params: productData.utmParams as unknown as Json, // Add utmParams
     };
 
     try {
@@ -197,6 +199,7 @@ export const productService = {
         ...(updates.orderBump !== undefined && { order_bump: updates.orderBump as unknown as Json }),
         ...(updates.upsell !== undefined && { upsell: updates.upsell as unknown as Json }),
         ...(updates.coupons !== undefined && { coupons: updates.coupons as unknown as Json }),
+        ...(updates.utmParams !== undefined && { utm_params: updates.utmParams as unknown as Json }), // Add utmParams
     };
     
     if (updates.name && currentProduct.name !== updates.name) {
@@ -255,7 +258,7 @@ export const productService = {
       } = originalProduct;
       
       const clonedProductData: Omit<Product, 'id' | 'platformUserId' | 'totalSales' | 'clicks' | 'checkoutViews' | 'conversionRate' | 'abandonmentRate' | 'slug'> = {
-        ...clonableData,
+        ...clonableData, // This will include utmParams if present on originalProduct
         name: `${originalProduct.name} (Cópia)`,
       };
       return await productService.createProduct(clonedProductData, token); 

@@ -1,9 +1,13 @@
 
-import { Customer, FunnelStage } from '@/types'; // Ajustado para alias @
+import { Customer, FunnelStage, Sale } from '@/types'; // Ajustado para alias @
 import { supabase, getSupabaseUserId } from '@/supabaseClient'; // Ajustado para alias @
-import { Database } from '@/types/supabase'; // Ajustado para alias @
+import { Database, Json } from '@/types/supabase'; // Ajustado para alias @
+import { v4 as uuidv4 } from 'uuid';
 
 type CustomerRow = Database['public']['Tables']['customers']['Row'];
+type CustomerInsert = Database['public']['Tables']['customers']['Insert'];
+type CustomerUpdate = Database['public']['Tables']['customers']['Update'];
+
 
 const fromSupabaseCustomerRow = (row: CustomerRow): Customer => {
   return {
@@ -48,6 +52,7 @@ export const customerService = {
         console.error('Supabase getCustomers error:', error);
         throw new Error(error.message || 'Falha ao buscar clientes.');
       }
+      console.log('[customerService.getCustomers] Data received:', data);
       return data ? data.map(fromSupabaseCustomerRow) : [];
     } catch (genericError: any) {
       console.error('Exception in getCustomers:', genericError);
@@ -103,4 +108,105 @@ export const customerService = {
       throw new Error(genericError.message || 'Falha geral ao buscar cliente.');
     }
   },
+
+  upsertCustomerOnSale: async (sale: Sale, token: string | null): Promise<Customer | null> => { // Added token parameter
+    const { platformUserId, customer, products, totalAmountInCents, id: saleId, createdAt, paidAt } = sale;
+    const logPrefix = `[customerService.upsertCustomerOnSale(saleId: ${saleId?.substring(0,8) || 'N/A'})]`;
+    console.log(`${logPrefix} Iniciando upsert para venda. Token recebido: ${token ? 'Presente' : 'Ausente'}`);
+
+
+    if (!platformUserId || !customer?.email) {
+      console.error(`${logPrefix} Cannot upsert customer: platformUserId or customer email is missing from sale. Sale:`, sale);
+      return null;
+    }
+    console.log(`${logPrefix} Dados da venda: platformUserId=${platformUserId}, customerEmail=${customer.email}`);
+
+    const { data: existingCustomerData, error: fetchError } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('platform_user_id', platformUserId)
+      .eq('email', customer.email)
+      .maybeSingle<CustomerRow>();
+
+    if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 means no rows found
+      console.error(`${logPrefix} Erro ao buscar cliente existente:`, fetchError);
+      throw new Error(fetchError.message || "Falha ao buscar cliente existente.");
+    }
+    console.log(`${logPrefix} Cliente existente encontrado:`, existingCustomerData);
+
+
+    const purchasedProductIds = products.map(p => p.productId);
+    const saleEffectiveDate = paidAt || createdAt; 
+
+    if (existingCustomerData) {
+      console.log(`${logPrefix} Atualizando cliente existente ID: ${existingCustomerData.id}`);
+      const updatedSaleIds = Array.from(new Set([...(existingCustomerData.sale_ids || []), saleId]));
+      const updatedProductsPurchased = Array.from(new Set([...(existingCustomerData.products_purchased || []), ...purchasedProductIds]));
+
+      const updates: CustomerUpdate = {
+        name: customer.name || existingCustomerData.name,
+        whatsapp: customer.whatsapp || existingCustomerData.whatsapp,
+        products_purchased: updatedProductsPurchased,
+        funnel_stage: FunnelStage.CUSTOMER,
+        last_purchase_date: saleEffectiveDate,
+        total_orders: (existingCustomerData.total_orders || 0) + 1,
+        total_spent_in_cents: (existingCustomerData.total_spent_in_cents || 0) + totalAmountInCents,
+        sale_ids: updatedSaleIds,
+        updated_at: new Date().toISOString(),
+      };
+      
+      if (!existingCustomerData.first_purchase_date) {
+        updates.first_purchase_date = saleEffectiveDate;
+      }
+      console.log(`${logPrefix} Dados para atualização:`, updates);
+
+
+      const { data: updatedData, error: updateError } = await supabase
+        .from('customers')
+        .update(updates)
+        .eq('id', existingCustomerData.id)
+        .select()
+        .single<CustomerRow>();
+
+      if (updateError) {
+        console.error(`${logPrefix} Erro ao atualizar cliente:`, updateError);
+        throw new Error(updateError.message || "Falha ao atualizar cliente.");
+      }
+      console.log(`${logPrefix} Cliente atualizado com sucesso:`, updatedData);
+      return updatedData ? fromSupabaseCustomerRow(updatedData) : null;
+    } else {
+      console.log(`${logPrefix} Criando novo cliente para email: ${customer.email}`);
+      const newCustomerId = uuidv4();
+      const newCustomerPayload: CustomerInsert = {
+        id: newCustomerId,
+        platform_user_id: platformUserId,
+        name: customer.name,
+        email: customer.email,
+        whatsapp: customer.whatsapp,
+        products_purchased: purchasedProductIds,
+        funnel_stage: FunnelStage.CUSTOMER,
+        first_purchase_date: saleEffectiveDate,
+        last_purchase_date: saleEffectiveDate,
+        total_orders: 1,
+        total_spent_in_cents: totalAmountInCents,
+        sale_ids: [saleId],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      console.log(`${logPrefix} Dados para inserção:`, newCustomerPayload);
+
+      const { data: insertedData, error: insertError } = await supabase
+        .from('customers')
+        .insert(newCustomerPayload)
+        .select()
+        .single<CustomerRow>();
+
+      if (insertError) {
+        console.error(`${logPrefix} Erro ao inserir novo cliente:`, insertError);
+        throw new Error(insertError.message || "Falha ao criar novo cliente.");
+      }
+      console.log(`${logPrefix} Novo cliente criado com sucesso:`, insertedData);
+      return insertedData ? fromSupabaseCustomerRow(insertedData) : null;
+    }
+  }
 };

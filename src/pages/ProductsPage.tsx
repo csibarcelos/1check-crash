@@ -3,6 +3,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from "react-router-dom"; 
 import { Product } from '@/types';
 import { productService } from '@/services/productService';
+import { utmifyService } from '@/services/utmifyService'; // Importar utmifyService
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -30,7 +31,7 @@ const ProductsPage: React.FC = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [isCloning, setIsCloning] = useState<string | null>(null); 
-  const [copiedLinkProductId, setCopiedLinkProductId] = useState<string | null>(null);
+  const [copiedLinkForProductId, setCopiedLinkForProductId] = useState<string | null>(null);
 
 
   const navigate = useNavigate();
@@ -102,16 +103,18 @@ const ProductsPage: React.FC = () => {
     }
   };
 
-  const handleCopyLink = (productSlug: string | undefined) => {
-    if (!productSlug) {
+  const handleCopyLink = (product: Product) => {
+    if (!product || !product.slug) {
         alert('Slug do produto não encontrado para copiar o link.');
         return;
     }
-    const checkoutUrl = `${window.location.origin}/checkout/${productSlug}`;
-    navigator.clipboard.writeText(checkoutUrl)
+    const checkoutUrl = `${window.location.origin}/checkout/${product.slug}`;
+    const utmifiedUrl = utmifyService.buildUtmifiedUrl(product, checkoutUrl);
+
+    navigator.clipboard.writeText(utmifiedUrl)
       .then(() => {
-        setCopiedLinkProductId(productSlug); 
-        setTimeout(() => setCopiedLinkProductId(null), 2000);
+        setCopiedLinkForProductId(product.id); 
+        setTimeout(() => setCopiedLinkForProductId(null), 2000);
       })
       .catch(err => {
         console.error('Failed to copy link: ', err);
@@ -177,8 +180,8 @@ const ProductsPage: React.FC = () => {
                       <Button variant="ghost" size="sm" title="Ver Checkout" onClick={() => product.slug && navigate(`/checkout/${product.slug}`)} className="text-primary hover:text-primary-dark p-1.5" disabled={!product.slug}>
                         <EyeIcon className="h-5 w-5" />
                       </Button>
-                      <Button variant="ghost" size="sm" title="Copiar Link do Checkout" onClick={() => handleCopyLink(product.slug)} className="text-neutral-400 hover:text-primary p-1.5" disabled={!product.slug}>
-                        {copiedLinkProductId === product.slug ? <CheckCircleIcon className="h-5 w-5 text-green-400" /> : <DocumentDuplicateIconDefault className="h-5 w-5" />}
+                      <Button variant="ghost" size="sm" title="Copiar Link do Checkout" onClick={() => handleCopyLink(product)} className="text-neutral-400 hover:text-primary p-1.5" disabled={!product.slug}>
+                        {copiedLinkForProductId === product.id ? <CheckCircleIcon className="h-5 w-5 text-green-400" /> : <DocumentDuplicateIconDefault className="h-5 w-5" />}
                       </Button>
                        <Button variant="ghost" size="sm" title="Clonar" onClick={() => handleCloneProduct(product.id)} disabled={isCloning === product.id} isLoading={isCloning === product.id} className="text-neutral-400 hover:text-primary p-1.5">
                         <DocumentDuplicateIconDefault className="h-5 w-5" />

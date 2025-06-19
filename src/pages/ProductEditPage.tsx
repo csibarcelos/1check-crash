@@ -1,16 +1,20 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from "react-router-dom"; 
-import { Product, ProductCheckoutCustomization, OrderBumpOffer, UpsellOffer, Coupon } from '@/types';
+import { Product, ProductCheckoutCustomization, OrderBumpOffer, UpsellOffer, Coupon, UtmParams } from '@/types';
 import { productService } from '@/services/productService';
 import { Button, ToggleSwitch } from '@/components/ui/Button';
 import { Input, Textarea } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { COLOR_PALETTE_OPTIONS, TrashIcon, PlusIcon } from '../constants.tsx'; 
+import { COLOR_PALETTE_OPTIONS, TrashIcon, PlusIcon, LinkIcon as UtmIcon } from '../constants.tsx'; 
 import { useAuth } from '@/contexts/AuthContext';
 import { MiniEditor } from '@/components/shared/MiniEditor'; 
 import { CouponFormModal } from '@/components/shared/CouponFormModal'; 
+
+const defaultUtmParams: UtmParams = {
+    source: '', medium: '', campaign: '', term: '', content: ''
+};
 
 export const ProductEditPage: React.FC = () => {
   const navigate = useNavigate();
@@ -29,6 +33,7 @@ export const ProductEditPage: React.FC = () => {
      salesCopy: '',
      countdownTimer: { enabled: false, durationMinutes: 15, messageBefore: '', messageAfter: '', backgroundColor: '#EF4444', textColor: '#FFFFFF' }
   });
+  const [utmParams, setUtmParams] = useState<UtmParams>(defaultUtmParams);
 
   const [userProducts, setUserProducts] = useState<Product[]>([]);
   const [orderBump, setOrderBump] = useState<OrderBumpOffer | undefined>(undefined);
@@ -73,6 +78,7 @@ export const ProductEditPage: React.FC = () => {
                 enabled: false, durationMinutes: 15, messageBefore: '', messageAfter: '', backgroundColor: '#EF4444', textColor: '#FFFFFF'
             }
         });
+        setUtmParams(fetchedProduct.utmParams || defaultUtmParams); // Load UTM params
         setOrderBump(fetchedProduct.orderBump);
         setUpsell(fetchedProduct.upsell);
         setCoupons(fetchedProduct.coupons || []);
@@ -116,6 +122,10 @@ export const ProductEditPage: React.FC = () => {
         [field]: value,
       }
     }));
+  };
+
+  const handleUtmParamChange = (param: keyof UtmParams, value: string) => {
+    setUtmParams(prev => ({ ...prev, [param]: value }));
   };
 
   const handleSalesCopyChange = (html: string) => handleCustomizationChange('salesCopy', html);
@@ -173,6 +183,7 @@ export const ProductEditPage: React.FC = () => {
         orderBump: orderBump?.productId ? orderBump : undefined,
         upsell: upsell?.productId ? upsell : undefined,
         coupons: coupons.length > 0 ? coupons : undefined,
+        utmParams: Object.values(utmParams).some(val => typeof val === 'string' && val.trim() !== '') ? utmParams : undefined,
       };
       await productService.updateProduct(currentProductId, updatedProductData, accessToken);
       navigate('/produtos');
@@ -318,6 +329,17 @@ export const ProductEditPage: React.FC = () => {
                 </div>
               </div>
             </Card>
+            
+            <Card title="Parâmetros UTM">
+              <div className="space-y-4">
+                <Input label="utm_source" name="utm_source" value={utmParams.source || ''} onChange={(e) => handleUtmParamChange('source', e.target.value)} placeholder="Ex: google, facebook" icon={<UtmIcon className="h-5 w-5 text-neutral-400"/>} />
+                <Input label="utm_medium" name="utm_medium" value={utmParams.medium || ''} onChange={(e) => handleUtmParamChange('medium', e.target.value)} placeholder="Ex: cpc, email" icon={<UtmIcon className="h-5 w-5 text-neutral-400"/>}/>
+                <Input label="utm_campaign" name="utm_campaign" value={utmParams.campaign || ''} onChange={(e) => handleUtmParamChange('campaign', e.target.value)} placeholder="Ex: promocao_natal" icon={<UtmIcon className="h-5 w-5 text-neutral-400"/>}/>
+                <Input label="utm_term (Opcional)" name="utm_term" value={utmParams.term || ''} onChange={(e) => handleUtmParamChange('term', e.target.value)} placeholder="Ex: palavra_chave" icon={<UtmIcon className="h-5 w-5 text-neutral-400"/>}/>
+                <Input label="utm_content (Opcional)" name="utm_content" value={utmParams.content || ''} onChange={(e) => handleUtmParamChange('content', e.target.value)} placeholder="Ex: banner_azul" icon={<UtmIcon className="h-5 w-5 text-neutral-400"/>}/>
+              </div>
+            </Card>
+
              <Card title="Cupons de Desconto">
               <div className="space-y-3">
                 {coupons.length === 0 && <p className="text-sm text-neutral-400">Nenhum cupom adicionado.</p>}

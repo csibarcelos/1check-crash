@@ -145,7 +145,7 @@ export const DashboardPage: React.FC = () => {
     return <div className="text-center text-status-error p-6 bg-status-error/10 rounded-2xl shadow-lg border border-status-error/30">{error}</div>;
   }
 
-  const maxSalesTrendValue = dashboardData?.salesTrend.reduce((max, item) => Math.max(max, item.amount), 0) || 0;
+  const maxSalesTrendValue = dashboardData?.salesTrend.reduce((max, item) => Math.max(max, Number(item.amount || 0)), 0) || 0;
   
   return (
     <div className="space-y-6">
@@ -202,8 +202,8 @@ export const DashboardPage: React.FC = () => {
                 <div key={index} className="flex-1 flex flex-col items-center justify-end group">
                   <div
                     className="w-full bg-accent-blue-neon rounded-t-md transition-all duration-300 ease-in-out group-hover:bg-opacity-80"
-                    style={{ height: `${maxSalesTrendValue > 0 ? (item.amount / maxSalesTrendValue) * 100 : 0}%` }}
-                    title={`${item.periodLabel}: ${formatCurrency(item.amount)}`}
+                    style={{ height: `${maxSalesTrendValue > 0 ? (Number(item.amount || 0) / maxSalesTrendValue) * 100 : 0}%` }}
+                    title={`${item.periodLabel}: ${formatCurrency(Number(item.amount || 0))}`}
                   ></div>
                   <span className="mt-1.5 text-[10px] text-text-muted">{item.periodLabel}</span>
                 </div>

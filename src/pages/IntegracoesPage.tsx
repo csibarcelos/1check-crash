@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -11,7 +12,21 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const PIXEL_TYPES: PixelType[] = ['Facebook Pixel', 'Google Ads', 'GTM', 'TikTok Pixel'];
 
+// Definindo initialAppSettings para ter uma base completa
+const initialAppSettingsState: AppSettings = {
+  customDomain: '',
+  checkoutIdentity: { logoUrl: '', faviconUrl: '', brandColor: '#0D9488' },
+  smtpSettings: { host: '', port: 587, user: '', pass: '' },
+  apiTokens: { pushinPay: '', utmify: '', pushinPayEnabled: false, utmifyEnabled: false },
+  pixelIntegrations: [],
+};
+
+
 export const IntegracoesPage: React.FC = () => {
+  // Estado para armazenar o objeto AppSettings completo carregado
+  const [currentSettings, setCurrentSettings] = useState<AppSettings>(initialAppSettingsState);
+
+  // Estados locais para os campos do formulário
   const [pushinPayToken, setPushinPayToken] = useState('');
   const [utmifyToken, setUtmifyToken] = useState('');
   const [pushinPayEnabled, setPushinPayEnabled] = useState(false);
@@ -36,17 +51,22 @@ export const IntegracoesPage: React.FC = () => {
   const fetchSettings = useCallback(async () => {
     if (!accessToken) {
       setError("Autenticação necessária para carregar configurações.");
+      setIsLoading(false);
       return;
     }
     setIsLoading(true); 
     setError(null);
     try {
       const settings = await settingsService.getAppSettings(accessToken);
+      setCurrentSettings(settings); // Armazena as configurações completas
+      
+      // Popula os estados locais a partir das configurações carregadas
       setPushinPayToken(settings.apiTokens?.pushinPay || '');
       setUtmifyToken(settings.apiTokens?.utmify || '');
       setPushinPayEnabled(settings.apiTokens?.pushinPayEnabled || false);
       setUtmifyEnabled(settings.apiTokens?.utmifyEnabled || false);
       setPixelIntegrations(settings.pixelIntegrations || []);
+
     } catch (err) {
       setError('Falha ao carregar configurações de integração.');
       console.error(err);
@@ -79,16 +99,22 @@ export const IntegracoesPage: React.FC = () => {
     setSuccessMessage(null);
 
     try {
-      const settingsToSave: Partial<AppSettings> = {
-        apiTokens: {
-            pushinPay: pushinPayToken.trim(),
-            utmify: utmifyToken.trim(),
-            pushinPayEnabled: pushinPayEnabled,
-            utmifyEnabled: utmifyEnabled,
-        },
-        pixelIntegrations: pixelIntegrations
+      const currentApiTokensToSave = {
+        pushinPay: pushinPayToken.trim(),
+        utmify: utmifyToken.trim(),
+        pushinPayEnabled: pushinPayEnabled,
+        utmifyEnabled: utmifyEnabled,
       };
+      console.log("[IntegracoesPage] Preparing to save API Tokens. Current state for apiTokens object:", currentApiTokensToSave);
+
+      const settingsToSave: AppSettings = {
+        ...currentSettings, 
+        apiTokens: currentApiTokensToSave,
+        pixelIntegrations: pixelIntegrations, 
+      };
+      console.log("[IntegracoesPage] Saving API Tokens, full settings object being sent to service:", settingsToSave);
       await settingsService.saveAppSettings(settingsToSave, accessToken);
+      setCurrentSettings(settingsToSave); 
       setSuccessMessage('Configurações de API salvas com sucesso!');
     } catch (err: any) {
       setError(err.message || 'Falha ao salvar tokens de API.');
@@ -136,9 +162,9 @@ export const IntegracoesPage: React.FC = () => {
         return;
     }
 
-    let updatedPixels;
+    let updatedPixelsList;
     if (editingPixel) {
-      updatedPixels = pixelIntegrations.map(p =>
+      updatedPixelsList = pixelIntegrations.map(p =>
         p.id === editingPixel.id ? { ...p, type: currentPixelType, settings: currentPixelSettings, enabled: currentPixelEnabled } : p
       );
     } else {
@@ -148,9 +174,9 @@ export const IntegracoesPage: React.FC = () => {
         settings: currentPixelSettings,
         enabled: currentPixelEnabled,
       };
-      updatedPixels = [...pixelIntegrations, newPixel];
+      updatedPixelsList = [...pixelIntegrations, newPixel];
     }
-    setPixelIntegrations(updatedPixels);
+    setPixelIntegrations(updatedPixelsList); 
     
     if (!accessToken) {
         setError("Autenticação necessária para salvar configurações.");
@@ -158,11 +184,19 @@ export const IntegracoesPage: React.FC = () => {
     }
     setIsSaving(true); setError(null); setSuccessMessage(null);
     try {
-        const settingsToSave: Partial<AppSettings> = {
-            apiTokens: { pushinPay: pushinPayToken.trim(), utmify: utmifyToken.trim(), pushinPayEnabled, utmifyEnabled },
-            pixelIntegrations: updatedPixels
+        const settingsToSave: AppSettings = {
+            ...currentSettings, 
+            apiTokens: { 
+                pushinPay: pushinPayToken.trim(),
+                utmify: utmifyToken.trim(),
+                pushinPayEnabled: pushinPayEnabled,
+                utmifyEnabled: utmifyEnabled,
+            },
+            pixelIntegrations: updatedPixelsList 
         };
+        console.log("[IntegracoesPage] Saving Pixel, full settings object:", settingsToSave);
         await settingsService.saveAppSettings(settingsToSave, accessToken);
+        setCurrentSettings(settingsToSave); 
         setSuccessMessage('Pixel salvo com sucesso!');
         closePixelModal();
     } catch (err: any) {
@@ -173,8 +207,8 @@ export const IntegracoesPage: React.FC = () => {
   };
 
   const handleDeletePixel = async (pixelId: string) => {
-    const updatedPixels = pixelIntegrations.filter(p => p.id !== pixelId);
-    setPixelIntegrations(updatedPixels);
+    const updatedPixelsList = pixelIntegrations.filter(p => p.id !== pixelId);
+    setPixelIntegrations(updatedPixelsList); 
 
     if (!accessToken) {
         setError("Autenticação necessária para salvar configurações.");
@@ -182,11 +216,19 @@ export const IntegracoesPage: React.FC = () => {
     }
     setIsSaving(true); setError(null); setSuccessMessage(null);
     try {
-        const settingsToSave: Partial<AppSettings> = {
-            apiTokens: { pushinPay: pushinPayToken.trim(), utmify: utmifyToken.trim(), pushinPayEnabled, utmifyEnabled },
-            pixelIntegrations: updatedPixels
+        const settingsToSave: AppSettings = {
+            ...currentSettings,
+             apiTokens: { 
+                pushinPay: pushinPayToken.trim(),
+                utmify: utmifyToken.trim(),
+                pushinPayEnabled: pushinPayEnabled,
+                utmifyEnabled: utmifyEnabled,
+            },
+            pixelIntegrations: updatedPixelsList
         };
+        console.log("[IntegracoesPage] Deleting Pixel, full settings object:", settingsToSave);
         await settingsService.saveAppSettings(settingsToSave, accessToken);
+        setCurrentSettings(settingsToSave); 
         setSuccessMessage('Pixel excluído com sucesso!');
     } catch (err: any) {
         setError(err.message || 'Falha ao excluir pixel.');
@@ -215,27 +257,27 @@ export const IntegracoesPage: React.FC = () => {
     return (
       <div className="flex justify-center items-center h-64">
         <LoadingSpinner size="lg" />
-        <p className="ml-3 text-neutral-400">Carregando integrações...</p>
+        <p className="ml-3 text-text-muted">Carregando integrações...</p>
       </div>
     );
   }
   
   return (
-    <div className="space-y-8 text-neutral-100">
+    <div className="space-y-8 text-text-default">
       <div className="flex items-center space-x-3">
         <LinkIcon className="h-8 w-8 text-primary" />
-        <h1 className="text-3xl font-bold">Integrações</h1>
+        <h1 className="text-3xl font-bold text-text-strong">Integrações</h1>
       </div>
 
-      {error && <p className="my-4 text-sm text-red-400 p-3 bg-red-800/20 rounded-md border border-red-600/50">{error}</p>}
-      {successMessage && <p className="my-4 text-sm text-green-400 p-3 bg-green-800/20 rounded-md border border-green-600/50">{successMessage}</p>}
+      {error && <p className="my-4 text-sm text-status-error p-3 bg-status-error/10 rounded-xl border border-status-error/30">{error}</p>}
+      {successMessage && <p className="my-4 text-sm text-status-success p-3 bg-status-success/10 rounded-xl border border-status-success/30">{successMessage}</p>}
 
       <form onSubmit={handleSubmitApiTokens}>
-        <Card title="Chaves de API (Tokens)" className="bg-neutral-800 border-neutral-700">
+        <Card title="Chaves de API (Tokens)">
             <div className="space-y-6">
-                <div className="space-y-3 p-4 border border-neutral-700 rounded-lg bg-neutral-700/30">
+                <div className="space-y-3 p-4 border border-border-subtle rounded-lg bg-bg-surface">
                     <div className="flex justify-between items-center">
-                        <h3 className="text-lg font-semibold text-neutral-100">PushInPay (Gateway de Pagamento PIX)</h3>
+                        <h3 className="text-lg font-semibold text-text-strong">PushInPay (Gateway de Pagamento PIX)</h3>
                         <ToggleSwitch label="Habilitar" srLabel="Habilitar PushInPay" enabled={pushinPayEnabled} onChange={setPushinPayEnabled} disabled={isSaving}/>
                     </div>
                     <Input
@@ -245,16 +287,16 @@ export const IntegracoesPage: React.FC = () => {
                         value={pushinPayToken}
                         onChange={(e) => setPushinPayToken(e.target.value)}
                         placeholder="Cole seu token da API PushInPay aqui"
-                        icon={<KeyIcon className="h-5 w-5 text-neutral-400" />}
+                        icon={<KeyIcon className="h-5 w-5 text-text-muted" />}
                         disabled={isSaving || !pushinPayEnabled}
                         autoComplete="new-password"
                     />
-                     <p className="text-xs text-neutral-400">Integração para processamento de pagamentos PIX.</p>
+                     <p className="text-xs text-text-muted">Integração para processamento de pagamentos PIX.</p>
                 </div>
 
-                 <div className="space-y-3 p-4 border border-neutral-700 rounded-lg bg-neutral-700/30">
+                 <div className="space-y-3 p-4 border border-border-subtle rounded-lg bg-bg-surface">
                     <div className="flex justify-between items-center">
-                         <h3 className="text-lg font-semibold text-neutral-100">UTMify (Rastreamento Avançado)</h3>
+                         <h3 className="text-lg font-semibold text-text-strong">UTMify (Rastreamento Avançado)</h3>
                         <ToggleSwitch label="Habilitar" srLabel="Habilitar UTMify" enabled={utmifyEnabled} onChange={setUtmifyEnabled} disabled={isSaving}/>
                     </div>
                     <Input
@@ -264,14 +306,14 @@ export const IntegracoesPage: React.FC = () => {
                         value={utmifyToken}
                         onChange={(e) => setUtmifyToken(e.target.value)}
                         placeholder="Cole seu token da API UTMify aqui"
-                        icon={<KeyIcon className="h-5 w-5 text-neutral-400" />}
+                        icon={<KeyIcon className="h-5 w-5 text-text-muted" />}
                         disabled={isSaving || !utmifyEnabled}
                         autoComplete="new-password"
                     />
-                    <p className="text-xs text-neutral-400">Integração para rastreamento de UTMs e comissões.</p>
+                    <p className="text-xs text-text-muted">Integração para rastreamento de UTMs e comissões.</p>
                 </div>
             </div>
-             <div className="mt-6 flex justify-end pt-4 border-t border-neutral-700">
+             <div className="mt-6 flex justify-end pt-4 border-t border-border-subtle">
                 <Button type="submit" variant="primary" isLoading={isSaving} disabled={isSaving}>
                     Salvar Chaves de API
                 </Button>
@@ -279,25 +321,25 @@ export const IntegracoesPage: React.FC = () => {
         </Card>
       </form>
       
-      <Card title="Pixels de Rastreamento" className="bg-neutral-800 border-neutral-700">
+      <Card title="Pixels de Rastreamento">
         <div className="space-y-4">
-            {pixelIntegrations.length === 0 && <p className="text-neutral-400">Nenhum pixel de rastreamento configurado.</p>}
+            {pixelIntegrations.length === 0 && <p className="text-text-muted">Nenhum pixel de rastreamento configurado.</p>}
             {pixelIntegrations.map(pixel => (
-                <div key={pixel.id} className="p-4 border border-neutral-700 rounded-lg bg-neutral-700/30 flex justify-between items-center">
+                <div key={pixel.id} className="p-4 border border-border-subtle rounded-lg bg-bg-surface flex justify-between items-center">
                     <div>
-                        <h4 className="text-md font-semibold text-neutral-100 flex items-center">
+                        <h4 className="text-md font-semibold text-text-strong flex items-center">
                            <TagIcon className="h-5 w-5 mr-2 text-primary"/> {pixel.type}
                         </h4>
-                        <p className="text-xs text-neutral-400">
+                        <p className="text-xs text-text-muted">
                             {Object.entries(pixel.settings).map(([key, val]) => `${key}: ${(val as string).substring(0,20)}${(val as string).length > 20 ? '...' : ''}`).join(', ')}
                         </p>
                     </div>
                     <div className="flex items-center space-x-2">
-                        <span className={`px-2 py-0.5 text-xs rounded-full ${pixel.enabled ? 'bg-green-600/50 text-green-300' : 'bg-neutral-600 text-neutral-300'}`}>
+                        <span className={`px-2 py-0.5 text-xs rounded-full ${pixel.enabled ? 'bg-status-success/20 text-status-success' : 'bg-neutral-700 text-text-muted'}`}>
                             {pixel.enabled ? 'Ativo' : 'Inativo'}
                         </span>
                         <Button variant="ghost" size="sm" onClick={() => openPixelModal(pixel)} title="Editar Pixel"><PencilIcon className="h-5 w-5"/></Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDeletePixel(pixel.id)} title="Excluir Pixel" className="text-red-500 hover:text-red-400"><TrashIcon className="h-5 w-5"/></Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDeletePixel(pixel.id)} title="Excluir Pixel" className="text-status-error hover:text-opacity-80"><TrashIcon className="h-5 w-5"/></Button>
                     </div>
                 </div>
             ))}
@@ -309,14 +351,14 @@ export const IntegracoesPage: React.FC = () => {
       
       {isPixelModalOpen && (
          <Modal isOpen={isPixelModalOpen} onClose={closePixelModal} title={editingPixel ? "Editar Pixel" : "Adicionar Novo Pixel"} size="lg">
-            <div className="space-y-4 text-neutral-300">
+            <div className="space-y-4 text-text-default">
                  <div>
                     <label htmlFor="pixelType" className="block text-sm font-medium mb-1">Tipo de Pixel</label>
                     <select 
                         id="pixelType" 
                         value={currentPixelType}
                         onChange={(e) => handlePixelTypeChange(e.target.value as PixelType)}
-                        className="block w-full p-2.5 border rounded-md shadow-sm focus:outline-none sm:text-sm transition-colors duration-150 bg-neutral-700 border-neutral-600 focus:border-primary focus:ring-2 focus:ring-primary/70 text-neutral-100 placeholder-neutral-400"
+                        className="block w-full p-2.5 border rounded-xl shadow-sm focus:outline-none sm:text-sm transition-all duration-150 ease-in-out bg-white/5 backdrop-blur-sm border-border-subtle focus:border-accent-blue-neon focus:ring-2 focus:ring-accent-blue-neon/70 text-text-strong placeholder-text-muted"
                         disabled={isSaving}
                     >
                         {PIXEL_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
@@ -339,7 +381,7 @@ export const IntegracoesPage: React.FC = () => {
                 
                 <ToggleSwitch label="Habilitar Pixel" enabled={currentPixelEnabled} onChange={setCurrentPixelEnabled} disabled={isSaving}/>
                 
-                {pixelModalError && <p className="text-sm text-red-400 p-2 bg-red-800/20 rounded-md border border-red-600/50">{pixelModalError}</p>}
+                {pixelModalError && <p className="text-sm text-status-error p-2 bg-status-error/10 rounded-md border border-status-error/30">{pixelModalError}</p>}
 
                 <div className="flex justify-end space-x-3 pt-3">
                     <Button variant="ghost" onClick={closePixelModal} disabled={isSaving}>Cancelar</Button>

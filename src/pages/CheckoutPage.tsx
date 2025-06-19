@@ -1,18 +1,19 @@
-
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from "react-router-dom"; 
 import { v4 as uuidv4 } from 'uuid'; 
-import { Product, PaymentStatus, Coupon, PushInPayPixResponseData, PushInPayPixResponse, AppSettings, PlatformSettings, SaleProductItem, PaymentMethod, Sale, UtmifyOrderPayload, AbandonedCartStatus, PushInPayPixRequest, PushInPayTransactionStatusResponse } from '@/types'; 
+import { Product, PaymentStatus, Coupon, PushInPayPixResponseData, PushInPayPixResponse, AppSettings, PlatformSettings, SaleProductItem, PaymentMethod, Sale, UtmifyOrderPayload, AbandonedCartStatus, PushInPayPixRequest, PushInPayTransactionStatusResponse, UtmifyCustomer, UtmifyProduct, UtmifyTrackingParameters } from '@/types'; 
 import { productService } from '@/services/productService';
 import { abandonedCartService, CreateAbandonedCartPayload } from '@/services/abandonedCartService';
+import { customerService } from '@/services/customerService'; // Added customerService
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
-import { CheckCircleIcon, PHONE_COUNTRY_CODES, DocumentDuplicateIcon, TagIcon, MOCK_WEBHOOK_URL, PLATFORM_NAME } from '../constants.tsx'; 
+import { CheckCircleIcon, PHONE_COUNTRY_CODES, DocumentDuplicateIcon, TagIcon, MOCK_WEBHOOK_URL, PLATFORM_NAME, DEFAULT_CURRENCY } from '../constants.tsx'; 
 import { settingsService } from '@/services/settingsService';
 import { salesService } from '@/services/salesService';
 import { utmifyService } from '@/services/utmifyService';
 import { supabase } from '@/supabaseClient'; 
+import { useAuth } from '@/contexts/AuthContext';
 
 
 const LockClosedIconSolid: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -375,6 +376,8 @@ export const CheckoutPage: React.FC = () => {
   const abandonedCartTimeoutRef = useRef<number | null>(null);
 
   const [currentProductsForSale, setCurrentProductsForSale] = useState<SaleProductItem[]>([]);
+  const { accessToken } = useAuth(); 
+
 
   useEffect(() => {
     if (product && product.name) {
@@ -546,8 +549,8 @@ export const CheckoutPage: React.FC = () => {
             priceInCents: product.orderBump.customPriceInCents, 
             originalPriceInCents: product.orderBump.customPriceInCents, 
             isOrderBump: true,
-            slug: undefined,
-            deliveryUrl: undefined
+            slug: undefined, // Order bumps might not have their own slugs
+            deliveryUrl: undefined // Order bumps might not have direct delivery URLs
         });
       }
       setOriginalPriceBeforeDiscount(initialTotalForOriginalPrice);
@@ -655,6 +658,81 @@ export const CheckoutPage: React.FC = () => {
     }
   }, []);
 
+  const sendAwaitingPaymentToUtmify = async (transactionId: string) => {
+    const logPrefix = `[CheckoutPage.sendAwaitingPaymentToUtmify for prodOwner: ${product?.platformUserId || 'N/A'}]`;
+    
+    if (!product || !product.platformUserId || finalPrice === null || !platformSettings) {
+      console.log(`${logPrefix} Evento 'awaiting_payment' não enviado. Motivo: Dados do produto/preço/configurações da plataforma incompletos ou ID do dono do produto ausente.`);
+      return;
+    }
+
+    console.log(`${logPrefix} Preparando para chamar Edge Function para enviar evento 'awaiting_payment'.`);
+
+    const utmifyCustomer: UtmifyCustomer = {
+      name: customerName,
+      email: customerEmail,
+      whatsapp: `${customerWhatsappCountryCode}${rawWhatsappNumber.replace(/\D/g, '')}`,
+      phone: `${customerWhatsappCountryCode}${rawWhatsappNumber.replace(/\D/g, '')}`, // Use WhatsApp as phone
+      document: null, // Not collected
+    };
+
+    const utmifyProductsPayload: UtmifyProduct[] = currentProductsForSale.map(item => ({
+      id: item.productId,
+      name: item.name,
+      quantity: item.quantity,
+      priceInCents: item.priceInCents,
+      planId: item.productId, // Use product ID as planId
+      planName: item.name, // Use product name as planName
+    }));
+
+    const gatewayFeeInCents = 0; 
+    const platformCommissionBase = finalPrice - gatewayFeeInCents;
+    const platformCommissionCalculated = Math.round(platformCommissionBase * platformSettings.platformCommissionPercentage) + platformSettings.platformFixedFeeInCents;
+    const userNetRevenue = platformCommissionBase - platformCommissionCalculated;
+
+    const utmifyCommission = {
+        totalPriceInCents: finalPrice, 
+        gatewayFeeInCents: gatewayFeeInCents,
+        userCommissionInCents: userNetRevenue,
+        currency: DEFAULT_CURRENCY,
+    };
+    
+    const trackingParamsFromUrl = Object.fromEntries(new URLSearchParams(location.search).entries());
+    
+    // Ensure all UTM params are present, defaulting to null if not in URL
+    const utmifyTrackingParams: UtmifyTrackingParameters = {
+        utm_source: trackingParamsFromUrl.utm_source || null,
+        utm_medium: trackingParamsFromUrl.utm_medium || null,
+        utm_campaign: trackingParamsFromUrl.utm_campaign || null,
+        utm_term: trackingParamsFromUrl.utm_term || null,
+        utm_content: trackingParamsFromUrl.utm_content || null,
+    };
+
+    const payload: UtmifyOrderPayload = {
+      orderId: transactionId,
+      platform: PLATFORM_NAME,
+      paymentMethod: "pix",
+      status: PaymentStatus.WAITING_PAYMENT,
+      createdAt: new Date().toISOString(),
+      approvedDate: null, // For awaiting_payment, approvedDate is null
+      customer: utmifyCustomer,
+      products: utmifyProductsPayload,
+      trackingParameters: utmifyTrackingParams,
+      commission: utmifyCommission,
+      couponCodeUsed: appliedCoupon?.code,
+      discountAppliedInCents: discountApplied,
+      originalAmountBeforeDiscountInCents: originalPriceBeforeDiscount ?? finalPrice,
+      isUpsellTransaction: false, 
+    };
+
+    try {
+      await utmifyService.sendOrderDataToUtmify(payload, product.platformUserId);
+      console.log(`${logPrefix} Chamada para Edge Function 'send-utmify-event' (awaiting_payment) enviada.`);
+    } catch (utmifyError) {
+      console.error(`${logPrefix} Falha ao chamar Edge Function 'send-utmify-event' (awaiting_payment).`, utmifyError);
+    }
+  };
+
 
   const handlePayWithPix = async () => {
     setError(null);
@@ -723,6 +801,9 @@ export const CheckoutPage: React.FC = () => {
             const initialUiStatus = mapApiStatusToUiStatus(initialApiStatus); 
             setPaymentStatus(initialUiStatus);
             startPollingPaymentStatus(pixFunctionResponse.data.id, product.platformUserId);
+            
+            await sendAwaitingPaymentToUtmify(pixFunctionResponse.data.id);
+
         } else {
             throw new Error(pixFunctionResponse?.message || "A resposta da função não continha os dados do PIX esperados.");
         }
@@ -806,22 +887,13 @@ export const CheckoutPage: React.FC = () => {
                 const createdSale = await salesService.createSale(saleRecordForCreation, platformSettings, null); 
                 console.log(`[CheckoutPage][${clientTraceId}] Venda criada no banco de dados:`, createdSale.id);
                 
-                if(appSettings?.apiTokens?.utmifyEnabled && appSettings.apiTokens.utmify){
-                    const utmifyProducts = createdSale.products.map(p => ({
-                        id: p.productId, name: p.name, quantity: p.quantity, priceInCents: p.priceInCents,
-                        planId: null, planName: null, isUpsell: p.isOrderBump || p.isUpsell, slug: p.slug
-                    }));
-                    const utmifyPayload: UtmifyOrderPayload = {
-                        orderId: createdSale.id, platform: PLATFORM_NAME,
-                        paymentMethod: "pix", status: PaymentStatus.PAID, createdAt: createdSale.createdAt,
-                        customer: { name: createdSale.customer.name, email: createdSale.customer.email, whatsapp: createdSale.customer.whatsapp, ip: createdSale.customer.ip },
-                        products: utmifyProducts, trackingParameters: createdSale.trackingParameters,
-                        commission: createdSale.commission, approvedDate: createdSale.paidAt,
-                        couponCodeUsed: createdSale.couponCodeUsed, discountAppliedInCents: createdSale.discountAppliedInCents,
-                        originalAmountBeforeDiscountInCents: createdSale.originalAmountBeforeDiscountInCents,
-                    };
-                    await utmifyService.sendOrderData(utmifyPayload, appSettings.apiTokens.utmify);
-                    console.log(`[CheckoutPage][${clientTraceId}] Dados da venda enviados para UTMify.`);
+                // Create/Update Customer
+                console.log(`[CheckoutPage][${clientTraceId}] Chamando customerService.upsertCustomerOnSale com sale:`, createdSale, "e accessToken:", accessToken ? "Presente" : "Ausente");
+                try {
+                  await customerService.upsertCustomerOnSale(createdSale, accessToken); 
+                  console.log(`[CheckoutPage][${clientTraceId}] Cliente criado/atualizado: ${createdSale.customer.email}`);
+                } catch (customerUpsertError) {
+                  console.error(`[CheckoutPage][${clientTraceId}] Falha ao criar/atualizar cliente:`, customerUpsertError);
                 }
                 
                 if (abandonedCartId) {

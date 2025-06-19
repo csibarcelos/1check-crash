@@ -1,4 +1,3 @@
-
 // User Authentication
 export interface User {
   id: string;
@@ -89,6 +88,13 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
+export interface UtmParams {
+  source?: string;
+  medium?: string;
+  campaign?: string;
+  term?: string;
+  content?: string;
+}
 
 export interface Product {
   id: string;
@@ -108,6 +114,7 @@ export interface Product {
   orderBump?: OrderBumpOffer;
   upsell?: UpsellOffer;
   coupons?: Coupon[];
+  utmParams?: UtmParams; // Novo campo para parâmetros UTM
 }
 
 // Sale
@@ -373,9 +380,9 @@ export interface UtmifyCustomer {
   name: string;
   email: string;
   whatsapp: string;
+  phone: string | null; // OBRIGATÓRIO para UTMify
+  document: string | null; // OBRIGATÓRIO para UTMify
   ip?: string;
-  phone?: string | null;
-  document?: string | null;
   country?: string;
 }
 
@@ -384,10 +391,14 @@ export interface UtmifyProduct {
   name: string;
   quantity: number;
   priceInCents: number; 
-  planId: string | null;
-  planName: string | null;
-  isUpsell?: boolean; 
-  slug?: string; // Added slug
+  planId: string; // OBRIGATÓRIO para UTMify
+  planName: string; // OBRIGATÓRIO para UTMify
+  // Os campos abaixo foram removidos pois não são esperados pela API da UTMify conforme o schema.
+  // originalPriceInCents?: number; 
+  // isOrderBump?: boolean; 
+  // isUpsell?: boolean; 
+  // deliveryUrl?: string;
+  // slug?: string; 
 }
 
 export interface UtmifyCommission {
@@ -397,17 +408,25 @@ export interface UtmifyCommission {
   currency: string;
 }
 
+export interface UtmifyTrackingParameters {
+  utm_campaign: string | null;
+  utm_content: string | null;
+  utm_medium: string | null;
+  utm_source: string | null;
+  utm_term: string | null;
+}
+
 export interface UtmifyOrderPayload {
   orderId: string; 
   platform: string;
   paymentMethod: "pix" | "credit_card" | "boleto";
-  status: PaymentStatus;
+  status: string; // PaymentStatus
   createdAt: string; 
+  approvedDate: string | null; // OBRIGATÓRIO para UTMify
   customer: UtmifyCustomer;
   products: UtmifyProduct[]; 
-  trackingParameters?: Record<string, string | null>;
+  trackingParameters: UtmifyTrackingParameters; // OBRIGATÓRIO para UTMify
   commission?: UtmifyCommission; 
-  approvedDate?: string | null; 
   refundedAt?: string | null; 
   isTest?: boolean;
   couponCodeUsed?: string;
@@ -421,6 +440,7 @@ export interface UtmifyResponse {
   success: boolean;
   message?: string;
   data?: any; 
+  utmifyResponse?: any; // Adicionado para carregar a resposta completa da UTMify
 }
 
 // For navigation items

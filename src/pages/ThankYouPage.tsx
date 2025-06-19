@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from "react-router-dom"; 
 import { Card } from '@/components/ui/Card';
@@ -6,11 +5,12 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { salesService } from '@/services/salesService'; 
 import { productService } from '@/services/productService';
-import { Sale, SaleProductItem, Product, UpsellOffer, PushInPayPixRequest, PushInPayPixResponseData, PushInPayPixResponse, AppSettings } from '@/types'; 
-import { CheckCircleIcon, DocumentDuplicateIcon, MOCK_WEBHOOK_URL } from '../constants.tsx'; 
+import { Sale, SaleProductItem, Product, UpsellOffer, PushInPayPixRequest, PushInPayPixResponseData, PushInPayPixResponse, AppSettings, UtmifyOrderPayload, PaymentStatus as AppPaymentStatus, UtmifyCustomer, UtmifyProduct, UtmifyTrackingParameters } from '@/types'; 
+import { CheckCircleIcon, DocumentDuplicateIcon, MOCK_WEBHOOK_URL, PLATFORM_NAME } from '../constants.tsx'; 
 import { supabase } from '@/supabaseClient'; 
 import { Input } from '@/components/ui/Input'; 
 import { settingsService } from '@/services/settingsService';
+import { utmifyService } from '@/services/utmifyService';
 
 
 const formatCurrency = (valueInCents: number): string => {
@@ -46,6 +46,7 @@ export const ThankYouPage: React.FC = () => {
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null); 
   const [upsellOffer, setUpsellOffer] = useState<UpsellOffer | null>(null);
   const [upsellProductPrice, setUpsellProductPrice] = useState<number | null>(null);
+  const [purchasedProducts, setPurchasedProducts] = useState<Product[]>([]);
   
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +62,68 @@ export const ThankYouPage: React.FC = () => {
   }, []);
 
 
+  const sendApprovedPaymentToUtmify = async (saleDetails: Sale, productOwnerUserId: string) => {
+    const logPrefix = `[ThankYouPage.sendApprovedPaymentToUtmify for prodOwner: ${productOwnerUserId || 'N/A'}]`;
+
+    if (!productOwnerUserId) {
+        console.log(`${logPrefix} Evento 'approved' não enviado. Motivo: ID do dono do produto ausente.`);
+        return;
+    }
+    console.log(`${logPrefix} Preparando para chamar Edge Function para enviar evento 'approved'.`);
+
+    const utmifyCustomer: UtmifyCustomer = {
+      name: saleDetails.customer.name,
+      email: saleDetails.customer.email,
+      whatsapp: saleDetails.customer.whatsapp,
+      phone: saleDetails.customer.whatsapp || null, // Use WhatsApp as phone
+      document: null, // Not collected
+      ip: saleDetails.customer.ip,
+    };
+
+    const utmifyProducts: UtmifyProduct[] = saleDetails.products.map(item => ({
+      id: item.productId,
+      name: item.name,
+      quantity: item.quantity,
+      priceInCents: item.priceInCents,
+      planId: item.productId, // Use product ID as planId
+      planName: item.name, // Use product name as planName
+    }));
+    
+    const utmifyTrackingParams: UtmifyTrackingParameters = {
+        utm_source: saleDetails.trackingParameters?.utm_source || null,
+        utm_medium: saleDetails.trackingParameters?.utm_medium || null,
+        utm_campaign: saleDetails.trackingParameters?.utm_campaign || null,
+        utm_term: saleDetails.trackingParameters?.utm_term || null,
+        utm_content: saleDetails.trackingParameters?.utm_content || null,
+    };
+
+    const payload: UtmifyOrderPayload = {
+      orderId: saleDetails.pushInPayTransactionId, // Use pushInPayTransactionId as orderId for consistency with 'awaiting_payment'
+      platform: PLATFORM_NAME,
+      paymentMethod: saleDetails.paymentMethod as "pix" | "credit_card" | "boleto",
+      status: saleDetails.status, // Should be 'paid'
+      createdAt: saleDetails.createdAt,
+      approvedDate: saleDetails.paidAt || new Date().toISOString(), // Ensure approvedDate is set
+      customer: utmifyCustomer,
+      products: utmifyProducts,
+      trackingParameters: utmifyTrackingParams,
+      commission: saleDetails.commission,
+      couponCodeUsed: saleDetails.couponCodeUsed,
+      discountAppliedInCents: saleDetails.discountAppliedInCents,
+      originalAmountBeforeDiscountInCents: saleDetails.originalAmountBeforeDiscountInCents,
+      isUpsellTransaction: !!saleDetails.upsellPushInPayTransactionId && saleDetails.pushInPayTransactionId === saleDetails.upsellPushInPayTransactionId, 
+      originalSaleId: undefined, 
+    };
+
+    try {
+      await utmifyService.sendOrderDataToUtmify(payload, productOwnerUserId);
+      console.log(`${logPrefix} Chamada para Edge Function 'send-utmify-event' (approved) enviada.`);
+    } catch (utmifyError) {
+      console.error(`${logPrefix} Falha ao chamar Edge Function 'send-utmify-event' (approved).`, utmifyError);
+    }
+  };
+
+
   const fetchInitialData = useCallback(async () => {
     if (!mainSaleTransactionId) {
       setError("ID do pedido principal não encontrado.");
@@ -70,6 +133,7 @@ export const ThankYouPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
+      // 1. Fetch da venda principal
       const fetchedSale = await salesService.getSaleById(mainSaleTransactionId, null);
       if (!fetchedSale) {
         setError("Detalhes do pedido principal não encontrados.");
@@ -77,15 +141,34 @@ export const ThankYouPage: React.FC = () => {
         return;
       }
       setMainSaleDetails(fetchedSale);
+
+      // 2. Disparar evento de conversão
       const saleProducts = Array.isArray(fetchedSale.products) ? fetchedSale.products : [];
       const saleCurrency = fetchedSale.commission?.currency || 'BRL';
       triggerConversionEvent(fetchedSale.id, fetchedSale.totalAmountInCents, saleCurrency, saleProducts);
 
+      // 3. Fetch das configurações do usuário (dono do produto)
       if (fetchedSale.platformUserId) {
         const settings = await settingsService.getAppSettingsByUserId(fetchedSale.platformUserId, null);
-        setAppSettings(settings);
+        setAppSettings(settings); 
+      }
+      
+      // 4. Buscar detalhes de TODOS os produtos comprados para obter as URLs de entrega
+      if (saleProducts.length > 0) {
+        const productDetailsPromises = saleProducts.map(item => 
+          productService.getProductById(item.productId, null)
+        );
+        const productsResults = await Promise.all(productDetailsPromises);
+        const validProducts = productsResults.filter((p): p is Product => p !== undefined);
+        setPurchasedProducts(validProducts);
+      }
+      
+      // Send 'approved' to UTMify if sale is paid
+      if (fetchedSale.status === AppPaymentStatus.PAID && fetchedSale.platformUserId) {
+        await sendApprovedPaymentToUtmify(fetchedSale, fetchedSale.platformUserId);
       }
 
+      // 5. Lógica de Upsell (continua a mesma)
       if (originalProductIdFromUrl) {
         const fetchedOrigProduct = await productService.getProductById(originalProductIdFromUrl, null);
         setOriginalProductDetails(fetchedOrigProduct || null);
@@ -173,6 +256,8 @@ export const ThankYouPage: React.FC = () => {
 
       if (pixFunctionResponse && pixFunctionResponse.success && pixFunctionResponse.data) {
         setUpsellPixData(pixFunctionResponse.data);
+        // TODO: Consider sending an 'awaiting_payment' event for this upsell to UTMify if needed.
+        // This would involve creating a new UtmifyOrderPayload specifically for the upsell transaction.
       } else {
         throw new Error(pixFunctionResponse?.message || "A resposta da função não continha os dados do PIX para o upsell.");
       }
@@ -231,9 +316,6 @@ export const ThankYouPage: React.FC = () => {
     );
   }
   
-  const mainProductItem = mainSaleDetails.products.find(p => !p.isOrderBump && !p.isUpsell);
-  const deliveryUrl = mainProductItem?.deliveryUrl;
-
   return (
     <div className="min-h-screen bg-[var(--checkout-color-bg-main)] flex flex-col items-center justify-center p-4 md:p-6 checkout-light-theme" style={{ '--checkout-color-primary-DEFAULT': primaryColorForPage, '--checkout-color-primary-cta-text': ctaTextColorForPage } as React.CSSProperties}>
       <Card className="max-w-lg w-full shadow-2xl border border-green-300 card-checkout-specific">
@@ -241,18 +323,19 @@ export const ThankYouPage: React.FC = () => {
           <CheckCircleIcon className="h-16 w-16 text-green-500 mx-auto mb-4" />
           <h1 className="text-3xl font-bold text-[var(--checkout-color-text-strong)] mb-3">Obrigado pela sua compra!</h1>
           <p className="text-[var(--checkout-color-text-default)] mb-2">
-            Seu pedido <span className="font-semibold text-[var(--checkout-color-primary-DEFAULT)]">#{(mainSaleTransactionId || 'INVÁLIDO').substring(0, 12)}...</span> foi confirmado.
+            Seu pedido <span className="font-semibold text-[var(--checkout-color-primary-DEFAULT)]">#{(mainSaleDetails.pushInPayTransactionId || 'INVÁLIDO').substring(0, 12)}...</span> foi confirmado.
           </p>
           <p className="text-[var(--checkout-color-text-muted)] mb-6">
             Enviamos um e-mail para <span className="font-semibold text-[var(--checkout-color-text-default)]">{mainSaleDetails.customer.email}</span> com os detalhes do seu pedido e instruções de acesso.
           </p>
 
+          {/* Resumo da Compra */}
           <div className="bg-[var(--checkout-color-bg-main)] p-4 rounded-md border border-[var(--checkout-color-border-subtle)] mb-6">
             <h3 className="font-semibold text-[var(--checkout-color-text-strong)] mb-2">Resumo da Compra:</h3>
             <ul className="text-sm text-[var(--checkout-color-text-muted)] space-y-1">
               {mainSaleDetails.products.map((item, index) => (
                 <li key={index} className="flex justify-between">
-                  <span className="text-[var(--checkout-color-text-default)]">{item.name} (x{item.quantity}) {item.isOrderBump ? <span className="text-xs text-green-600">(Oferta Adicional)</span> : ""}</span>
+                  <span className="text-[var(--checkout-color-text-default)]">{item.name} (x{item.quantity}) {item.isOrderBump ? <span className="text-xs text-green-600">(Oferta Adicional)</span> : item.isUpsell ? <span className="text-xs text-green-600">(Oferta Pós-Compra)</span>: ""}</span>
                   <span className="text-[var(--checkout-color-text-default)]">{formatCurrency(item.priceInCents)}</span>
                 </li>
               ))}
@@ -269,15 +352,36 @@ export const ThankYouPage: React.FC = () => {
             </ul>
           </div>
 
-          {deliveryUrl && (
-             <a href={deliveryUrl} target="_blank" rel="noopener noreferrer">
-                <Button 
-                  style={{ backgroundColor: primaryColorForPage, color: ctaTextColorForPage }}
-                  className="button-checkout-specific primary w-full text-lg py-3">
-                    Acessar Produto
-                </Button>
-            </a>
-          )}
+          {/* Acesso aos Produtos */}
+          <div className="space-y-3">
+            <h3 className="font-semibold text-[var(--checkout-color-text-strong)] text-center">Acesse seus produtos:</h3>
+            {purchasedProducts.length > 0 ? (
+              purchasedProducts.map(product => {
+                // Find the corresponding item in saleDetails.products to check if it's an upsell/orderbump for naming
+                const saleItem = mainSaleDetails.products.find(p => p.productId === product.id);
+                let productNameDisplay = product.name;
+                if (saleItem?.isOrderBump) productNameDisplay += " (Oferta Adicional)";
+                if (saleItem?.isUpsell) productNameDisplay += " (Oferta Pós-Compra)";
+
+                return product.deliveryUrl ? (
+                  <a key={product.id} href={product.deliveryUrl} target="_blank" rel="noopener noreferrer">
+                    <Button 
+                      style={{ backgroundColor: primaryColorForPage, color: ctaTextColorForPage }}
+                      className="button-checkout-specific primary w-full text-lg py-3">
+                        Acessar: {productNameDisplay}
+                    </Button>
+                  </a>
+                ) : (
+                  <div key={product.id} className="text-center p-3 bg-[var(--checkout-color-bg-main)] border border-[var(--checkout-color-border-subtle)] rounded-md">
+                    <p className="font-semibold text-[var(--checkout-color-text-strong)]">{productNameDisplay}</p>
+                    <p className="text-xs text-[var(--checkout-color-text-muted)]">O acesso a este produto será enviado por e-mail.</p>
+                  </div>
+                )
+              })
+            ) : (
+               <p className="text-sm text-center text-[var(--checkout-color-text-muted)]">Processando links de acesso...</p>
+            )}
+          </div>
         </div>
       </Card>
       

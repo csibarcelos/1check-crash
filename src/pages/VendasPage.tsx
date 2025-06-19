@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -7,7 +6,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Modal } from '@/components/ui/Modal';
 import { Sale, PaymentStatus, PaymentMethod, SaleProductItem } from '@/types';
 import { salesService } from '@/services/salesService';
-import { ShoppingCartIcon, WhatsAppIcon, generateWhatsAppLink } from '@/constants';
+import { ShoppingCartIcon, WhatsAppIcon, generateWhatsAppLink } from '../constants.tsx';
 import { useAuth } from '@/contexts/AuthContext';
 
 const getStatusClass = (status: PaymentStatus) => {

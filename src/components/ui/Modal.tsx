@@ -1,3 +1,4 @@
+
 import React, { Fragment } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon } from '../../constants.tsx'; 
@@ -8,7 +9,7 @@ interface ModalProps {
   title?: string;
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl';
-  theme?: 'light' | 'dark';
+  theme?: 'light' | 'dark'; // Theme prop for CheckoutPage compatibility
 }
 
 export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 'md', theme = 'dark' }) => {
@@ -23,13 +24,14 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
 
   const isLightTheme = theme === 'light';
 
+  // Define classes based on the theme prop
   const panelClasses = isLightTheme
-    ? 'checkout-light-theme bg-[var(--checkout-color-bg-surface)] border-[var(--checkout-color-border-subtle)]'
-    : 'bg-bg-surface border-border-subtle';
+    ? 'checkout-light-theme bg-[var(--checkout-color-bg-surface)] border-[var(--checkout-color-border-subtle)]' // Classes para tema claro (checkout)
+    : 'bg-bg-surface border-border-subtle backdrop-blur-md'; // Classes para tema escuro (plataforma interna)
 
   const titleClasses = isLightTheme
-    ? 'text-[var(--checkout-color-primary-DEFAULT)]' 
-    : 'text-accent-gold';
+    ? 'text-[var(--checkout-color-primary-DEFAULT)]' // Título do tema claro
+    : 'text-accent-gold'; // Título do tema escuro
 
   const closeButtonClasses = isLightTheme
     ? 'text-[var(--checkout-color-text-muted)] hover:text-[var(--checkout-color-text-strong)] hover:bg-neutral-100 focus:ring-offset-[var(--checkout-color-bg-surface)] focus:ring-[var(--checkout-color-primary-DEFAULT)]'

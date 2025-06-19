@@ -1,3 +1,4 @@
+
 import React, { Fragment } from 'react';
 import { NavLink, useNavigate } from "react-router-dom"; 
 import { Dialog, Transition } from '@headlessui/react';
@@ -26,23 +27,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
 
   const navigationContent = (
     <>
-      <div className="flex items-center justify-center h-24 border-b border-border-subtle px-4">
-        <NavLink to={dashboardPath} className="flex items-center group p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors duration-300 ease-in-out">
+      <div className="flex items-center justify-center h-20 border-b border-border-subtle px-4"> {/* Altura do Header */}
+        <NavLink to={dashboardPath} className="flex items-center group p-2 rounded-xl hover:bg-white/5 transition-colors duration-300 ease-in-out">
           <AppLogoIcon className="h-10 w-auto group-hover:opacity-90 transition-opacity" />
         </NavLink>
       </div>
-      <nav className="mt-6 flex-1 px-3 space-y-2">
+      <nav className="mt-6 flex-1 px-3 space-y-1.5"> {/* Espaçamento entre itens sutil */}
         {currentNavItems.map((item: NavItemConfig) => (
           <NavLink
             key={item.name}
             to={item.href}
             end={item.href === dashboardPath || item.href === '/dashboard'} 
             className={({ isActive }) =>
-              `group flex items-center px-4 py-3 text-base font-medium rounded-xl transition-all duration-300 ease-in-out relative transform hover:scale-[1.02]
+              `group flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ease-in-out relative transform hover:bg-white/5
               ${isActive 
-                ? 'bg-white/10 text-accent-blue-neon shadow-lg' 
-                : 'text-text-default hover:bg-white/5 hover:text-text-strong'}
-              ${item.soon ? 'opacity-50 cursor-not-allowed' : ''}`
+                ? 'bg-white/10 text-accent-blue-neon shadow-sm' 
+                : 'text-text-default hover:text-text-strong'}
+              ${item.soon ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}` // Pointer-events para desabilitar clique
             }
             onClick={(e) => {
               if (item.soon) e.preventDefault();
@@ -53,9 +54,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
           >
             {({ isActive: iconIsActive }) => (
               <>
-                {iconIsActive && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-accent-blue-neon rounded-r-md shadow-glow-blue-neon/50"></div>}
-                <item.icon className={`mr-3 ml-1 flex-shrink-0 h-6 w-6 transition-colors duration-300 ${iconIsActive ? 'text-accent-blue-neon' : 'text-text-muted group-hover:text-text-default'}`} aria-hidden="true" />
-                <span className="truncate">{item.name}</span>
+                {iconIsActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-accent-blue-neon rounded-r-md"></div>}
+                <item.icon className={`mr-3 ml-1 flex-shrink-0 h-6 w-6 transition-colors duration-200 ${iconIsActive ? 'text-accent-blue-neon' : 'text-text-muted group-hover:text-text-default'}`} aria-hidden="true" />
+                <span className="truncate flex-1">{item.name}</span>
                 {item.soon && <span className="ml-auto text-xs bg-neutral-700 text-text-muted px-2 py-0.5 rounded-full">EM BREVE</span>}
               </>
             )}
@@ -63,7 +64,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
         ))}
       </nav>
       <div className="mt-auto p-4 border-t border-border-subtle">
-        <div className="flex items-center mb-4 p-3 rounded-xl bg-white/5">
+        <div className="flex items-center mb-4 p-3 rounded-xl bg-bg-surface">
           <div className="h-10 w-10 rounded-full bg-accent-gold flex items-center justify-center text-black font-semibold text-lg">
             {user?.name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || '?'}
           </div>
@@ -121,7 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
                   leaveFrom="opacity-100"
                   leaveTo="opacity-0"
                 >
-                  <div className="absolute top-0 right-0 -mr-12 pt-2">
+                  <div className="absolute top-0 right-0 -mr-12 pt-2"> {/* Ajuste de posição do X para Header h-20 */}
                     <button
                       type="button"
                       className="ml-1 flex h-10 w-10 items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-text-strong"
@@ -142,7 +143,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
 
       {/* Static sidebar for desktop */}
       <div className="hidden md:flex md:flex-shrink-0">
-        <div className="flex flex-col w-72 bg-bg-main border-r border-border-subtle">
+        <div className="flex flex-col w-72 bg-bg-main border-r border-border-subtle"> {/* Largura 280px = w-72 */}
           {navigationContent}
         </div>
       </div>

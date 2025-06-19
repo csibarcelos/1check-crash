@@ -36,7 +36,7 @@ export const AuthPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [fullName, setFullName] = useState(''); // Changed from 'name' to 'fullName'
+  const [fullName, setFullName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [formLoading, setFormLoading] = useState(false);
@@ -63,7 +63,7 @@ export const AuthPage: React.FC = () => {
     setEmail('');
     setPassword('');
     setConfirmPassword('');
-    setFullName(''); // Changed from 'setName' to 'setFullName'
+    setFullName('');
     setError(null);
     setSuccessMessage(null);
   };
@@ -89,7 +89,6 @@ export const AuthPage: React.FC = () => {
           email,
           password,
           full_name: fullName,
-          // phone: optional, can be added here if a field for it exists
         };
         const result = await register(registrationData);
         
@@ -97,8 +96,6 @@ export const AuthPage: React.FC = () => {
           if (result.needsEmailConfirmation) {
             setCurrentView('emailVerification');
             setSuccessMessage(`Cadastro realizado com sucesso! Enviamos um e-mail de confirmação para ${email}. Por favor, verifique sua caixa de entrada (e spam) para ativar sua conta.`);
-          } else {
-            // Login automático, o useEffect cuidará do redirecionamento
           }
         }
       } else if (currentView === 'login') {
@@ -120,7 +117,7 @@ export const AuthPage: React.FC = () => {
 
   if (authContextLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-900">
+      <div className="min-h-screen flex items-center justify-center bg-bg-main">
         <LoadingSpinner size="lg" />
       </div>
     );
@@ -134,27 +131,27 @@ export const AuthPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-bg-main flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <AppLogoIcon className="mx-auto h-20 w-auto mb-6" />
-        <h2 className="text-center text-3xl font-extrabold text-neutral-100">
+        <AppLogoIcon className="mx-auto h-16 w-auto mb-6" /> {/* Logo maior */}
+        <h2 className="text-center text-3xl font-heading font-extrabold text-text-strong">
           {getTitle()}
         </h2>
         {currentView !== 'emailVerification' && (
-          <p className="mt-2 text-center text-sm text-neutral-400">
-            {currentView === 'login' && ( <>Ou <button onClick={() => handleViewChange('register')} className="font-medium text-primary hover:text-primary-dark">crie uma nova conta gratuitamente</button></>)}
-            {currentView === 'register' && (<>Ou <button onClick={() => handleViewChange('login')} className="font-medium text-primary hover:text-primary-dark">faça login na sua conta existente</button></>)}
-            {currentView === 'forgotPassword' && (<>Lembrou a senha? <button onClick={() => handleViewChange('login')} className="font-medium text-primary hover:text-primary-dark">Faça login</button></>)}
+          <p className="mt-2 text-center text-sm text-text-default">
+            {currentView === 'login' && ( <>Ou <button onClick={() => handleViewChange('register')} className="font-medium text-accent-blue-neon hover:text-opacity-80">crie uma nova conta gratuitamente</button></>)}
+            {currentView === 'register' && (<>Ou <button onClick={() => handleViewChange('login')} className="font-medium text-accent-blue-neon hover:text-opacity-80">faça login na sua conta existente</button></>)}
+            {currentView === 'forgotPassword' && (<>Lembrou a senha? <button onClick={() => handleViewChange('login')} className="font-medium text-accent-blue-neon hover:text-opacity-80">Faça login</button></>)}
           </p>
         )}
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <Card className="bg-neutral-800 shadow-2xl border-neutral-700/50">
+        <Card className="bg-bg-surface shadow-2xl border-border-subtle backdrop-blur-md">
           {currentView === 'emailVerification' ? (
             <div className="text-center space-y-4">
-              <EmailIcon className="h-16 w-16 text-primary mx-auto"/>
-              <p className="text-neutral-300">{successMessage}</p>
+              <EmailIcon className="h-16 w-16 text-accent-blue-neon mx-auto"/>
+              <p className="text-text-default">{successMessage}</p>
               <Button onClick={() => handleViewChange('login')} variant="primary" className="w-full">
                 Ir para Login
               </Button>
@@ -174,18 +171,18 @@ export const AuthPage: React.FC = () => {
                 <Input label="Confirmar Senha" name="confirmPassword" type="password" autoComplete="new-password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} icon={<LockClosedIcon className="h-5 w-5"/>} disabled={formLoading} />
               )}
 
-              {error && <p className="text-sm text-red-400 text-center p-2 bg-red-800/20 rounded-md border border-red-600/50">{error}</p>}
-              {successMessage && currentView === 'forgotPassword' && <p className="text-sm text-green-400 text-center p-2 bg-green-800/20 rounded-md border border-green-600/50">{successMessage}</p>}
+              {error && <p className="text-sm text-status-error text-center p-3 bg-status-error/10 rounded-xl border border-status-error/30">{error}</p>}
+              {successMessage && currentView === 'forgotPassword' && <p className="text-sm text-status-success text-center p-3 bg-status-success/10 rounded-xl border border-status-success/30">{successMessage}</p>}
 
               <div>
-                <Button type="submit" className="w-full bg-primary text-neutral-900 hover:bg-primary-dark focus:ring-primary" isLoading={formLoading} size="lg">
+                <Button type="submit" variant="primary" className="w-full" isLoading={formLoading} size="lg">
                   {currentView === 'register' ? 'Criar Conta' : currentView === 'login' ? 'Entrar' : 'Enviar Link'}
                 </Button>
               </div>
 
               {currentView === 'login' && (
                 <div className="text-sm text-center">
-                  <button type="button" onClick={() => handleViewChange('forgotPassword')} className="font-medium text-primary hover:text-primary-dark">
+                  <button type="button" onClick={() => handleViewChange('forgotPassword')} className="font-medium text-accent-blue-neon hover:text-opacity-80">
                     Esqueceu sua senha?
                   </button>
                 </div>
@@ -197,23 +194,23 @@ export const AuthPage: React.FC = () => {
             <div className="mt-6">
                 <div className="relative">
                 <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-neutral-600" />
+                    <div className="w-full border-t border-border-subtle" />
                 </div>
                 <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-neutral-800 text-neutral-400">Ou continue com</span>
+                    <span className="px-2 bg-bg-surface text-text-muted">Ou continue com</span>
                 </div>
                 </div>
                 <div className="mt-6 grid grid-cols-2 gap-3">
                 <div>
-                    <Button variant='outline' className="w-full border-neutral-600 text-neutral-300 hover:bg-neutral-700" disabled>
+                    <Button variant='outline' className="w-full text-text-default" disabled>
                     <span className="sr-only">Entrar com Google</span>
-                    <svg className="w-5 h-5" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.16 5.48-4.08 7.18l7.64 5.92C44.64 37.26 46.98 31.45 46.98 24.55z"></path><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.64-5.92c-2.17 1.45-4.96 2.3-8.25 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path><path fill="none" d="M0 0h48v48H0z"></path></svg>
+                    <svg className="w-5 h-5 fill-current" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.16 5.48-4.08 7.18l7.64 5.92C44.64 37.26 46.98 31.45 46.98 24.55z"></path><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.64-5.92c-2.17 1.45-4.96 2.3-8.25 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path><path fill="none" d="M0 0h48v48H0z"></path></svg>
                     </Button>
                 </div>
                 <div>
-                    <Button variant='outline' className="w-full border-neutral-600 text-neutral-300 hover:bg-neutral-700" disabled>
+                    <Button variant='outline' className="w-full text-text-default" disabled>
                     <span className="sr-only">Entrar com Facebook</span>
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="#1877F2"><path d="M22.676 0H1.324C.593 0 0 .593 0 1.324v21.352C0 23.407.593 24 1.324 24h11.494v-9.294H9.692v-3.622h3.128V8.413c0-3.1 1.893-4.788 4.659-4.788 1.325 0 2.463.099 2.795.143v3.24l-1.918.001c-1.504 0-1.795.715-1.795 1.763v2.313h3.587l-.467 3.622h-3.12V24h6.116c.73 0 1.323-.593 1.323-1.324V1.324C24 .593 23.407 0 22.676 0z"></path></svg>
+                    <svg className="w-5 h-5 fill-[#1877F2]" viewBox="0 0 24 24"><path d="M22.676 0H1.324C.593 0 0 .593 0 1.324v21.352C0 23.407.593 24 1.324 24h11.494v-9.294H9.692v-3.622h3.128V8.413c0-3.1 1.893-4.788 4.659-4.788 1.325 0 2.463.099 2.795.143v3.24l-1.918.001c-1.504 0-1.795.715-1.795 1.763v2.313h3.587l-.467 3.622h-3.12V24h6.116c.73 0 1.323-.593 1.323-1.324V1.324C24 .593 23.407 0 22.676 0z"></path></svg>
                     </Button>
                 </div>
                 </div>

@@ -8,71 +8,68 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Cores de destaque diretamente mapeadas
-        'accent-gold': 'var(--color-accent-gold)',
+        'bg-main': 'var(--color-bg-main)',
+        'bg-surface': 'var(--color-bg-surface)',
+        'border-subtle': 'var(--color-border-subtle)',
+        
         'accent-blue-neon': 'var(--color-accent-blue-neon)',
+        'accent-gold': 'var(--color-accent-gold)',
 
-        // Cores de texto
         'text-strong': 'var(--color-text-strong)',
         'text-default': 'var(--color-text-default)',
         'text-muted': 'var(--color-text-muted)',
         
-        // Cores de Status
         'status-success': 'var(--color-status-success)',
         'status-error': 'var(--color-status-error)',
         'status-warning': 'var(--color-status-warning)',
 
-        // Cores de Background e Superfície
-        'bg-main': 'var(--color-bg-main)',
-        'bg-surface': 'var(--color-bg-surface)', // Para glassmorphism ou cards não-glass
-        'border-subtle': 'var(--color-border-subtle)',
-
-        // Cores primárias e secundárias para Tailwind (usando as vars de acento)
-        primary: {
-          DEFAULT: 'var(--color-primary-DEFAULT)', // Azul Neon
+        primary: { // Mapeia para accent-blue-neon
+          DEFAULT: 'var(--color-primary-DEFAULT)',
           light: 'var(--color-primary-light)',
           dark: 'var(--color-primary-dark)',
         },
-        secondary: { 
-          DEFAULT: 'var(--color-secondary-DEFAULT)', // Dourado
+        secondary: { // Mapeia para accent-gold
+          DEFAULT: 'var(--color-secondary-DEFAULT)',
           light: 'var(--color-secondary-light)',
           dark: 'var(--color-secondary-dark)',
         },
-        // Neutrals para Tailwind (usando as vars de texto/bg)
-        neutral: {
+        neutral: { // Usando as variáveis CSS para consistência
           50: 'var(--color-neutral-50)',
           100: 'var(--color-neutral-100)',
           200: 'var(--color-neutral-200)',
-          300: 'var(--color-text-muted)', /* #6B7280 Muted text */
-          400: 'var(--color-text-default)', /* #A1A1A1 Secondary text */
-          500: '#C0C0C0', /* Cinza mais claro para contraste se necessário */
-          600: 'var(--color-text-strong)', /* #FFFFFF Principal Text */
-          700: 'var(--color-bg-surface)', /* Glass bg, or a slightly lighter dark for non-glass cards */
-          800: 'var(--color-bg-main)', /* Main bg */
-          900: '#0A0A0A', /* Deepest bg */
-          950: '#050505',
+          300: 'var(--color-neutral-300)', // text-muted
+          400: 'var(--color-neutral-400)', // text-default
+          500: 'var(--color-neutral-500)', // cinza claro para contraste
+          600: 'var(--color-neutral-600)', // text-strong
+          700: 'var(--color-neutral-700)', // Um cinza escuro para hover
+          800: 'var(--color-neutral-800)', // bg-main
+          900: 'var(--color-neutral-900)',
+          950: 'var(--color-neutral-950)',
         },
       },
       fontFamily: {
-        sans: ['"Plus Jakarta Sans"', 'Inter', 'sans-serif'],
+        sans: ['Inter', 'Plus Jakarta Sans', 'sans-serif'], // Inter como primária para corpo
+        heading: ['Plus Jakarta Sans', 'Inter', 'sans-serif'], // Plus Jakarta Sans para títulos
       },
       borderRadius: {
-        '2xl': '1rem', // 16px (reafirmando ou customizando)
-        '3xl': '1.5rem', // 24px (adicionando se não existir)
+        'xl': '12px', // Novo padrão para botões e inputs
+        '2xl': '16px', // Novo padrão para cards e modais
+        // '3xl' já estava, pode manter ou remover se não usar mais.
       },
-      boxShadow: { // Para o glow sutil dos botões, por exemplo
+      boxShadow: {
         'glow-blue-neon': '0 0 15px 0px var(--color-accent-blue-neon)',
         'glow-gold': '0 0 15px 0px var(--color-accent-gold)',
+        // Manter shadow-2xl como está ou ajustar se necessário. O script pede shadow-2xl para cards.
       },
-      backdropBlur: { // Garantindo que temos opções de blur se não padrão
+      backdropBlur: {
         'xs': '2px',
         'sm': '4px',
-        'md': '8px', // Usado nos cards
+        'md': '8px', // Usado nos cards e header
         'lg': '12px',
       }
     },
   },
   plugins: [
-    require('@tailwindcss/forms'), // Útil para estilização de formulários
+    require('@tailwindcss/forms'),
   ],
 }

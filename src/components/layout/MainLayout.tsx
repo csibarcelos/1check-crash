@@ -15,7 +15,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header setSidebarOpen={setSidebarOpen} />
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-bg-main p-6 md:p-8 lg:p-10"> 
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-bg-main p-6 md:p-8 lg:p-12"> {/* Padding xl: 48px -> p-12 */}
           {children}
         </main>
       </div>

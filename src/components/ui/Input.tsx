@@ -4,7 +4,7 @@ import React from 'react';
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
-  icon?: React.ReactElement<React.SVGProps<SVGSVGElement>>; // Changed from React.ReactElement
+  icon?: React.ReactElement<React.SVGProps<SVGSVGElement>>;
   labelClassName?: string;
 }
 
@@ -15,7 +15,7 @@ export const Input: React.FC<InputProps> = ({ label, name, error, icon, classNam
       {label && (
         <label 
           htmlFor={name} 
-          className={`block text-sm font-medium mb-1.5 ${labelClassName || 'text-text-default'}`}
+          className={`block text-label-metadata mb-1.5 ${labelClassName || 'text-text-muted'}`}
         >
           {label}
         </label>
@@ -29,7 +29,7 @@ export const Input: React.FC<InputProps> = ({ label, name, error, icon, classNam
         <input
           id={name}
           name={name}
-          className={`block w-full px-4 py-2.5 border rounded-xl shadow-sm focus:outline-none sm:text-sm transition-all duration-150 ease-in-out
+          className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:outline-none sm:text-sm transition-all duration-150 ease-in-out
             bg-white/5 backdrop-blur-sm caret-accent-blue-neon
             ${icon ? 'pl-12' : 'pl-4'}
             ${hasError 
@@ -59,7 +59,7 @@ export const Textarea: React.FC<TextareaProps> = ({ label, name, error, classNam
       {label && (
         <label 
           htmlFor={name} 
-          className={`block text-sm font-medium mb-1.5 ${labelClassName || 'text-text-default'}`}
+          className={`block text-label-metadata mb-1.5 ${labelClassName || 'text-text-muted'}`}
         >
           {label}
         </label>
@@ -68,7 +68,7 @@ export const Textarea: React.FC<TextareaProps> = ({ label, name, error, classNam
         id={name}
         name={name}
         rows={props.rows || 4}
-        className={`block w-full px-4 py-2.5 border rounded-xl shadow-sm focus:outline-none sm:text-sm transition-all duration-150 ease-in-out
+        className={`block w-full px-4 py-3 border rounded-xl shadow-sm focus:outline-none sm:text-sm transition-all duration-150 ease-in-out
           bg-white/5 backdrop-blur-sm caret-accent-blue-neon
           ${hasError 
             ? 'border-status-error focus:ring-2 focus:ring-status-error focus:border-status-error text-status-error placeholder-status-error/70' 

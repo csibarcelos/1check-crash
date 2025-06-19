@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -11,7 +10,7 @@ import {
     ShoppingCartIcon, 
     UserGroupIcon, 
     CurrencyDollarIcon,
-} from '@/constants'; 
+} from '../constants.tsx'; 
 import { useAuth } from '@/contexts/AuthContext';
 
 const formatCurrency = (valueInCents: number, showSymbol = true): string => {

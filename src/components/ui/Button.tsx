@@ -33,19 +33,21 @@ export const Button: React.FC<ButtonProps> = ({
   to,
   ...props
 }) => {
-  const baseStyles = 'font-semibold rounded-2xl focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-bg-main transition-all duration-300 ease-in-out inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.03] active:scale-[0.98]';
+  const baseStyles = 'font-semibold rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-bg-main transition-all duration-300 ease-in-out inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-[0.98]';
+  // Removido hover:scale-[1.03] para evitar conflito com shadow glow que pode ser sutil
+  // Adicionar hover:brightness-110 ou similar se um feedback de hover for desejado além da borda/shadow.
 
   const variantStyles = {
     primary: 'bg-accent-blue-neon text-black hover:bg-opacity-80 focus:ring-accent-blue-neon shadow-md hover:shadow-glow-blue-neon/70',
     gold: 'bg-accent-gold text-black hover:bg-opacity-80 focus:ring-accent-gold shadow-md hover:shadow-glow-gold/70',
-    secondary: 'bg-neutral-700 text-text-strong hover:bg-neutral-600 focus:ring-neutral-500', 
+    secondary: 'bg-neutral-700 text-text-strong hover:bg-neutral-600 focus:ring-neutral-500',
     danger: 'bg-status-error text-text-strong hover:bg-opacity-80 focus:ring-status-error',
     ghost: 'text-text-default hover:bg-bg-surface hover:text-text-strong focus:ring-accent-blue-neon',
     outline: 'border border-border-subtle text-text-default hover:bg-bg-surface hover:border-accent-blue-neon hover:text-accent-blue-neon focus:ring-accent-blue-neon',
   };
 
   const sizeStyles = {
-    sm: 'px-4 py-2 text-sm h-10',
+    sm: 'px-4 py-2 text-sm h-10', // Mantendo altura para consistência
     md: 'px-6 py-2.5 text-base h-12', 
     lg: 'px-8 py-3 text-lg h-14',   
   };

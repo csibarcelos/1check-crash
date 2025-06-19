@@ -1,3 +1,4 @@
+
 import React, { Fragment } from 'react';
 import { Menu, Transition } from '@headlessui/react';
 import { useAuth } from '@/contexts/AuthContext'; 
@@ -20,16 +21,16 @@ export const Header: React.FC<HeaderProps> = ({ setSidebarOpen }) => {
   const userInitial = user?.name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || '?';
 
   return (
-    <header className="relative bg-bg-surface backdrop-blur-md shadow-lg flex-shrink-0 border-b border-border-subtle z-30">
+    <header className="relative bg-bg-surface backdrop-blur-md flex-shrink-0 border-b border-border-subtle z-30"> {/* shadow-lg removido pois pode ser redundante com borda e blur */}
       <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-20"> 
+        <div className="flex items-center justify-between h-20"> {/* Altura 80px = h-20 */}
           <div className="flex items-center">
             <button
               type="button"
-              className="p-2 rounded-xl text-text-muted hover:text-text-strong hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent-blue-neon md:hidden transition-colors duration-150"
+              className="p-2 rounded-xl text-text-muted hover:text-accent-blue-neon hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent-blue-neon md:hidden transition-colors duration-150"
               onClick={() => setSidebarOpen(true)}
+              aria-label="Abrir sidebar"
             >
-              <span className="sr-only">Abrir sidebar</span>
               <Bars3IconHero className="h-6 w-6" aria-hidden="true" />
             </button>
           </div>
@@ -54,7 +55,7 @@ export const Header: React.FC<HeaderProps> = ({ setSidebarOpen }) => {
               >
                 <Menu.Items className="origin-top-right absolute right-0 mt-2 w-60 rounded-2xl shadow-2xl py-2 bg-bg-surface border border-border-subtle backdrop-blur-lg focus:outline-none z-40">
                   <div className="px-4 py-3 border-b border-border-subtle">
-                    <p className="text-sm text-text-muted">Logado como</p>
+                    <p className="text-xs text-text-muted">Logado como</p>
                     <p className="text-sm font-medium text-text-strong truncate">{user?.name || user?.email}</p>
                   </div>
                   <div className="py-1">

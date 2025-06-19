@@ -1,7 +1,7 @@
 
 import { Customer, FunnelStage, Sale } from '@/types'; // Ajustado para alias @
 import { supabase, getSupabaseUserId } from '@/supabaseClient'; // Ajustado para alias @
-import { Database, Json } from '@/types/supabase'; // Ajustado para alias @
+import { Database } from '@/types/supabase'; // Ajustado para alias @
 import { v4 as uuidv4 } from 'uuid';
 
 type CustomerRow = Database['public']['Tables']['customers']['Row'];

@@ -86,11 +86,11 @@ export const dashboardService = {
   getDashboardData: (params: {
     sales: Sale[];
     customers: Customer[];
-    products: Product[]; 
+    products: Product[]; // This is allProducts from DashboardPage, renamed here for clarity
     dateRange: string;
     productId: string;
   }): DashboardData => {
-    const { sales, customers, products: allProducts, dateRange, productId } = params;
+    const { sales, customers, /* products: allProducts, */ dateRange, productId } = params; // Removed allProducts from destructuring
     console.log(`[dashboardService.getDashboardData] Called with dateRange: ${dateRange}, productId: ${productId}, salesCount: ${sales.length}, customersCount: ${customers.length}`);
 
     let filteredSales = filterSalesByDateRange(sales, dateRange);

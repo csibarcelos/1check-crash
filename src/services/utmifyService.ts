@@ -1,6 +1,6 @@
 
 import { Product, UtmifyOrderPayload, UtmifyResponse } from '@/types';
-import { UTMIFY_API_BASE } from '../constants.tsx'; 
+// import { UTMIFY_API_BASE } from '../constants.tsx'; // No longer used
 import { supabase } from '@/supabaseClient'; // Import Supabase client
 
 const buildUtmifiedUrl = (product: Product, checkoutUrl: string): string => {

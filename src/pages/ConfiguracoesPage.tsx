@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -5,8 +6,10 @@ import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { settingsService } from '@/services/settingsService';
 import { AppSettings } from '@/types';
-import { CogIcon, COLOR_PALETTE_OPTIONS, CheckCircleIcon, InformationCircleIcon } from '../constants.tsx';
+import { CogIcon, COLOR_PALETTE_OPTIONS, InformationCircleIcon } from '../constants.tsx';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/contexts/ToastContext';
+import { Tabs, TabConfig } from '@/components/ui/Tabs'; // Importa o novo componente Tabs
 
 const initialAppSettings: AppSettings = {
   checkoutIdentity: {
@@ -30,25 +33,22 @@ const initialAppSettings: AppSettings = {
   pixelIntegrations: [],
 };
 
-export const ConfiguracoesPage: React.FC = () => {
+const ConfiguracoesPage: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(initialAppSettings);
   const [pageLoading, setPageLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const { accessToken, isLoading: authIsLoading } = useAuth();
+  const { showToast } = useToast();
 
   const fetchSettings = useCallback(async () => {
     if (!accessToken) {
       setPageLoading(false);
-      setError("Autenticação necessária para carregar configurações.");
+      showToast({ title: "Erro de Autenticação", description: "Autenticação necessária para carregar configurações.", variant: "error" });
       return;
     }
-    setError(null);
     try {
       const fetchedSettings = await settingsService.getAppSettings(accessToken);
       
-      // Garantir que todos os campos obrigatórios existam com valores padrão
       setSettings(() => ({
         ...initialAppSettings,
         ...fetchedSettings,
@@ -73,12 +73,12 @@ export const ConfiguracoesPage: React.FC = () => {
         customDomain: fetchedSettings.customDomain || initialAppSettings.customDomain || '',
       }));
     } catch (err: any) {
-      setError(err.message || 'Falha ao carregar configurações.');
+      showToast({ title: "Erro ao Carregar", description: err.message || 'Falha ao carregar configurações.', variant: "error" });
       console.error(err);
     } finally {
       setPageLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, showToast]);
 
   useEffect(() => {
     if (authIsLoading) {
@@ -89,10 +89,10 @@ export const ConfiguracoesPage: React.FC = () => {
       fetchSettings();
     } else {
       setPageLoading(false);
-      setError("Autenticação necessária para visualizar as configurações.");
+      showToast({ title: "Acesso Negado", description: "Autenticação necessária para visualizar as configurações.", variant: "error" });
       setSettings(initialAppSettings);
     }
-  }, [fetchSettings, accessToken, authIsLoading]);
+  }, [fetchSettings, accessToken, authIsLoading, showToast]);
 
   const handleInputChange = (section: keyof AppSettings, field: string, value: any) => {
     setSettings(prev => {
@@ -106,67 +106,47 @@ export const ConfiguracoesPage: React.FC = () => {
           },
         };
       }
+      // This case handles top-level fields like 'customDomain'
       return { ...prev, [field as keyof AppSettings]: value };
     });
-    if (successMessage) setSuccessMessage(null);
-    if (error) setError(null);
   };
 
   const handleDirectFieldChange = (field: keyof Pick<AppSettings, 'customDomain'>, value: any) => {
     setSettings(prev => ({...prev, [field]: value}));
-    if (successMessage) setSuccessMessage(null);
-    if (error) setError(null);
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!accessToken) {
-      setError("Autenticação necessária para salvar.");
+      showToast({ title: "Erro de Autenticação", description: "Autenticação necessária para salvar.", variant: "error" });
       return;
     }
     setIsSaving(true);
-    setError(null);
-    setSuccessMessage(null);
 
     try {
       const settingsToSave: Partial<AppSettings> = {
         customDomain: settings.customDomain,
         checkoutIdentity: settings.checkoutIdentity,
         smtpSettings: settings.smtpSettings,
-        apiTokens: settings.apiTokens,
+        apiTokens: settings.apiTokens, 
         pixelIntegrations: settings.pixelIntegrations,
       };
 
       await settingsService.saveAppSettings(settingsToSave, accessToken);
-      setSuccessMessage('Configurações salvas com sucesso!');
+      showToast({ title: "Sucesso!", description: "Configurações salvas com sucesso!", variant: "success" });
     } catch (err: any) {
-      setError(err.message || 'Falha ao salvar configurações.');
+      showToast({ title: "Erro ao Salvar", description: err.message || 'Falha ao salvar configurações.', variant: "error" });
       console.error(err);
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (pageLoading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <LoadingSpinner size="lg" />
-        <p className="ml-3 text-text-muted">Carregando configurações...</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-8 text-text-default">
-      <div className="flex items-center space-x-3">
-        <CogIcon className="h-8 w-8 text-primary" />
-        <h1 className="text-3xl font-bold text-text-strong">Configurações da Conta</h1>
-      </div>
-
-      {error && <p className="my-4 text-sm text-status-error p-3 bg-status-error/10 rounded-xl border border-status-error/30">{error}</p>}
-      {successMessage && <p className="my-4 text-sm text-status-success p-3 bg-status-success/10 rounded-xl border border-status-success/30 flex items-center"><CheckCircleIcon className="h-5 w-5 mr-2"/>{successMessage}</p>}
-
-      <form onSubmit={handleSubmit} className="space-y-8">
+  const tabsConfig: TabConfig[] = [
+    {
+      value: 'identity',
+      label: 'Identidade Visual',
+      content: (
         <Card title="Identidade Visual Padrão do Checkout">
           <div className="space-y-4">
             <p className="text-sm text-text-muted">
@@ -180,7 +160,6 @@ export const ConfiguracoesPage: React.FC = () => {
               onChange={(e) => handleInputChange('checkoutIdentity', 'logoUrl', e.target.value)}
               placeholder="https://suamarca.com/logo.png"
               disabled={isSaving}
-              labelClassName="text-text-default"
             />
             <Input
               label="URL do Favicon Padrão (Checkout)"
@@ -190,7 +169,6 @@ export const ConfiguracoesPage: React.FC = () => {
               onChange={(e) => handleInputChange('checkoutIdentity', 'faviconUrl', e.target.value)}
               placeholder="https://suamarca.com/favicon.ico"
               disabled={isSaving}
-              labelClassName="text-text-default"
             />
             <div>
               <label className="block text-sm font-medium text-text-default mb-1.5">Cor da Marca Padrão (Checkout)</label>
@@ -216,13 +194,18 @@ export const ConfiguracoesPage: React.FC = () => {
                 type="color"
                 value={settings.checkoutIdentity?.brandColor || '#0D9488'}
                 onChange={(e) => handleInputChange('checkoutIdentity', 'brandColor', e.target.value)}
-                className="mt-2 h-10 w-full sm:w-auto"
+                className="mt-2 h-10 w-full sm:w-auto bg-bg-surface border-border-subtle"
                 disabled={isSaving}
               />
             </div>
           </div>
         </Card>
-
+      )
+    },
+    {
+      value: 'domain',
+      label: 'Domínio',
+      content: (
         <Card title="Domínio Personalizado (Em Breve)">
           <div className="space-y-4">
             <Input
@@ -233,7 +216,6 @@ export const ConfiguracoesPage: React.FC = () => {
               onChange={(e) => handleDirectFieldChange('customDomain', e.target.value)}
               placeholder="Ex: checkout.suamarca.com"
               disabled={true || isSaving} 
-              labelClassName="text-text-default"
             />
             <div className="flex items-start p-3 bg-bg-main border border-border-subtle rounded-lg">
               <InformationCircleIcon className="h-5 w-5 text-accent-blue-neon mr-2 flex-shrink-0 mt-0.5" />
@@ -243,7 +225,12 @@ export const ConfiguracoesPage: React.FC = () => {
             </div>
           </div>
         </Card>
-
+      )
+    },
+    {
+      value: 'smtp',
+      label: 'SMTP',
+      content: (
         <Card title="Configurações de SMTP (Envio de E-mails)">
           <div className="space-y-4">
             <p className="text-sm text-text-muted">
@@ -257,7 +244,6 @@ export const ConfiguracoesPage: React.FC = () => {
               onChange={(e) => handleInputChange('smtpSettings', 'host', e.target.value)}
               placeholder="Ex: smtp.seuprovedor.com"
               disabled={isSaving}
-              labelClassName="text-text-default"
             />
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Input
@@ -268,7 +254,6 @@ export const ConfiguracoesPage: React.FC = () => {
                 onChange={(e) => handleInputChange('smtpSettings', 'port', parseInt(e.target.value, 10) || 0)}
                 placeholder="Ex: 587"
                 disabled={isSaving}
-                labelClassName="text-text-default"
               />
               <Input
                 label="Usuário SMTP"
@@ -279,7 +264,6 @@ export const ConfiguracoesPage: React.FC = () => {
                 placeholder="Seu e-mail ou usuário SMTP"
                 disabled={isSaving}
                 autoComplete="username"
-                labelClassName="text-text-default"
               />
               <Input
                 label="Senha SMTP"
@@ -290,7 +274,6 @@ export const ConfiguracoesPage: React.FC = () => {
                 placeholder="••••••••"
                 disabled={isSaving}
                 autoComplete="new-password"
-                labelClassName="text-text-default"
               />
             </div>
              <div className="flex items-start p-3 bg-bg-main border border-border-subtle rounded-lg">
@@ -301,8 +284,31 @@ export const ConfiguracoesPage: React.FC = () => {
             </div>
           </div>
         </Card>
+      )
+    }
+  ];
 
-        <div className="mt-8 flex justify-end">
+
+  if (pageLoading) {
+    return (
+      <div className="flex justify-center items-center h-[calc(100vh-200px)]">
+        <LoadingSpinner size="lg" />
+        <p className="ml-3 text-text-muted">Carregando configurações...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8 text-text-default">
+      <div className="flex items-center space-x-3">
+        <CogIcon className="h-8 w-8 text-accent-blue-neon" />
+        <h1 className="text-3xl font-display font-bold text-text-strong">Configurações da Conta</h1>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <Tabs tabs={tabsConfig} defaultValue="identity" className="w-full" />
+        
+        <div className="mt-8 flex justify-end pt-6 border-t border-border-subtle">
           <Button type="submit" variant="primary" isLoading={isSaving} size="lg" disabled={isSaving}>
             Salvar Alterações
           </Button>
@@ -311,3 +317,5 @@ export const ConfiguracoesPage: React.FC = () => {
     </div>
   );
 };
+
+export default ConfiguracoesPage;

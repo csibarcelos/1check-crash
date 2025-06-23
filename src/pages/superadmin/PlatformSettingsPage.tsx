@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -8,7 +9,7 @@ import { PlatformSettings } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { CogIcon, CurrencyDollarIcon, KeyIcon } from '../../constants.tsx'; 
 
-export const PlatformSettingsPage: React.FC = () => {
+const PlatformSettingsPage: React.FC = () => {
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const [commissionPercentage, setCommissionPercentage] = useState('');
   const [fixedFeeInCents, setFixedFeeInCents] = useState('');
@@ -31,8 +32,8 @@ export const PlatformSettingsPage: React.FC = () => {
     try {
       const fetchedSettings = await settingsService.getPlatformSettings(accessToken);
       setSettings(fetchedSettings);
-      setCommissionPercentage((fetchedSettings.platformCommissionPercentage * 100).toFixed(2)); // Store as % string
-      setFixedFeeInCents((fetchedSettings.platformFixedFeeInCents / 100).toFixed(2)); // Store as R$ string
+      setCommissionPercentage((fetchedSettings.platformCommissionPercentage * 100).toFixed(2)); 
+      setFixedFeeInCents((fetchedSettings.platformFixedFeeInCents / 100).toFixed(2)); 
       setPlatformAccountId(fetchedSettings.platformAccountIdPushInPay);
     } catch (err: any) {
       setError(err.message || 'Falha ao carregar configurações da plataforma.');
@@ -82,8 +83,7 @@ export const PlatformSettingsPage: React.FC = () => {
       };
       await settingsService.savePlatformSettings(settingsToSave, accessToken);
       setSuccessMessage('Configurações da plataforma salvas com sucesso!');
-      // Optionally re-fetch or update local state directly if API returns the full updated object
-      if (settings) { // Update local state if already loaded
+      if (settings) { 
         setSettings(prev => prev ? ({...prev, ...settingsToSave, id: 'global'}) : null);
       }
     } catch (err: any) {
@@ -94,19 +94,19 @@ export const PlatformSettingsPage: React.FC = () => {
   };
 
   if (isLoading) {
-    return <div className="flex justify-center items-center h-64"><LoadingSpinner size="lg" /></div>;
+    return <div className="flex justify-center items-center h-64"><LoadingSpinner size="lg" /><p className="ml-2 text-text-muted">Carregando...</p></div>;
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-3">
-        <CogIcon className="h-8 w-8 text-primary" />
-        <h1 className="text-3xl font-bold text-neutral-800">Configurações da Plataforma</h1>
+        <CogIcon className="h-8 w-8 text-accent-blue-neon" />
+        <h1 className="text-3xl font-display font-bold text-text-strong">Configurações da Plataforma</h1>
       </div>
 
       <Card title="Definições de Comissão e Pagamento">
         <form onSubmit={handleSubmit} className="space-y-6">
-          <p className="text-sm text-neutral-600">
+          <p className="text-sm text-text-muted">
             Defina as taxas de comissão da plataforma e a conta para recebimento.
           </p>
           
@@ -117,7 +117,7 @@ export const PlatformSettingsPage: React.FC = () => {
             value={commissionPercentage}
             onChange={(e) => setCommissionPercentage(e.target.value)}
             placeholder="Ex: 1.00 para 1%"
-            icon={<CurrencyDollarIcon className="h-5 w-5 text-neutral-400" />}
+            icon={<CurrencyDollarIcon className="h-5 w-5 text-text-muted" />}
             disabled={isSaving}
           />
           <Input
@@ -127,7 +127,7 @@ export const PlatformSettingsPage: React.FC = () => {
             value={fixedFeeInCents}
             onChange={(e) => setFixedFeeInCents(e.target.value)}
             placeholder="Ex: 1,00 para R$1,00"
-            icon={<CurrencyDollarIcon className="h-5 w-5 text-neutral-400" />}
+            icon={<CurrencyDollarIcon className="h-5 w-5 text-text-muted" />}
             disabled={isSaving}
           />
            <Input
@@ -137,14 +137,14 @@ export const PlatformSettingsPage: React.FC = () => {
             value={platformAccountId}
             onChange={(e) => setPlatformAccountId(e.target.value)}
             placeholder="UUID da conta PushInPay"
-            icon={<KeyIcon className="h-5 w-5 text-neutral-400" />}
+            icon={<KeyIcon className="h-5 w-5 text-text-muted" />}
             disabled={isSaving}
           />
 
-          {error && <p className="text-sm text-red-600 p-3 bg-red-50 rounded-md">{error}</p>}
-          {successMessage && <p className="text-sm text-green-600 p-3 bg-green-50 rounded-md">{successMessage}</p>}
+          {error && <p className="text-sm text-status-error p-3 bg-status-error/10 rounded-xl border border-status-error/30">{error}</p>}
+          {successMessage && <p className="text-sm text-status-success p-3 bg-status-success/10 rounded-xl border border-status-success/30">{successMessage}</p>}
           
-          <div className="flex justify-end pt-4 border-t border-neutral-200">
+          <div className="flex justify-end pt-4 border-t border-border-subtle">
             <Button type="submit" variant="primary" isLoading={isSaving} disabled={isSaving}>
               Salvar Configurações da Plataforma
             </Button>
@@ -154,3 +154,5 @@ export const PlatformSettingsPage: React.FC = () => {
     </div>
   );
 };
+
+export default PlatformSettingsPage;

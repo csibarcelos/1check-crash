@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -7,8 +7,11 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Modal } from '@/components/ui/Modal';
 import { Sale, PaymentStatus, PaymentMethod, SaleProductItem } from '@/types';
 import { salesService } from '@/services/salesService';
-import { ShoppingCartIcon, WhatsAppIcon, generateWhatsAppLink } from '@/constants';
+import { ShoppingCartIcon, WhatsAppIcon, generateWhatsAppLink } from '../constants.tsx';
 import { useAuth } from '@/contexts/AuthContext';
+import { Table, TableHeader } from '@/components/ui/Table'; // Import Table
+
+const ITEMS_PER_PAGE = 10;
 
 const getStatusClass = (status: PaymentStatus) => {
   switch (status) {
@@ -54,16 +57,16 @@ const InfoItem: React.FC<{ label: string; value: React.ReactNode; className?: st
   </div>
 );
 
-
-export const VendasPage: React.FC = () => {
+const VendasPage: React.FC = () => {
   const [allSales, setAllSales] = useState<Sale[]>([]);
-  const [filteredSales, setFilteredSales] = useState<Sale[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<PaymentStatus | ''>('');
   const [filterPaymentMethod, setFilterPaymentMethod] = useState<PaymentMethod | ''>('');
+  
+  const [currentPage, setCurrentPage] = useState(1);
 
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
@@ -78,8 +81,10 @@ export const VendasPage: React.FC = () => {
     setError(null);
     try {
       const data = await salesService.getSales(accessToken);
-      setAllSales(data.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-      setFilteredSales(data);
+      const sortedData = data.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setAllSales(sortedData);
+      console.log('[VendasPage Debug] allSales initial (first 5):', sortedData.slice(0, 5).map(s => ({id: s.id, status: s.status, total: s.totalAmountInCents}) ));
+      console.log('[VendasPage Debug] Total allSales fetched:', sortedData.length);
     } catch (err: any) {
       setError(err.message || 'Falha ao carregar vendas.');
       console.error(err);
@@ -92,7 +97,10 @@ export const VendasPage: React.FC = () => {
     fetchSales();
   }, [fetchSales]);
 
-  useEffect(() => {
+  const filteredSales = useMemo(() => {
+    console.log(`[VendasPage Debug] Recalculating filteredSales. Current filterStatus: "${filterStatus}", searchTerm: "${searchTerm}", filterPaymentMethod: "${filterPaymentMethod}"`);
+    console.log('[VendasPage Debug] allSales before filtering (first 5):', allSales.slice(0,5).map(s => ({id: s.id, status: s.status})));
+
     let currentSales = [...allSales];
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
@@ -103,14 +111,27 @@ export const VendasPage: React.FC = () => {
         (Array.isArray(sale.products) && sale.products.some(p => p.name?.toLowerCase().includes(term)))
       );
     }
-    if (filterStatus) {
+    if (filterStatus) { // This means filterStatus is not an empty string
       currentSales = currentSales.filter(sale => sale.status === filterStatus);
     }
     if (filterPaymentMethod) {
       currentSales = currentSales.filter(sale => sale.paymentMethod === filterPaymentMethod);
     }
-    setFilteredSales(currentSales);
+    console.log('[VendasPage Debug] filteredSales after logic (first 5):', currentSales.slice(0,5).map(s => ({id: s.id, status: s.status})));
+    console.log('[VendasPage Debug] Total filteredSales:', currentSales.length);
+    return currentSales;
   }, [searchTerm, filterStatus, filterPaymentMethod, allSales]);
+  
+  const totalPages = Math.ceil(filteredSales.length / ITEMS_PER_PAGE);
+  const paginatedSales = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredSales.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredSales, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1); 
+  }, [searchTerm, filterStatus, filterPaymentMethod]);
+
 
   const handleOpenDetailsModal = (sale: Sale) => {
     setSelectedSale(sale);
@@ -122,10 +143,47 @@ export const VendasPage: React.FC = () => {
     setIsDetailsModalOpen(false);
   };
 
-  if (isLoading) {
+  const selectClasses = "block w-full px-4 py-2.5 border rounded-xl shadow-sm focus:outline-none sm:text-sm transition-all duration-150 ease-in-out bg-bg-surface bg-opacity-60 backdrop-blur-sm border-border-subtle focus:border-accent-blue-neon focus:ring-1 focus:ring-accent-blue-neon text-text-strong placeholder-text-muted";
+
+  const salesTableHeaders: TableHeader<Sale>[] = [
+    { key: 'id', label: 'ID Venda', renderCell: (sale) => sale.id.split('_').pop()?.substring(0, 8) + '...' },
+    {
+      key: 'customer',
+      label: 'Cliente',
+      renderCell: (sale) => (
+        <>
+          <div className="text-sm font-medium text-text-strong">{sale.customer.name}</div>
+          <div className="text-xs text-text-muted">{sale.customer.email}</div>
+        </>
+      ),
+    },
+    { key: 'totalAmountInCents', label: 'Valor', renderCell: (sale) => <span className="text-accent-blue-neon font-semibold">{formatCurrency(sale.totalAmountInCents)}</span> },
+    {
+      key: 'status',
+      label: 'Status',
+      renderCell: (sale) => (
+        <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusClass(sale.status)}`}>
+          {(sale.status as string).replace(/_/g, ' ').toUpperCase()}
+        </span>
+      ),
+    },
+    { key: 'paymentMethod', label: 'Método', renderCell: (sale) => getPaymentMethodLabel(sale.paymentMethod as PaymentMethod) },
+    { key: 'createdAt', label: 'Data', renderCell: (sale) => new Date(sale.createdAt).toLocaleDateString() },
+    {
+      key: 'actions',
+      label: 'Ações',
+      renderCell: (sale) => (
+        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleOpenDetailsModal(sale); }} className="text-accent-blue-neon hover:text-opacity-80">
+          Ver Detalhes
+        </Button>
+      ),
+    },
+  ];
+
+  if (isLoading && allSales.length === 0) {
     return <div className="flex justify-center items-center h-64"><LoadingSpinner size="lg" /></div>;
   }
-
+  
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-center">
@@ -148,7 +206,7 @@ export const VendasPage: React.FC = () => {
               id="statusFilter" 
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value as PaymentStatus | '')}
-              className="block w-full px-4 py-2.5 border rounded-xl shadow-sm focus:outline-none sm:text-sm transition-all duration-150 ease-in-out bg-white/5 backdrop-blur-sm border-border-subtle focus:border-accent-blue-neon focus:ring-2 focus:ring-accent-blue-neon/70 text-text-strong placeholder-text-muted"
+              className={selectClasses}
             >
               <option value="">Todos Status</option>
               {Object.values(PaymentStatus).map((status: PaymentStatus) => (
@@ -162,7 +220,7 @@ export const VendasPage: React.FC = () => {
               id="paymentMethodFilter" 
               value={filterPaymentMethod}
               onChange={(e) => setFilterPaymentMethod(e.target.value as PaymentMethod | '')}
-              className="block w-full px-4 py-2.5 border rounded-xl shadow-sm focus:outline-none sm:text-sm transition-all duration-150 ease-in-out bg-white/5 backdrop-blur-sm border-border-subtle focus:border-accent-blue-neon focus:ring-2 focus:ring-accent-blue-neon/70 text-text-strong placeholder-text-muted"
+              className={selectClasses}
             >
               <option value="">Todos Métodos</option>
               {Object.values(PaymentMethod).map((method: PaymentMethod) => (
@@ -175,52 +233,26 @@ export const VendasPage: React.FC = () => {
           </div>
         </div>
 
-        {filteredSales.length === 0 ? (
-           <div className="text-center py-16">
-            <ShoppingCartIcon className="h-20 w-20 text-text-muted/50 mx-auto mb-6" />
-            <p className="text-xl text-text-muted">
-              {allSales.length === 0 ? "Nenhuma venda registrada ainda." : "Nenhuma venda encontrada com os filtros atuais."}
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border-subtle">
-              <thead className="bg-transparent">
-                <tr>
-                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-text-muted uppercase tracking-wider">ID Venda</th>
-                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-text-muted uppercase tracking-wider">Cliente</th>
-                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-text-muted uppercase tracking-wider">Valor</th>
-                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-text-muted uppercase tracking-wider">Status</th>
-                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-text-muted uppercase tracking-wider">Método</th>
-                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-text-muted uppercase tracking-wider">Data</th>
-                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-text-muted uppercase tracking-wider">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="bg-transparent divide-y divide-border-subtle">
-                {filteredSales.map((sale) => (
-                  <tr key={sale.id} className="hover:bg-white/5 transition-colors duration-150">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-muted">{sale.id.split('_').pop()?.substring(0, 8)}...</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-text-strong">{sale.customer.name}</div>
-                      <div className="text-xs text-text-muted">{sale.customer.email}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-accent-blue-neon font-semibold">{formatCurrency(sale.totalAmountInCents)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusClass(sale.status)}`}>
-                        {(sale.status as string).replace(/_/g, ' ').toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-default">{getPaymentMethodLabel(sale.paymentMethod as PaymentMethod)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-muted">{new Date(sale.createdAt).toLocaleDateString()}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <Button variant="ghost" size="sm" onClick={() => handleOpenDetailsModal(sale)} className="text-accent-blue-neon hover:text-opacity-80">Ver Detalhes</Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <Table<Sale>
+            headers={salesTableHeaders}
+            data={paginatedSales}
+            rowKey="id"
+            isLoading={isLoading}
+            onRowClick={handleOpenDetailsModal}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+            itemsPerPage={ITEMS_PER_PAGE}
+            totalItems={filteredSales.length}
+            emptyStateMessage={
+                 <div className="text-center py-16">
+                    <ShoppingCartIcon className="h-20 w-20 text-text-muted/50 mx-auto mb-6" />
+                    <p className="text-xl text-text-muted">
+                    {allSales.length === 0 ? "Nenhuma venda registrada ainda." : "Nenhuma venda encontrada com os filtros atuais."}
+                    </p>
+                </div>
+            }
+        />
       </Card>
 
       {selectedSale && (
@@ -308,3 +340,5 @@ export const VendasPage: React.FC = () => {
     </div>
   );
 };
+
+export default VendasPage;

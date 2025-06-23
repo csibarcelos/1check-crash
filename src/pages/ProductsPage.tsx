@@ -1,60 +1,60 @@
 
-import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from "react-router-dom"; 
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { useNavigate } from "react-router-dom";
+import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
 import { Product } from '@/types';
 import { productService } from '@/services/productService';
-import { utmifyService } from '@/services/utmifyService'; // Importar utmifyService
+import { utmifyService } from '@/services/utmifyService';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { Modal } from '@/components/ui/Modal';
-import { CubeIcon, PlusIcon, DocumentDuplicateIcon as DocumentDuplicateIconDefault, CheckCircleIcon, TrashIcon as TrashIconDefault } from '../constants.tsx'; 
-import { useAuth } from '@/contexts/AuthContext'; 
+import { AlertDialog } from '@/components/ui/AlertDialog';
+import { Table, TableHeader } from '@/components/ui/Table'; 
+import { 
+  CubeIcon, PlusIcon, CheckIcon, PencilIcon, 
+  LinkIcon as LinkActionIcon, 
+  Square2StackIconHero, 
+  TrashIcon as TrashActionIcon, 
+  EllipsisVerticalIcon, 
+  ExternalLinkIconHero, // Added for "open in new tab"
+  cn 
+} from '../constants.tsx';
+import { useAuth } from '@/contexts/AuthContext';
 
-const EyeIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-  </svg>
-);
-
-const PencilIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-  </svg>
-);
+const ITEMS_PER_PAGE = 10;
 
 const ProductsPage: React.FC = () => {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
-  const [isCloning, setIsCloning] = useState<string | null>(null); 
+  const [isCloning, setIsCloning] = useState<string | null>(null);
   const [copiedLinkForProductId, setCopiedLinkForProductId] = useState<string | null>(null);
 
+  const [currentPage, setCurrentPage] = useState(1);
 
   const navigate = useNavigate();
-  const { accessToken } = useAuth(); 
+  const { accessToken } = useAuth();
 
   const fetchProducts = useCallback(async () => {
     if (!accessToken) {
-        setIsLoading(false); 
-        setProducts([]); 
-        return;
+      setIsLoading(false);
+      setAllProducts([]);
+      return;
     }
     setIsLoading(true);
     setError(null);
     try {
-      const data = await productService.getProducts(accessToken); 
-      setProducts(data.sort((a,b) => (a.name.toLowerCase() > b.name.toLowerCase() ? 1 : -1)));
+      const data = await productService.getProducts(accessToken);
+      setAllProducts(data.sort((a, b) => (a.name.toLowerCase() > b.name.toLowerCase() ? 1 : -1)));
     } catch (err: any) {
       setError(err.message || 'Falha ao carregar produtos. Tente novamente.');
       console.error(err);
     } finally {
       setIsLoading(false);
     }
-  }, [accessToken]); 
+  }, [accessToken]);
 
   useEffect(() => {
     fetchProducts();
@@ -71,25 +71,26 @@ const ProductsPage: React.FC = () => {
   };
 
   const handleDeleteProduct = async () => {
-    if (!productToDelete) return;
-    setIsLoading(true); 
+    if (!productToDelete || !accessToken) return;
+    setIsLoading(true);
     try {
-      await productService.deleteProduct(productToDelete.id, accessToken); 
-      fetchProducts(); 
+      await productService.deleteProduct(productToDelete.id, accessToken);
+      setAllProducts(prev => prev.filter(p => p.id !== productToDelete.id));
+      setCurrentPage(1); 
       closeDeleteModal();
     } catch (err: any) {
       setError(`Falha ao deletar produto ${productToDelete.name}.`);
       console.error(err);
     } finally {
-      setIsLoading(false); 
+      setIsLoading(false);
     }
   };
-  
+
   const handleCloneProduct = async (productId: string) => {
     setIsCloning(productId);
     setError(null);
     try {
-      const clonedProduct = await productService.cloneProduct(productId, accessToken); 
+      const clonedProduct = await productService.cloneProduct(productId, accessToken);
       if (clonedProduct) {
         fetchProducts(); 
       } else {
@@ -105,15 +106,15 @@ const ProductsPage: React.FC = () => {
 
   const handleCopyLink = (product: Product) => {
     if (!product || !product.slug) {
-        alert('Slug do produto não encontrado para copiar o link.');
-        return;
+      alert('Slug do produto não encontrado para copiar o link.');
+      return;
     }
     const checkoutUrl = `${window.location.origin}/checkout/${product.slug}`;
     const utmifiedUrl = utmifyService.buildUtmifiedUrl(product, checkoutUrl);
 
     navigator.clipboard.writeText(utmifiedUrl)
       .then(() => {
-        setCopiedLinkForProductId(product.id); 
+        setCopiedLinkForProductId(product.id);
         setTimeout(() => setCopiedLinkForProductId(null), 2000);
       })
       .catch(err => {
@@ -121,95 +122,192 @@ const ProductsPage: React.FC = () => {
         alert('Falha ao copiar o link.');
       });
   };
+  
+  const handleViewCheckoutInNewTab = (product: Product) => {
+    if (product.slug) {
+      window.open(`${window.location.origin}/checkout/${product.slug}`, '_blank');
+    }
+  };
 
+  const handleRowClick = (product: Product) => {
+    navigate(`/produtos/editar/${product.id}`);
+  };
 
-  if (isLoading && products.length === 0) { 
+  const totalPages = Math.ceil(allProducts.length / ITEMS_PER_PAGE);
+  const paginatedProducts = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return allProducts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [allProducts, currentPage]);
+
+  const productTableHeaders: TableHeader<Product>[] = [
+    {
+      key: 'name',
+      label: 'Nome',
+      renderCell: (product) => (
+        <>
+          <div className="text-sm font-medium text-text-strong">{product.name}</div>
+          <div className="text-xs text-text-muted truncate max-w-xs">{product.description}</div>
+        </>
+      ),
+    },
+    {
+      key: 'priceInCents',
+      label: 'Preço',
+      renderCell: (product) => `R$ ${(product.priceInCents / 100).toFixed(2).replace('.', ',')}`,
+    },
+    { key: 'totalSales', label: 'Vendas', renderCell: (product) => product.totalSales || 0 },
+    {
+      key: 'conversionRate',
+      label: 'Conversão',
+      renderCell: (product) => (product.conversionRate !== undefined ? `${product.conversionRate.toFixed(1)}%` : 'N/A'),
+    },
+    {
+      key: 'actions',
+      label: 'Ações',
+      className: 'text-right',
+      renderCell: (product) => (
+        <div className="flex items-center justify-end space-x-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="p-1.5 text-text-muted hover:text-accent-blue-neon"
+            onClick={(e) => { e.stopPropagation(); navigate(`/produtos/editar/${product.id}`); }}
+            aria-label={`Editar ${product.name}`}
+            title="Editar Produto"
+          >
+            <PencilIcon className="h-5 w-5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="p-1.5 text-text-muted hover:text-accent-blue-neon"
+            onClick={(e) => { e.stopPropagation(); handleCopyLink(product); }}
+            disabled={!product.slug}
+            aria-label={`Copiar link de ${product.name}`}
+            title="Copiar Link do Checkout"
+          >
+            {copiedLinkForProductId === product.id ? <CheckIcon className="h-5 w-5 text-status-success" /> : <LinkActionIcon className="h-5 w-5" />}
+          </Button>
+
+          <DropdownMenuPrimitive.Root>
+            <DropdownMenuPrimitive.Trigger asChild>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="p-1.5 text-text-muted hover:text-accent-blue-neon data-[state=open]:bg-neutral-700"
+                onClick={(e) => e.stopPropagation()} // Prevent row click when opening menu
+                aria-label={`Mais ações para ${product.name}`}
+                title="Mais Ações"
+              >
+                <EllipsisVerticalIcon className="h-5 w-5" />
+              </Button>
+            </DropdownMenuPrimitive.Trigger>
+            <DropdownMenuPrimitive.Portal>
+              <DropdownMenuPrimitive.Content
+                sideOffset={5}
+                align="end"
+                className={cn(
+                  "z-50 min-w-[190px] origin-top-right overflow-hidden rounded-xl border border-border-subtle bg-bg-surface bg-opacity-80 backdrop-blur-lg p-1.5 shadow-2xl",
+                  "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+                  "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
+                  "data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2"
+                )}
+                onClick={(e) => e.stopPropagation()} // Prevent row click when interacting with menu content
+              >
+                <DropdownMenuPrimitive.Item
+                  onSelect={(e) => { e.stopPropagation(); handleViewCheckoutInNewTab(product); }}
+                  disabled={!product.slug}
+                  className={cn(
+                    "group relative flex cursor-pointer select-none items-center rounded-lg px-3 py-2.5 text-sm text-text-default outline-none transition-colors",
+                    "data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-white/10 data-[highlighted]:text-accent-blue-neon"
+                  )}
+                >
+                  <ExternalLinkIconHero className="mr-2.5 h-5 w-5 text-text-muted group-data-[highlighted]:text-accent-blue-neon" />
+                  Visualizar Checkout
+                </DropdownMenuPrimitive.Item>
+                <DropdownMenuPrimitive.Item
+                  onSelect={(e) => { e.stopPropagation(); handleCloneProduct(product.id); }}
+                  disabled={isCloning === product.id}
+                  className={cn(
+                    "group relative flex cursor-pointer select-none items-center rounded-lg px-3 py-2.5 text-sm text-text-default outline-none transition-colors",
+                    "data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-white/10 data-[highlighted]:text-accent-blue-neon"
+                  )}
+                >
+                  {isCloning === product.id ? <LoadingSpinner size="sm" className="mr-2.5 h-5 w-5"/> : <Square2StackIconHero className="mr-2.5 h-5 w-5 text-text-muted group-data-[highlighted]:text-accent-blue-neon" />}
+                  Duplicar Produto
+                </DropdownMenuPrimitive.Item>
+                <DropdownMenuPrimitive.Separator className="h-px bg-border-subtle my-1" />
+                <DropdownMenuPrimitive.Item
+                  onSelect={(e) => { e.stopPropagation(); openDeleteModal(product); }}
+                  className={cn(
+                    "group relative flex cursor-pointer select-none items-center rounded-lg px-3 py-2.5 text-sm text-status-error outline-none transition-colors",
+                    "data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-status-error/10 data-[highlighted]:text-status-error"
+                  )}
+                >
+                  <TrashActionIcon className="mr-2.5 h-5 w-5 text-status-error/80 group-data-[highlighted]:text-status-error" />
+                  Excluir
+                </DropdownMenuPrimitive.Item>
+              </DropdownMenuPrimitive.Content>
+            </DropdownMenuPrimitive.Portal>
+          </DropdownMenuPrimitive.Root>
+        </div>
+      ),
+    },
+  ];
+  
+  if (isLoading && allProducts.length === 0) {
     return <div className="flex justify-center items-center h-64"><LoadingSpinner size="lg" /></div>;
-  }
-
-  if (error) {
-    return <div className="text-center text-red-400 p-4 bg-red-800/20 rounded-md">{error}</div>;
   }
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-neutral-100">Meus Produtos</h1>
+        <h1 className="text-3xl font-display font-bold text-text-strong">Meus Produtos</h1>
         <Button to="/produtos/novo" variant="primary" leftIcon={<PlusIcon className="h-5 w-5"/>}>
           Criar Produto
         </Button>
       </div>
 
-      {products.length === 0 && !isLoading ? (
-        <Card className="text-center py-12">
-          <CubeIcon className="h-16 w-16 text-neutral-400 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-neutral-100 mb-2">Nenhum produto encontrado</h3>
-          <p className="text-neutral-400 mb-6">Crie seu primeiro produto para começar a vender.</p>
-          <Button to="/produtos/novo" variant="primary" leftIcon={<PlusIcon className="h-5 w-5"/>}>
-            Criar Primeiro Produto
-          </Button>
-        </Card>
-      ) : (
-        <div className="overflow-x-auto">
-          <Card className="shadow-xl p-0 sm:p-0 border-neutral-700"> 
-            <table className="min-w-full divide-y divide-neutral-700">
-              <thead className="bg-neutral-700/50"> 
-                <tr>
-                  <th scope="col" className="px-6 py-4 text-left text-xs font-medium text-neutral-300 uppercase tracking-wider">Nome</th>
-                  <th scope="col" className="px-6 py-4 text-left text-xs font-medium text-neutral-300 uppercase tracking-wider">Preço</th>
-                  <th scope="col" className="px-6 py-4 text-left text-xs font-medium text-neutral-300 uppercase tracking-wider">Vendas</th>
-                  <th scope="col" className="px-6 py-4 text-left text-xs font-medium text-neutral-300 uppercase tracking-wider">Conversão</th>
-                  <th scope="col" className="px-6 py-4 text-right text-xs font-medium text-neutral-300 uppercase tracking-wider">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="bg-neutral-800 divide-y divide-neutral-700">
-                {products.map((product) => (
-                  <tr key={product.id} className="hover:bg-neutral-700/70 transition-colors duration-150"> 
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-neutral-100">{product.name}</div>
-                      <div className="text-xs text-neutral-400 truncate max-w-xs">{product.description}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-300">
-                      R$ {(product.priceInCents / 100).toFixed(2).replace('.',',')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-300">{product.totalSales || 0}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-300">
-                      {product.conversionRate !== undefined ? `${product.conversionRate.toFixed(1)}%` : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-1">
-                      <Button variant="ghost" size="sm" title="Ver Checkout" onClick={() => product.slug && navigate(`/checkout/${product.slug}`)} className="text-primary hover:text-primary-dark p-1.5" disabled={!product.slug}>
-                        <EyeIcon className="h-5 w-5" />
-                      </Button>
-                      <Button variant="ghost" size="sm" title="Copiar Link do Checkout" onClick={() => handleCopyLink(product)} className="text-neutral-400 hover:text-primary p-1.5" disabled={!product.slug}>
-                        {copiedLinkForProductId === product.id ? <CheckCircleIcon className="h-5 w-5 text-green-400" /> : <DocumentDuplicateIconDefault className="h-5 w-5" />}
-                      </Button>
-                       <Button variant="ghost" size="sm" title="Clonar" onClick={() => handleCloneProduct(product.id)} disabled={isCloning === product.id} isLoading={isCloning === product.id} className="text-neutral-400 hover:text-primary p-1.5">
-                        <DocumentDuplicateIconDefault className="h-5 w-5" />
-                      </Button>
-                      <Button variant="ghost" size="sm" title="Editar" onClick={() => navigate(`/produtos/editar/${product.id}`)} className="text-neutral-300 hover:text-primary p-1.5">
-                        <PencilIcon className="h-5 w-5" />
-                      </Button>
-                      <Button variant="ghost" size="sm" title="Excluir" onClick={() => openDeleteModal(product)} className="text-red-500 hover:text-red-400 p-1.5">
-                        <TrashIconDefault className="h-5 w-5" />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        </div>
-      )}
+      {error && <div className="text-center text-status-error p-4 bg-status-error/10 rounded-xl border border-status-error/30">{error}</div>}
       
-      <Modal isOpen={isDeleteModalOpen} onClose={closeDeleteModal} title="Confirmar Exclusão">
-        <p className="text-neutral-300">
-          Você tem certeza que deseja excluir o produto "{productToDelete?.name}"? Esta ação não poderá ser desfeita.
-        </p>
-        <div className="mt-6 flex justify-end space-x-3">
-          <Button variant="ghost" onClick={closeDeleteModal} disabled={isLoading && !!productToDelete}>Cancelar</Button>
-          <Button variant="danger" onClick={handleDeleteProduct} isLoading={isLoading && !!productToDelete}>Excluir Produto</Button>
-        </div>
-      </Modal>
+      <Card className="p-0 sm:p-0">
+        <Table<Product>
+            headers={productTableHeaders}
+            data={paginatedProducts}
+            rowKey="id"
+            isLoading={isLoading}
+            onRowClick={handleRowClick} // Added row click handler
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+            itemsPerPage={ITEMS_PER_PAGE}
+            totalItems={allProducts.length}
+            emptyStateMessage={
+              <div className="text-center py-12">
+                  <CubeIcon className="h-16 w-16 text-text-muted/70 mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold text-text-strong mb-2">Nenhum produto encontrado</h3>
+                  <p className="text-text-default mb-6">Crie seu primeiro produto para começar a vender.</p>
+                  <Button to="/produtos/novo" variant="primary" leftIcon={<PlusIcon className="h-5 w-5"/>}>
+                    Criar Primeiro Produto
+                  </Button>
+              </div>
+            }
+        />
+      </Card>
+
+      {productToDelete && (
+        <AlertDialog
+            isOpen={isDeleteModalOpen}
+            onOpenChange={setIsDeleteModalOpen}
+            onClose={closeDeleteModal}
+            title="Confirmar Exclusão"
+            description={<>Você tem certeza que deseja excluir o produto <span className="font-semibold text-text-strong">"{productToDelete?.name}"</span>? Esta ação não poderá ser desfeita.</>}
+            onConfirm={handleDeleteProduct}
+            confirmText="Excluir Produto"
+            cancelText="Cancelar"
+            confirmButtonVariant="danger"
+        />
+      )}
     </div>
   );
 };

@@ -2,13 +2,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
-import { Button, ToggleSwitch } from '@/components/ui/Button';
+import { Button } from '@/components/ui/Button';
+import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Modal } from '@/components/ui/Modal';
 import { settingsService } from '@/services/settingsService';
 import { AppSettings, PixelIntegration, PixelType } from '@/types';
 import { LinkIcon, KeyIcon, PlusIcon, PencilIcon, TrashIcon, TagIcon } from '../constants.tsx';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/contexts/ToastContext'; // Import useToast
 
 const PIXEL_TYPES: PixelType[] = ['Facebook Pixel', 'Google Ads', 'GTM', 'TikTok Pixel'];
 
@@ -22,7 +24,7 @@ const initialAppSettingsState: AppSettings = {
 };
 
 
-export const IntegracoesPage: React.FC = () => {
+const IntegracoesPage: React.FC = () => {
   // Estado para armazenar o objeto AppSettings completo carregado
   const [currentSettings, setCurrentSettings] = useState<AppSettings>(initialAppSettingsState);
 
@@ -35,8 +37,8 @@ export const IntegracoesPage: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  // Removed: const [error, setError] = useState<string | null>(null);
+  // Removed: const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const [isPixelModalOpen, setIsPixelModalOpen] = useState(false);
   const [editingPixel, setEditingPixel] = useState<PixelIntegration | null>(null);
@@ -47,15 +49,15 @@ export const IntegracoesPage: React.FC = () => {
 
 
   const { accessToken, isLoading: authIsLoading } = useAuth(); 
+  const { showToast } = useToast(); // Get showToast function
 
   const fetchSettings = useCallback(async () => {
     if (!accessToken) {
-      setError("Autenticação necessária para carregar configurações.");
+      showToast({ title: "Erro de Autenticação", description: "Autenticação necessária para carregar configurações.", variant: "error" });
       setIsLoading(false);
       return;
     }
     setIsLoading(true); 
-    setError(null);
     try {
       const settings = await settingsService.getAppSettings(accessToken);
       setCurrentSettings(settings); // Armazena as configurações completas
@@ -67,13 +69,13 @@ export const IntegracoesPage: React.FC = () => {
       setUtmifyEnabled(settings.apiTokens?.utmifyEnabled || false);
       setPixelIntegrations(settings.pixelIntegrations || []);
 
-    } catch (err) {
-      setError('Falha ao carregar configurações de integração.');
+    } catch (err: any) {
+      showToast({ title: "Erro ao Carregar", description: 'Falha ao carregar configurações de integração.', variant: "error" });
       console.error(err);
     } finally {
       setIsLoading(false); 
     }
-  }, [accessToken]);
+  }, [accessToken, showToast]);
 
   useEffect(() => {
     if (authIsLoading) { 
@@ -84,19 +86,17 @@ export const IntegracoesPage: React.FC = () => {
         fetchSettings();
     } else {
         setIsLoading(false); 
-        setError("Faça login para gerenciar integrações.");
+        showToast({ title: "Acesso Negado", description: "Faça login para gerenciar integrações.", variant: "error" });
     }
-  }, [fetchSettings, accessToken, authIsLoading]);
+  }, [fetchSettings, accessToken, authIsLoading, showToast]);
 
   const handleSubmitApiTokens = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!accessToken) {
-        setError("Autenticação necessária para salvar configurações.");
+        showToast({ title: "Erro de Autenticação", description: "Autenticação necessária para salvar configurações.", variant: "error" });
         return;
     }
     setIsSaving(true);
-    setError(null);
-    setSuccessMessage(null);
 
     try {
       const currentApiTokensToSave = {
@@ -115,9 +115,9 @@ export const IntegracoesPage: React.FC = () => {
       console.log("[IntegracoesPage] Saving API Tokens, full settings object being sent to service:", settingsToSave);
       await settingsService.saveAppSettings(settingsToSave, accessToken);
       setCurrentSettings(settingsToSave); 
-      setSuccessMessage('Configurações de API salvas com sucesso!');
+      showToast({ title: "Sucesso!", description: 'Configurações de API salvas com sucesso!', variant: "success" });
     } catch (err: any) {
-      setError(err.message || 'Falha ao salvar tokens de API.');
+      showToast({ title: "Erro ao Salvar", description: err.message || 'Falha ao salvar tokens de API.', variant: "error" });
     } finally {
       setIsSaving(false);
     }
@@ -179,10 +179,10 @@ export const IntegracoesPage: React.FC = () => {
     setPixelIntegrations(updatedPixelsList); 
     
     if (!accessToken) {
-        setError("Autenticação necessária para salvar configurações.");
+        showToast({ title: "Erro de Autenticação", description: "Autenticação necessária para salvar configurações.", variant: "error" });
         return;
     }
-    setIsSaving(true); setError(null); setSuccessMessage(null);
+    setIsSaving(true); 
     try {
         const settingsToSave: AppSettings = {
             ...currentSettings, 
@@ -197,10 +197,10 @@ export const IntegracoesPage: React.FC = () => {
         console.log("[IntegracoesPage] Saving Pixel, full settings object:", settingsToSave);
         await settingsService.saveAppSettings(settingsToSave, accessToken);
         setCurrentSettings(settingsToSave); 
-        setSuccessMessage('Pixel salvo com sucesso!');
+        showToast({ title: "Sucesso!", description: 'Pixel salvo com sucesso!', variant: "success" });
         closePixelModal();
     } catch (err: any) {
-        setError(err.message || 'Falha ao salvar pixel.');
+      showToast({ title: "Erro ao Salvar Pixel", description: err.message || 'Falha ao salvar pixel.', variant: "error" });
     } finally {
         setIsSaving(false);
     }
@@ -211,10 +211,10 @@ export const IntegracoesPage: React.FC = () => {
     setPixelIntegrations(updatedPixelsList); 
 
     if (!accessToken) {
-        setError("Autenticação necessária para salvar configurações.");
+        showToast({ title: "Erro de Autenticação", description: "Autenticação necessária para salvar configurações.", variant: "error" });
         return;
     }
-    setIsSaving(true); setError(null); setSuccessMessage(null);
+    setIsSaving(true);
     try {
         const settingsToSave: AppSettings = {
             ...currentSettings,
@@ -229,9 +229,9 @@ export const IntegracoesPage: React.FC = () => {
         console.log("[IntegracoesPage] Deleting Pixel, full settings object:", settingsToSave);
         await settingsService.saveAppSettings(settingsToSave, accessToken);
         setCurrentSettings(settingsToSave); 
-        setSuccessMessage('Pixel excluído com sucesso!');
+        showToast({ title: "Sucesso!", description: 'Pixel excluído com sucesso!', variant: "success" });
     } catch (err: any) {
-        setError(err.message || 'Falha ao excluir pixel.');
+      showToast({ title: "Erro ao Excluir", description: err.message || 'Falha ao excluir pixel.', variant: "error" });
     } finally {
         setIsSaving(false);
     }
@@ -269,8 +269,7 @@ export const IntegracoesPage: React.FC = () => {
         <h1 className="text-3xl font-bold text-text-strong">Integrações</h1>
       </div>
 
-      {error && <p className="my-4 text-sm text-status-error p-3 bg-status-error/10 rounded-xl border border-status-error/30">{error}</p>}
-      {successMessage && <p className="my-4 text-sm text-status-success p-3 bg-status-success/10 rounded-xl border border-status-success/30">{successMessage}</p>}
+      {/* Toasts will appear via ToastContext provider */}
 
       <form onSubmit={handleSubmitApiTokens}>
         <Card title="Chaves de API (Tokens)">
@@ -278,7 +277,7 @@ export const IntegracoesPage: React.FC = () => {
                 <div className="space-y-3 p-4 border border-border-subtle rounded-lg bg-bg-surface">
                     <div className="flex justify-between items-center">
                         <h3 className="text-lg font-semibold text-text-strong">PushInPay (Gateway de Pagamento PIX)</h3>
-                        <ToggleSwitch label="Habilitar" srLabel="Habilitar PushInPay" enabled={pushinPayEnabled} onChange={setPushinPayEnabled} disabled={isSaving}/>
+                        <ToggleSwitch label="Habilitar" srLabel="Habilitar PushInPay" enabled={pushinPayEnabled} onEnabledChange={setPushinPayEnabled} disabled={isSaving}/>
                     </div>
                     <Input
                         label="Token da API PushInPay"
@@ -297,7 +296,7 @@ export const IntegracoesPage: React.FC = () => {
                  <div className="space-y-3 p-4 border border-border-subtle rounded-lg bg-bg-surface">
                     <div className="flex justify-between items-center">
                          <h3 className="text-lg font-semibold text-text-strong">UTMify (Rastreamento Avançado)</h3>
-                        <ToggleSwitch label="Habilitar" srLabel="Habilitar UTMify" enabled={utmifyEnabled} onChange={setUtmifyEnabled} disabled={isSaving}/>
+                        <ToggleSwitch label="Habilitar" srLabel="Habilitar UTMify" enabled={utmifyEnabled} onEnabledChange={setUtmifyEnabled} disabled={isSaving}/>
                     </div>
                     <Input
                         label="Token da API UTMify"
@@ -379,7 +378,7 @@ export const IntegracoesPage: React.FC = () => {
                      <Input label="ID do Pixel do TikTok" value={currentPixelSettings.pixelId || ''} onChange={(e) => handlePixelSettingChange('pixelId', e.target.value)} placeholder="Ex: ABCDEFGHIJKLMN" disabled={isSaving}/>
                 )}
                 
-                <ToggleSwitch label="Habilitar Pixel" enabled={currentPixelEnabled} onChange={setCurrentPixelEnabled} disabled={isSaving}/>
+                <ToggleSwitch label="Habilitar Pixel" enabled={currentPixelEnabled} onEnabledChange={setCurrentPixelEnabled} disabled={isSaving}/>
                 
                 {pixelModalError && <p className="text-sm text-status-error p-2 bg-status-error/10 rounded-md border border-status-error/30">{pixelModalError}</p>}
 
@@ -393,3 +392,5 @@ export const IntegracoesPage: React.FC = () => {
     </div>
   );
 };
+
+export default IntegracoesPage;

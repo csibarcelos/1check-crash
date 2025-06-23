@@ -1,9 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
-import { Modal } from '@/components/ui/Modal'; // Ajustado para alias @
-import { Input, Textarea } from '@/components/ui/Input'; // Ajustado para alias @
-import { Button } from '@/components/ui/Button'; // Ajustado para alias @
-import { Coupon } from '@/types'; // Ajustado para alias @
+import { Modal } from '@/components/ui/Modal'; 
+import { Input, Textarea } from '@/components/ui/Input'; 
+import { Button } from '@/components/ui/Button'; 
+import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
+import { Coupon } from '@/types'; 
 
 export interface CouponFormModalProps {
   isOpen: boolean;
@@ -22,6 +22,10 @@ export const CouponFormModal: React.FC<CouponFormModalProps> = ({ isOpen, onClos
   const [maxUses, setMaxUses] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [modalError, setModalError] = useState('');
+
+  const selectClasses = "block w-full px-4 py-2.5 border rounded-xl shadow-sm focus:outline-none sm:text-sm transition-all duration-150 ease-in-out bg-bg-surface bg-opacity-60 backdrop-blur-sm border-border-subtle focus:border-accent-blue-neon focus:ring-1 focus:ring-accent-blue-neon text-text-strong placeholder-text-muted";
+  // const checkboxClasses = "h-4 w-4 rounded border-border-subtle text-accent-blue-neon focus:ring-accent-blue-neon focus:ring-offset-bg-surface bg-bg-surface"; // Checkbox classes not used, can be removed if not planned
+
 
   useEffect(() => {
     if (isOpen) { 
@@ -74,41 +78,39 @@ export const CouponFormModal: React.FC<CouponFormModalProps> = ({ isOpen, onClos
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={existingCoupon ? "Editar Cupom" : "Adicionar Novo Cupom"}>
-      <div className="space-y-4 text-neutral-300">
+      <div className="space-y-4 text-text-default">
         <Input label="Código do Cupom (Ex: PROMO10)" value={code} onChange={e => setCode(e.target.value)} required />
         <Textarea label="Descrição (Interna, opcional)" value={description} onChange={e => setDescription(e.target.value)} rows={2} placeholder="Ex: Cupom de lançamento para primeiros clientes"/>
-        <div className="flex items-center space-x-4">
-          <div className="flex-1">
-            <label htmlFor="discountType" className="block text-sm font-medium text-neutral-300 mb-1">Tipo de Desconto</label>
+        <div className="flex flex-col sm:flex-row items-start sm:items-end space-y-4 sm:space-y-0 sm:space-x-4">
+          <div className="flex-1 w-full sm:w-auto">
+            <label htmlFor="discountType" className="block text-sm font-medium text-text-default mb-1.5">Tipo de Desconto</label>
             <select 
               id="discountType" 
               value={discountType} 
               onChange={e => setDiscountType(e.target.value as 'percentage' | 'fixed')} 
-              className="mt-1 block w-full p-2.5 border rounded-md shadow-sm focus:outline-none sm:text-sm transition-colors duration-150 bg-neutral-800 border-neutral-600 focus:border-primary focus:ring-2 focus:ring-primary/70 text-neutral-100 placeholder-neutral-400"
+              className={selectClasses}
             >
               <option value="percentage">Porcentagem (%)</option>
               <option value="fixed">Valor Fixo (R$)</option>
             </select>
           </div>
-          <Input label={`Valor ${discountType === 'percentage' ? '(%)' : '(R$)'}`} type="number" step="any" value={discountValue} onChange={e => setDiscountValue(e.target.value)} required className="flex-1" />
+          <Input label={`Valor ${discountType === 'percentage' ? '(%)' : '(R$)'}`} type="number" step="any" value={discountValue} onChange={e => setDiscountValue(e.target.value)} required className="flex-1 w-full sm:w-auto" />
         </div>
         <Input label="Máximo de Usos (Opcional)" type="number" value={maxUses} onChange={e => setMaxUses(e.target.value)} placeholder="Deixe em branco para ilimitado"/>
-        <Input label="Data de Expiração (Opcional)" type="date" value={expiresAt} onChange={e => setExpiresAt(e.target.value)} 
-               className="bg-neutral-800 border-neutral-600 text-neutral-100 focus:border-primary focus:ring-primary/70 [&::-webkit-calendar-picker-indicator]:bg-neutral-500 [&::-webkit-calendar-picker-indicator]:rounded-sm"
+        <Input 
+            label="Data de Expiração (Opcional)" 
+            type="date" 
+            value={expiresAt} 
+            onChange={e => setExpiresAt(e.target.value)} 
+            className="appearance-none bg-bg-surface bg-opacity-60 [&::-webkit-calendar-picker-indicator]:bg-text-muted [&::-webkit-calendar-picker-indicator]:rounded-sm [&::-webkit-calendar-picker-indicator]:p-0.5 [&::-webkit-calendar-picker-indicator]:filter_invert"
         />
 
-        <div className="flex items-center justify-between">
-            <label htmlFor="isAutomatic" className="text-sm font-medium text-neutral-300 flex items-center">
-                Aplicar automaticamente?
-                <input type="checkbox" id="isAutomatic" checked={isAutomatic} onChange={e => setIsAutomatic(e.target.checked)} className="ml-2 h-4 w-4 text-primary border-neutral-500 rounded focus:ring-primary bg-neutral-700 focus:ring-offset-neutral-800"/>
-            </label>
-             <label htmlFor="isActive" className="text-sm font-medium text-neutral-300 flex items-center">
-                Ativo?
-                <input type="checkbox" id="isActive" checked={isActive} onChange={e => setIsActive(e.target.checked)} className="ml-2 h-4 w-4 text-primary border-neutral-500 rounded focus:ring-primary bg-neutral-700 focus:ring-offset-neutral-800"/>
-            </label>
+        <div className="flex items-center justify-between pt-2">
+            <ToggleSwitch label="Aplicar automaticamente?" enabled={isAutomatic} onEnabledChange={setIsAutomatic} size="md" />
+            <ToggleSwitch label="Cupom Ativo?" enabled={isActive} onEnabledChange={setIsActive} size="md" />
         </div>
-        {modalError && <p className="text-sm text-red-400 p-2 bg-red-800/20 rounded-md border border-red-600/50">{modalError}</p>}
-        <div className="flex justify-end space-x-3 pt-3">
+        {modalError && <p className="text-sm text-status-error p-3 bg-status-error/10 rounded-xl border border-status-error/30">{modalError}</p>}
+        <div className="flex justify-end space-x-3 pt-4 border-t border-border-subtle">
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
           <Button variant="primary" onClick={handleSaveCoupon}>Salvar Cupom</Button>
         </div>

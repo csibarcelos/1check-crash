@@ -1,8 +1,11 @@
 
+
 import React from 'react';
 import { createRoot } from 'react-dom/client'; 
 import { RouterProvider } from 'react-router-dom'; // Corrected import
 import { AuthProvider } from '@/contexts/AuthContext';
+import { ToastProvider } from '@/contexts/ToastContext';
+import { Toaster } from '@/components/ui/Toast';
 import '@/global.css';
 import { router } from '@/router'; 
 
@@ -15,7 +18,10 @@ const root = createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <AuthProvider>
-      <RouterProvider router={router} />
+      <ToastProvider>
+        <RouterProvider router={router} />
+        <Toaster />
+      </ToastProvider>
     </AuthProvider>
   </React.StrictMode>
 );

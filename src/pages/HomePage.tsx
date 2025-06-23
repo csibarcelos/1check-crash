@@ -2,9 +2,9 @@
 import React from 'react';
 import { Link } from "react-router-dom"; 
 import { Button } from '@/components/ui/Button';
-import { AppLogoIcon, CheckCircleIcon } from '../constants.tsx'; 
+import { AppLogoIcon, CheckIcon } from '../constants.tsx'; 
 
-export const HomePage: React.FC = () => {
+const HomePage: React.FC = () => {
   const testimonials = [
     { id: 1, name: "Ana Silva", role: "Empreendedora Digital", quote: "Esta plataforma revolucionou minhas vendas online! O checkout é rápido e a personalização é incrível.", avatar: "https://i.pravatar.cc/100?u=ana" },
     { id: 2, name: "Carlos Pereira", role: "Infoprodutor", quote: "Finalmente uma solução completa que entende as necessidades de quem vende na internet. O rastreamento UTM é perfeito!", avatar: "https://i.pravatar.cc/100?u=carlos" },
@@ -12,12 +12,12 @@ export const HomePage: React.FC = () => {
   ];
 
   const features = [
-    { name: "Checkout Otimizado", description: "Máxima conversão com PIX facilitado e personalização total.", icon: CheckCircleIcon },
-    { name: "Taxas Justas: R$1 + 1%", description: "Sem mensalidades ou taxas escondidas. Pague apenas pelo que vender.", icon: CheckCircleIcon },
-    { name: "Personalização Total", description: "Deixe o checkout com a cara da sua marca em minutos.", icon: CheckCircleIcon },
-    { name: "Rastreamento Avançado", description: "UTMify integrado para dados precisos de suas campanhas.", icon: CheckCircleIcon },
-    { name: "Gestão Simplificada", description: "Acompanhe suas vendas e clientes de forma intuitiva.", icon: CheckCircleIcon },
-    { name: "Segurança e Confiança", description: "Ambiente seguro para você e seus clientes.", icon: CheckCircleIcon },
+    { name: "Checkout Otimizado", description: "Máxima conversão com PIX facilitado e personalização total.", icon: CheckIcon },
+    { name: "Taxas Justas: R$1 + 1%", description: "Sem mensalidades ou taxas escondidas. Pague apenas pelo que vender.", icon: CheckIcon },
+    { name: "Personalização Total", description: "Deixe o checkout com a cara da sua marca em minutos.", icon: CheckIcon },
+    { name: "Rastreamento Avançado", description: "UTMify integrado para dados precisos de suas campanhas.", icon: CheckIcon },
+    { name: "Gestão Simplificada", description: "Acompanhe suas vendas e clientes de forma intuitiva.", icon: CheckIcon },
+    { name: "Segurança e Confiança", description: "Ambiente seguro para você e seus clientes.", icon: CheckIcon },
   ];
 
   return (
@@ -126,3 +126,5 @@ export const HomePage: React.FC = () => {
     </div>
   );
 };
+
+export default HomePage;

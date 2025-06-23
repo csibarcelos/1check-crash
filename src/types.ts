@@ -78,6 +78,8 @@ export interface ProductCheckoutCustomization {
     backgroundColor?: string;
     textColor?: string;
   };
+  theme?: 'light' | 'dark'; // New: Checkout theme selection
+  showProductName?: boolean; // New: Toggle product name visibility on checkout
 }
 
 export type Json =
@@ -104,7 +106,7 @@ export interface Product {
   description: string;
   priceInCents: number;
   imageUrl?: string; 
-  checkoutCustomization: ProductCheckoutCustomization;
+  checkoutCustomization: ProductCheckoutCustomization | null; // Updated to allow null
   deliveryUrl?: string;
   totalSales?: number;
   clicks?: number;
@@ -114,7 +116,7 @@ export interface Product {
   orderBump?: OrderBumpOffer;
   upsell?: UpsellOffer;
   coupons?: Coupon[];
-  utmParams?: UtmParams; // Novo campo para parâmetros UTM
+  utmParams?: UtmParams | null; // Updated to allow null
 }
 
 // Sale

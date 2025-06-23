@@ -6,6 +6,7 @@ import { DEFAULT_CURRENCY } from '../constants.tsx';
 
 type SaleRow = Database['public']['Tables']['sales']['Row'];
 type SaleInsert = Database['public']['Tables']['sales']['Insert'];
+type SaleUpdate = Database['public']['Tables']['sales']['Update']; // Adicionado
 
 const parseJsonField = <T>(field: Json | null | undefined, defaultValue: T): T => { 
   if (field === null || field === undefined) return defaultValue;
@@ -59,7 +60,12 @@ export const salesService = {
   },
   getSaleById: async (id: string, _token: string | null): Promise<Sale | undefined> => { 
     try {
-      const { data, error } = await supabase.from('sales').select('*').or(`id.eq.${id},push_in_pay_transaction_id.eq.${id},upsell_push_in_pay_transaction_id.eq.${id}`).maybeSingle<SaleRow>();  
+      // Modificado para buscar por id OU push_in_pay_transaction_id
+      const { data, error } = await supabase
+        .from('sales')
+        .select('*')
+        .or(`id.eq.${id},push_in_pay_transaction_id.eq.${id},upsell_push_in_pay_transaction_id.eq.${id}`)
+        .maybeSingle<SaleRow>();  
       if (error) {
         if (error.code === 'PGRST116') return undefined; 
         const isMissingTableError = error.code === '42P01' || (typeof error.message === 'string' && error.message.toLowerCase().includes('relation') && error.message.toLowerCase().includes('does not exist'));
@@ -107,8 +113,8 @@ export const salesService = {
       original_amount_before_discount_in_cents: saleData.originalAmountBeforeDiscountInCents,
       discount_applied_in_cents: saleData.discountAppliedInCents,
       coupon_code_used: saleData.couponCodeUsed,
-      created_at: new Date().toISOString(),
-      paid_at: saleData.paidAt,
+      created_at: new Date().toISOString(), // Set creation timestamp here
+      paid_at: saleData.paidAt, // Will be undefined for WAITING_PAYMENT
       tracking_parameters: saleData.trackingParameters as unknown as Json,
       platform_commission_in_cents: platformCommissionCalculated,
       commission_total_price_in_cents: platformCommissionBase,
@@ -135,6 +141,46 @@ export const salesService = {
     } catch (error: any) {
       console.error('Exception in createSale:', error);
       throw new Error(error.message || 'Falha geral ao criar venda.');
+    }
+  },
+
+  updateSaleStatus: async (
+    saleId: string,
+    updates: { status: PaymentStatus; paidAt?: string; },
+    _token: string | null 
+  ): Promise<Sale | undefined> => {
+    const updatePayload: SaleUpdate = {
+      status: updates.status,
+      updated_at: new Date().toISOString(),
+    };
+    if (updates.paidAt) {
+      updatePayload.paid_at = updates.paidAt;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('sales')
+        .update(updatePayload)
+        .eq('id', saleId)
+        .select()
+        .single<SaleRow>();
+
+      if (error) {
+        console.error(`Supabase updateSaleStatus error for sale ${saleId}:`, error);
+        if (error.code === 'PGRST116') { 
+          console.warn(`Venda ${saleId} não encontrada para atualização de status.`);
+          return undefined;
+        }
+        throw new Error(error.message || `Falha ao atualizar status da venda ${saleId}.`);
+      }
+      if (!data) {
+        console.warn(`Atualização da venda ${saleId} não retornou dados, mas sem erro.`);
+        return undefined; 
+      }
+      return fromSupabaseSaleRow(data);
+    } catch (genericError: any) {
+      console.error(`Exception in updateSaleStatus for sale ${saleId}:`, genericError);
+      throw new Error(genericError.message || `Falha geral ao atualizar status da venda ${saleId}.`);
     }
   },
 };

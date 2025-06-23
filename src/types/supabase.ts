@@ -1,4 +1,3 @@
-
 // types/supabase.ts
 // This file should ideally be populated by `supabase gen types typescript`.
 // The structure below is based on the assumed database schema.
@@ -57,7 +56,7 @@ export interface Database {
           description: string
           price_in_cents: number
           image_url: string | null
-          checkout_customization: Json
+          checkout_customization: Json | null // Updated to allow null
           delivery_url: string | null
           total_sales: number | null
           clicks: number | null
@@ -67,7 +66,7 @@ export interface Database {
           order_bump: Json | null
           upsell: Json | null
           coupons: Json | null
-          utm_params: Json | null // Novo campo
+          utm_params: Json | null // Updated to allow null
           created_at: string
           updated_at: string
         }
@@ -79,7 +78,7 @@ export interface Database {
           description: string
           price_in_cents: number
           image_url?: string | null
-          checkout_customization?: Json
+          checkout_customization?: Json | null // Updated to allow null
           delivery_url?: string | null
           total_sales?: number | null
           clicks?: number | null
@@ -89,7 +88,7 @@ export interface Database {
           order_bump?: Json | null
           upsell?: Json | null
           coupons?: Json | null
-          utm_params?: Json | null // Novo campo
+          utm_params?: Json | null // Updated to allow null
           created_at?: string
           updated_at?: string
         }
@@ -101,7 +100,7 @@ export interface Database {
           description?: string
           price_in_cents?: number
           image_url?: string | null
-          checkout_customization?: Json
+          checkout_customization?: Json | null // Updated to allow null
           delivery_url?: string | null
           total_sales?: number | null
           clicks?: number | null
@@ -111,7 +110,7 @@ export interface Database {
           order_bump?: Json | null
           upsell?: Json | null
           coupons?: Json | null
-          utm_params?: Json | null // Novo campo
+          utm_params?: Json | null // Updated to allow null
           created_at?: string
           updated_at?: string
         }

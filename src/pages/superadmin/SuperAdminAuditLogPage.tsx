@@ -6,8 +6,9 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { AuditLogEntry } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
-import { TableCellsIcon } from '@heroicons/react/24/outline'; 
-import { superAdminService } from '@/services/superAdminService'; 
+import { TableCellsIcon } from '@heroicons/react/24/outline';
+import { superAdminService } from '@/services/superAdminService';
+import { Table, TableHeader } from '@/components/ui/Table'; // Import Table
 
 const formatTimestamp = (timestamp: string): string => {
   return new Date(timestamp).toLocaleString('pt-BR', {
@@ -31,7 +32,7 @@ const getActionTypeLabel = (actionType: string): string => {
     return actionTypeLabels[actionType] || actionType;
 };
 
-export const SuperAdminAuditLogPage: React.FC = () => {
+const SuperAdminAuditLogPage: React.FC = () => {
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,10 +50,8 @@ export const SuperAdminAuditLogPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const logsData = await superAdminService.getAllAuditLogs(accessToken); 
+      const logsData = await superAdminService.getAllAuditLogs(accessToken);
       setAuditLogs(logsData);
-      if (logsData.length === 0) {
-      }
     } catch (err: any) {
       if (err.message && err.message.includes('relation "public.audit_log_entries" does not exist') || (err.code && err.code === '42P01')) {
         setError("A tabela de logs de auditoria (audit_log_entries) parece não existir no banco de dados. Por favor, crie-a para visualizar os logs.");
@@ -78,70 +77,64 @@ export const SuperAdminAuditLogPage: React.FC = () => {
     setIsDetailsModalOpen(false);
   };
 
-  if (isLoading) {
-    return <div className="flex justify-center items-center h-64"><LoadingSpinner size="lg" /></div>;
+  const auditLogTableHeaders: TableHeader<AuditLogEntry>[] = [
+    { key: 'timestamp', label: 'Data/Hora', renderCell: (log) => formatTimestamp(log.timestamp) },
+    { key: 'actorEmail', label: 'Ator (Email)' },
+    { key: 'actionType', label: 'Tipo de Ação', renderCell: (log) => getActionTypeLabel(log.actionType) },
+    { key: 'description', label: 'Descrição', className: 'max-w-md' },
+    {
+      key: 'target',
+      label: 'Alvo',
+      renderCell: (log) => (
+        log.targetEntityType && log.targetEntityId ? `${log.targetEntityType}: ${log.targetEntityId.substring(0,15)}...` : 'N/A'
+      ),
+    },
+    {
+      key: 'details',
+      label: 'Detalhes',
+      renderCell: (log) => (
+        log.details && Object.keys(log.details).length > 0 && (
+          <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleOpenDetailsModal(log); }} className="text-accent-blue-neon hover:text-opacity-80">
+            Ver Detalhes
+          </Button>
+        )
+      ),
+    },
+  ];
+
+  if (isLoading && auditLogs.length === 0) {
+    return <div className="flex justify-center items-center h-64"><LoadingSpinner size="lg" /><p className="ml-2 text-text-muted">Carregando...</p></div>;
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-3">
-        <TableCellsIcon className="h-8 w-8 text-primary" />
-        <h1 className="text-3xl font-bold text-neutral-800">Log de Auditoria ({auditLogs.length})</h1>
+        <TableCellsIcon className="h-8 w-8 text-accent-blue-neon" />
+        <h1 className="text-3xl font-display font-bold text-text-strong">Log de Auditoria ({auditLogs.length})</h1>
       </div>
 
-      {error && <p className="text-red-500 bg-red-50 p-3 rounded-md">{error}</p>}
+      {error && <p className="text-status-error bg-status-error/10 p-3 rounded-xl border border-status-error/30">{error}</p>}
 
       <Card className="p-0 sm:p-0">
-        {auditLogs.length === 0 && !isLoading ? (
-          <p className="p-6 text-center text-neutral-500">{error || "Nenhuma entrada de log de auditoria encontrada."}</p>
-        ) : auditLogs.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-neutral-200">
-              <thead className="bg-neutral-100">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Data/Hora</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Ator (Email)</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Tipo de Ação</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Descrição</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Alvo</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Detalhes</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-neutral-200">
-                {auditLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-primary-light/10">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-500">{formatTimestamp(log.timestamp)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-700">{log.actorEmail}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-700">{getActionTypeLabel(log.actionType)}</td>
-                    <td className="px-6 py-4 whitespace-normal text-sm text-neutral-700 max-w-md">{log.description}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-500">
-                        {log.targetEntityType && log.targetEntityId ? `${log.targetEntityType}: ${log.targetEntityId.substring(0,15)}...` : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {log.details && Object.keys(log.details).length > 0 && (
-                        <Button variant="ghost" size="sm" onClick={() => handleOpenDetailsModal(log)}>
-                          Ver Detalhes
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
+        <Table<AuditLogEntry>
+            headers={auditLogTableHeaders}
+            data={auditLogs}
+            rowKey="id"
+            isLoading={isLoading}
+            emptyStateMessage={error || "Nenhuma entrada de log de auditoria encontrada."}
+        />
       </Card>
 
       {selectedLogEntry && selectedLogEntry.details && (
-        <Modal 
-          isOpen={isDetailsModalOpen} 
-          onClose={handleCloseDetailsModal} 
+        <Modal
+          isOpen={isDetailsModalOpen}
+          onClose={handleCloseDetailsModal}
           title={`Detalhes do Log: ${selectedLogEntry.id.substring(0,10)}...`}
           size="lg"
         >
           <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-            <h4 className="font-semibold text-neutral-700">Detalhes da Ação:</h4>
-            <pre className="bg-neutral-100 p-3 rounded-md text-xs whitespace-pre-wrap break-all">
+            <h4 className="font-semibold text-accent-gold">Detalhes da Ação:</h4>
+            <pre className="bg-bg-main p-3 rounded-md text-xs whitespace-pre-wrap break-all border border-border-subtle text-text-default">
               {JSON.stringify(selectedLogEntry.details, null, 2)}
             </pre>
           </div>
@@ -153,3 +146,5 @@ export const SuperAdminAuditLogPage: React.FC = () => {
     </div>
   );
 };
+
+export default SuperAdminAuditLogPage;

@@ -1,379 +1,403 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useParams } from "react-router-dom"; 
-import { Product, ProductCheckoutCustomization, OrderBumpOffer, UpsellOffer, Coupon, UtmParams } from '@/types';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useParams, useBlocker } from "react-router-dom";
+import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
+import { ProductForm } from '@/components/shared/ProductForm';
+import { Product } from '@/types';
 import { productService } from '@/services/productService';
-import { Button, ToggleSwitch } from '@/components/ui/Button';
-import { Input, Textarea } from '@/components/ui/Input';
-import { Card } from '@/components/ui/Card';
+import { utmifyService } from '@/services/utmifyService';
+import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { COLOR_PALETTE_OPTIONS, TrashIcon, PlusIcon, LinkIcon as UtmIcon } from '../constants.tsx'; 
+import { AlertDialog } from '@/components/ui/AlertDialog';
 import { useAuth } from '@/contexts/AuthContext';
-import { MiniEditor } from '@/components/shared/MiniEditor'; 
-import { CouponFormModal } from '@/components/shared/CouponFormModal'; 
+import { useToast } from '@/contexts/ToastContext';
+import {
+  ArrowUturnLeftIconHero, ExternalLinkIconHero, LinkIcon as LinkActionIcon, Square2StackIconHero,
+  TrashIcon as TrashActionIcon, ArrowDownTrayIcon, CheckIcon, EllipsisVerticalIcon, cn
+} from '../constants.tsx'; // Removed CheckCircleIcon as it's not used after removing "Save and Continue"
 
-const defaultUtmParams: UtmParams = {
-    source: '', medium: '', campaign: '', term: '', content: ''
-};
+const FORM_ID = "product-edit-form";
 
-export const ProductEditPage: React.FC = () => {
+const ProductEditPage: React.FC = () => {
   const navigate = useNavigate();
-  const { productId: currentProductId } = useParams<{ productId: string }>();
+  const { productId } = useParams<{ productId: string }>();
   const { accessToken } = useAuth();
+  const { showToast } = useToast();
 
-  const [product, setProduct] = useState<Product | null>(null);
-  const [productName, setProductName] = useState('');
-  const [description, setDescription] = useState('');
-  const [price, setPrice] = useState('');
-  const [imageUrl, setImageUrl] = useState(''); 
-  const [deliveryUrl, setDeliveryUrl] = useState('');
-  const [checkoutCustomization, setCheckoutCustomization] = useState<ProductCheckoutCustomization>({
-     primaryColor: '#0D9488', 
-     guaranteeBadges: [],
-     salesCopy: '',
-     countdownTimer: { enabled: false, durationMinutes: 15, messageBefore: '', messageAfter: '', backgroundColor: '#EF4444', textColor: '#FFFFFF' }
+  const [initialProductData, setInitialProductData] = useState<Product | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isCloning, setIsCloning] = useState(false);
+  const [userProductsForOffers, setUserProductsForOffers] = useState<Product[]>([]);
+
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isLeaveConfirmModalOpen, setIsLeaveConfirmModalOpen] = useState(false);
+  const [shouldNavigateAfterSave, setShouldNavigateAfterSave] = useState(false); // New state for navigation
+  
+  const formRef = useRef<HTMLFormElement>(null);
+
+  const blocker = useBlocker(() => {
+    if (hasUnsavedChanges) {
+      setIsLeaveConfirmModalOpen(true);
+      return true; 
+    }
+    return false; 
   });
-  const [utmParams, setUtmParams] = useState<UtmParams>(defaultUtmParams);
-
-  const [userProducts, setUserProducts] = useState<Product[]>([]);
-  const [orderBump, setOrderBump] = useState<OrderBumpOffer | undefined>(undefined);
-  const [upsell, setUpsell] = useState<UpsellOffer | undefined>(undefined);
-  const [coupons, setCoupons] = useState<Coupon[]>([]);
-
-  const [isLoading, setIsLoading] = useState(true); 
-  const [isFetchingRelatedData, setIsFetchingRelatedData] = useState(true); 
-  const [isSaving, setIsSaving] = useState(false); 
-  const [error, setError] = useState<string | null>(null);
-
-  const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
-  const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
-
 
   const fetchProductAndRelatedData = useCallback(async (id: string) => {
     if (!accessToken) {
-      setError("Autenticação necessária.");
+      showToast({ title: "Erro de Autenticação", description: "Autenticação necessária.", variant: "error" });
       setIsLoading(false);
-      setIsFetchingRelatedData(false);
       return;
     }
     setIsLoading(true);
-    setIsFetchingRelatedData(true);
-    setError(null);
+    setHasUnsavedChanges(false); 
+    setShouldNavigateAfterSave(false); // Reset on new data load
     try {
       const [fetchedProduct, allUserProducts] = await Promise.all([
         productService.getProductById(id, accessToken),
-        productService.getProducts(accessToken) 
+        productService.getProducts(accessToken)
       ]);
 
       if (fetchedProduct) {
-        setProduct(fetchedProduct);
-        setProductName(fetchedProduct.name);
-        setDescription(fetchedProduct.description);
-        setPrice((fetchedProduct.priceInCents / 100).toFixed(2).replace('.', ','));
-        setImageUrl(fetchedProduct.imageUrl || ''); 
-        setDeliveryUrl(fetchedProduct.deliveryUrl || '');
-        setCheckoutCustomization({ 
-            ...(fetchedProduct.checkoutCustomization || { primaryColor: '#0D9488' }), 
-            countdownTimer: fetchedProduct.checkoutCustomization?.countdownTimer || {
-                enabled: false, durationMinutes: 15, messageBefore: '', messageAfter: '', backgroundColor: '#EF4444', textColor: '#FFFFFF'
-            }
-        });
-        setUtmParams(fetchedProduct.utmParams || defaultUtmParams); // Load UTM params
-        setOrderBump(fetchedProduct.orderBump);
-        setUpsell(fetchedProduct.upsell);
-        setCoupons(fetchedProduct.coupons || []);
-        setUserProducts(allUserProducts.filter((p: Product) => p.id !== id));
+        setInitialProductData(fetchedProduct);
+        setUserProductsForOffers(allUserProducts.filter((p: Product) => p.id !== id));
       } else {
-        setError('Produto não encontrado.');
+        showToast({ title: "Erro", description: 'Produto não encontrado.', variant: "error" });
+        navigate('/produtos');
       }
-      
     } catch (err: any) {
-      setError(err.message || 'Falha ao carregar dados do produto e ofertas.');
+      showToast({ title: "Erro ao Carregar", description: err.message || 'Falha ao carregar dados do produto.', variant: "error" });
       console.error(err);
     } finally {
       setIsLoading(false);
-      setIsFetchingRelatedData(false);
     }
-  }, [accessToken]);
+  }, [accessToken, navigate, showToast]);
 
   useEffect(() => {
-    if (currentProductId) {
-      fetchProductAndRelatedData(currentProductId);
+    if (productId) {
+      fetchProductAndRelatedData(productId);
     } else {
-      setError("ID do produto não fornecido.");
-      setIsLoading(false);
-      setIsFetchingRelatedData(false);
-    }
-  }, [currentProductId, fetchProductAndRelatedData]);
-
-
-  const handleCustomizationChange = <K extends keyof ProductCheckoutCustomization, V extends ProductCheckoutCustomization[K]>(
-    field: K, value: V
-  ) => setCheckoutCustomization(prev => ({ ...prev, [field]: value }));
-
-  const handleCountdownTimerChange = <K extends keyof NonNullable<ProductCheckoutCustomization['countdownTimer']>>(
-    field: K,
-    value: NonNullable<ProductCheckoutCustomization['countdownTimer']>[K]
-  ) => {
-    setCheckoutCustomization(prev => ({
-      ...prev,
-      countdownTimer: {
-        ...(prev.countdownTimer || { enabled: false, durationMinutes: 15, messageBefore: '', messageAfter: '', backgroundColor: '#EF4444', textColor: '#FFFFFF' }),
-        [field]: value,
-      }
-    }));
-  };
-
-  const handleUtmParamChange = (param: keyof UtmParams, value: string) => {
-    setUtmParams(prev => ({ ...prev, [param]: value }));
-  };
-
-  const handleSalesCopyChange = (html: string) => handleCustomizationChange('salesCopy', html);
-  const addGuaranteeBadge = () => handleCustomizationChange('guaranteeBadges', [...(checkoutCustomization.guaranteeBadges || []), { id: `badge_${Date.now()}`, imageUrl: '', altText: '' }]);
-  const updateGuaranteeBadge = (id: string, field: 'imageUrl' | 'altText', value: string) => handleCustomizationChange('guaranteeBadges', (checkoutCustomization.guaranteeBadges || []).map(b => b.id === id ? { ...b, [field]: value } : b));
-  const removeGuaranteeBadge = (id: string) => handleCustomizationChange('guaranteeBadges', (checkoutCustomization.guaranteeBadges || []).filter(b => b.id !== id));
-
-  const handleOfferProductSelect = (type: 'bump' | 'upsell', selectedProdId: string) => {
-    const selectedProductOffer = userProducts.find(p => p.id === selectedProdId);
-    if (!selectedProductOffer) { 
-        if (type === 'bump') setOrderBump(undefined);
-        else setUpsell(undefined);
-        return;
-    }
-
-    const offerData = {
-      productId: selectedProductOffer.id, name: selectedProductOffer.name,
-      description: selectedProductOffer.description.substring(0, 100) + (selectedProductOffer.description.length > 100 ? '...' : ''),
-      customPriceInCents: selectedProductOffer.priceInCents, 
-      imageUrl: selectedProductOffer.imageUrl || selectedProductOffer.checkoutCustomization?.logoUrl || '',
-    };
-    if (type === 'bump') setOrderBump(offerData); else setUpsell(offerData);
-  };
-  const handleOfferPriceChange = (type: 'bump' | 'upsell', priceStr: string) => {
-    const priceNum = Math.round(parseFloat(priceStr.replace(',', '.')) * 100);
-    if (type === 'bump' && orderBump) setOrderBump(prev => prev ? { ...prev, customPriceInCents: isNaN(priceNum) ? prev.customPriceInCents : priceNum } : undefined);
-    else if (type === 'upsell' && upsell) setUpsell(prev => prev ? { ...prev, customPriceInCents: isNaN(priceNum) ? prev.customPriceInCents : priceNum } : undefined);
-  };
-  const removeOffer = (type: 'bump' | 'upsell') => { if (type === 'bump') setOrderBump(undefined); else setUpsell(undefined); };
-
-  const openCouponModal = (coupon?: Coupon) => { setEditingCoupon(coupon || null); setIsCouponModalOpen(true); };
-  const closeCouponModal = () => { setEditingCoupon(null); setIsCouponModalOpen(false); };
-  const saveCoupon = (couponData: Coupon) => {
-    if (editingCoupon) setCoupons(prev => prev.map(c => c.id === couponData.id ? couponData : c));
-    else setCoupons(prev => [...prev, { ...couponData, id: `coupon_${Date.now()}` }]);
-    closeCouponModal();
-  };
-  const deleteCoupon = (couponId: string) => setCoupons(prev => prev.filter(c => c.id !== couponId));
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    if (!currentProductId || !product) { setError('Erro: ID do produto ausente.'); return; }
-    if (!productName.trim() || !description.trim() || !price) { setError('Por favor, preencha nome, descrição e preço.'); return; }
-    const priceInCentsNum = Math.round(parseFloat(price.replace(',', '.')) * 100);
-    if (isNaN(priceInCentsNum) || priceInCentsNum <= 0) { setError('Por favor, insira um preço válido.'); return; }
-
-    setIsSaving(true); 
-    try {
-      const updatedProductData: Partial<Omit<Product, 'id' | 'platformUserId' | 'slug'>> = {
-        name: productName, description, priceInCents: priceInCentsNum,
-        imageUrl: imageUrl.trim(), 
-        deliveryUrl: deliveryUrl.trim(), 
-        checkoutCustomization,
-        orderBump: orderBump?.productId ? orderBump : undefined,
-        upsell: upsell?.productId ? upsell : undefined,
-        coupons: coupons.length > 0 ? coupons : undefined,
-        utmParams: Object.values(utmParams).some(val => typeof val === 'string' && val.trim() !== '') ? utmParams : undefined,
-      };
-      await productService.updateProduct(currentProductId, updatedProductData, accessToken);
+      showToast({ title: "Erro", description: "ID do produto não fornecido.", variant: "error" });
       navigate('/produtos');
+    }
+  }, [productId, fetchProductAndRelatedData, navigate, showToast]);
+
+  // Effect to handle navigation after a successful save (for direct save buttons)
+  useEffect(() => {
+    if (shouldNavigateAfterSave && !hasUnsavedChanges) {
+      navigate('/produtos');
+      setShouldNavigateAfterSave(false); // Reset flag
+    }
+  }, [shouldNavigateAfterSave, hasUnsavedChanges, navigate]);
+
+  // Effect to handle blocker proceeding after modal actions
+  useEffect(() => {
+    if (!hasUnsavedChanges && isLeaveConfirmModalOpen && blocker.state === 'blocked') {
+        setIsLeaveConfirmModalOpen(false);
+        blocker.proceed();
+    }
+  }, [hasUnsavedChanges, isLeaveConfirmModalOpen, blocker]);
+
+
+  const handleFormSubmit = async (formData: Omit<Product, 'id' | 'platformUserId' | 'slug' | 'totalSales' | 'clicks' | 'checkoutViews' | 'conversionRate' | 'abandonmentRate'>) => {
+    if (!productId) {
+      showToast({ title: "Erro", description: 'ID do produto ausente para atualização.', variant: "error" });
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const updatedProduct = await productService.updateProduct(productId, formData, accessToken);
+      showToast({ title: "Produto Atualizado!", description: "As alterações no produto foram salvas.", variant: "success" });
+      setHasUnsavedChanges(false); 
+      if (updatedProduct) {
+        setInitialProductData(updatedProduct);
+      } else {
+        await fetchProductAndRelatedData(productId); // Refetch if update didn't return full data
+      }
+      
+      // Navigation logic:
+      // If shouldNavigateAfterSave is true (set by direct "Salvar" button), the useEffect for it will handle navigation.
+      // If a blocker was active (e.g., "Salvar e Sair" from modal), the hasUnsavedChanges becoming false
+      // will trigger the other useEffect to call blocker.proceed().
+      // We don't navigate directly from here if a blocker might be involved to avoid race conditions.
+
     } catch (err: any) {
-      setError(err.message || 'Falha ao atualizar produto. Tente novamente.');
+      showToast({ title: "Erro ao Atualizar", description: err.message || 'Falha ao atualizar produto. Tente novamente.', variant: "error" });
       console.error(err);
     } finally {
-      setIsSaving(false); 
+      setIsSaving(false);
+    }
+  };
+  
+  const triggerFormSubmit = () => {
+    const formElement = formRef.current || document.getElementById(FORM_ID);
+    if (formElement instanceof HTMLFormElement) {
+        const submitEvent = new Event('submit', { cancelable: true, bubbles: true });
+        formElement.dispatchEvent(submitEvent);
+    } else {
+        showToast({ title: "Erro Interno", description: "Não foi possível submeter o formulário.", variant: "error"});
     }
   };
 
-  if (isLoading && !product) return <div className="flex justify-center items-center h-screen"><LoadingSpinner size="lg" /><p className="ml-2 text-neutral-300">Carregando produto...</p></div>;
-  if (error && !product) return <div className="text-center text-red-400 p-4 bg-red-800/20 rounded-md">{error} <Button onClick={() => navigate('/produtos')}>Voltar</Button></div>;
-  if (!product) return <div className="text-center text-neutral-400 p-4">Carregando...</div>;
+  const handleSave = () => {
+    setShouldNavigateAfterSave(true); // Signal that navigation should occur after successful save
+    triggerFormSubmit();
+  };
 
-  const countdownDurations = [
-    { label: 'Nenhum', value: 0 },
-    { label: '5 minutos', value: 5 },
-    { label: '10 minutos', value: 10 },
-    { label: '15 minutos', value: 15 },
-    { label: '20 minutos', value: 20 },
-    { label: '30 minutos', value: 30 },
-    { label: '60 minutos', value: 60 },
-  ];
+  const handleNavigateBack = () => {
+    if (hasUnsavedChanges) {
+      setIsLeaveConfirmModalOpen(true);
+    } else {
+      navigate('/produtos');
+    }
+  };
 
-  const orderBumpSelectValue = orderBump ? orderBump.productId : "";
-  const upsellSelectValue = upsell ? upsell.productId : "";
+  const handleViewCheckout = () => {
+    if (initialProductData?.slug) {
+      window.open(`${window.location.origin}/checkout/${initialProductData.slug}`, '_blank');
+    } else {
+      showToast({ title: "Ação Indisponível", description: "Salve o produto primeiro para gerar o link do checkout.", variant: "info" });
+    }
+  };
+
+  const handleCopyLinkAction = () => {
+    if (!initialProductData || !initialProductData.slug) {
+      showToast({ title: "Ação Indisponível", description: "Salve o produto primeiro para gerar o link.", variant: "info" });
+      return;
+    }
+    const checkoutUrl = `${window.location.origin}/checkout/${initialProductData.slug}`;
+    const utmifiedUrl = utmifyService.buildUtmifiedUrl(initialProductData, checkoutUrl);
+    navigator.clipboard.writeText(utmifiedUrl)
+      .then(() => {
+        setCopiedLink(true);
+        showToast({ title: "Link Copiado!", variant: "success", duration: 2000 });
+        setTimeout(() => setCopiedLink(false), 2000);
+      })
+      .catch(err => {
+        console.error('Failed to copy link: ', err);
+        showToast({ title: "Erro ao Copiar", description: "Não foi possível copiar o link.", variant: "error" });
+      });
+  };
+
+  const handleClone = async () => {
+    if (!productId || !accessToken) return;
+    setIsCloning(true);
+    try {
+      const clonedProduct = await productService.cloneProduct(productId, accessToken);
+      if (clonedProduct) {
+        setHasUnsavedChanges(false); 
+        showToast({ title: "Produto Clonado!", description: `Produto "${clonedProduct.name}" criado com sucesso. Você será redirecionado.`, variant: "success" });
+        navigate('/produtos'); 
+      } else {
+        showToast({ title: "Erro ao Clonar", description: "Não foi possível clonar o produto.", variant: "error" });
+      }
+    } catch (err: any) {
+      showToast({ title: "Erro ao Clonar", description: err.message || "Ocorreu um erro.", variant: "error" });
+    } finally {
+      setIsCloning(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!productId || !accessToken) return;
+    setIsDeleting(true);
+    try {
+      await productService.deleteProduct(productId, accessToken);
+      setHasUnsavedChanges(false); 
+      showToast({ title: "Produto Excluído!", description: "O produto foi excluído com sucesso.", variant: "success" });
+      navigate('/produtos'); 
+    } catch (err: any) {
+      showToast({ title: "Erro ao Excluir", description: err.message || "Não foi possível excluir o produto.", variant: "error" });
+    } finally {
+      setIsDeleting(false);
+      setIsDeleteModalOpen(false);
+    }
+  };
+  
+  const handleFormChange = useCallback(() => {
+    if (!isLoading) { 
+      setHasUnsavedChanges(true);
+    }
+  }, [isLoading]);
+
+  const handleConfirmLeave = async (saveFirst: boolean) => {
+    if (saveFirst) {
+      // "Salvar e Sair"
+      // The useEffect for blocker will handle proceed() if save is successful
+      // because hasUnsavedChanges will become false and isLeaveConfirmModalOpen is true.
+      setShouldNavigateAfterSave(false); // Ensure we don't double-navigate if save is very fast
+      triggerFormSubmit(); 
+    } else {
+      // "Sair sem Salvar"
+      setIsLeaveConfirmModalOpen(false);
+      setHasUnsavedChanges(false); // Discard changes
+      if (blocker.state === 'blocked') {
+        blocker.proceed();
+      } else {
+        // Fallback if somehow not blocked but modal was shown (should not happen with current useBlocker logic)
+        navigate('/produtos'); 
+      }
+    }
+  };
+
+  const handleCancelLeave = () => {
+    setIsLeaveConfirmModalOpen(false);
+    if (blocker.state === 'blocked') {
+      blocker.reset();
+    }
+  };
+  
+  if (isLoading || !initialProductData) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <LoadingSpinner size="lg" />
+        <p className="ml-2 text-text-muted">Carregando dados do produto...</p>
+      </div>
+    );
+  }
+  
+  const dropdownItemClass = cn(
+    "group relative flex cursor-pointer select-none items-center rounded-lg px-3 py-2.5 text-sm text-text-default outline-none transition-colors",
+    "data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-white/10 data-[highlighted]:text-accent-blue-neon"
+  );
+  const dropdownDangerItemClass = cn(
+    "group relative flex cursor-pointer select-none items-center rounded-lg px-3 py-2.5 text-sm text-status-error outline-none transition-colors",
+    "data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-status-error/10 data-[highlighted]:text-status-error"
+  );
+  const dropdownIconClass = "mr-2.5 h-5 w-5 text-text-muted group-data-[highlighted]:text-accent-blue-neon";
+  const dropdownDangerIconClass = "mr-2.5 h-5 w-5 text-status-error/80 group-data-[highlighted]:text-status-error";
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-neutral-100">Editar Produto: {product.name}</h1>
-        <Button variant="ghost" onClick={() => navigate('/produtos')}>Voltar</Button>
+    <div className="space-y-6 pb-24"> 
+      <div className="flex justify-between items-center py-3 mb-4 sticky top-0 bg-bg-main z-10 -mx-6 md:-mx-8 px-6 md:px-8 pt-6 border-b border-border-subtle">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" onClick={handleNavigateBack} disabled={isSaving || isDeleting || isCloning} aria-label="Voltar para produtos">
+            <ArrowUturnLeftIconHero className="h-5 w-5 mr-1.5" /> Voltar
+          </Button>
+          <h1 className="text-xl md:text-2xl font-display font-semibold text-text-strong truncate">
+            Editar: <span className="text-primary">{initialProductData?.name}</span>
+            {hasUnsavedChanges && <span className="text-xs text-status-warning ml-2">(Não Salvo)</span>}
+          </h1>
+        </div>
+        
+        <DropdownMenuPrimitive.Root>
+          <DropdownMenuPrimitive.Trigger asChild>
+            <Button variant="outline" size="md" className="p-2.5" aria-label="Mais ações" title="Mais Ações" disabled={isSaving || isDeleting || isCloning}>
+              <EllipsisVerticalIcon className="h-5 w-5" />
+            </Button>
+          </DropdownMenuPrimitive.Trigger>
+          <DropdownMenuPrimitive.Portal>
+            <DropdownMenuPrimitive.Content
+              sideOffset={5}
+              align="end"
+              className={cn(
+                "z-50 min-w-[220px] origin-top-right overflow-hidden rounded-xl border border-border-subtle bg-bg-surface bg-opacity-90 backdrop-blur-lg p-1.5 shadow-2xl",
+                "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+                "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
+                "data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2"
+              )}
+            >
+              <DropdownMenuPrimitive.Item
+                onSelect={handleSave}
+                disabled={isSaving || isDeleting || isCloning || !hasUnsavedChanges}
+                className={dropdownItemClass}
+              >
+                <ArrowDownTrayIcon className={dropdownIconClass} /> Salvar
+              </DropdownMenuPrimitive.Item>
+              {/* "Salvar e Continuar" removido do Dropdown */}
+              
+              <DropdownMenuPrimitive.Separator className="h-px bg-border-subtle my-1" />
+
+              <DropdownMenuPrimitive.Item
+                onSelect={handleViewCheckout}
+                disabled={!initialProductData?.slug || isSaving}
+                className={dropdownItemClass}
+              >
+                <ExternalLinkIconHero className={dropdownIconClass} /> Visualizar Checkout
+              </DropdownMenuPrimitive.Item>
+              <DropdownMenuPrimitive.Item
+                onSelect={handleCopyLinkAction}
+                disabled={!initialProductData?.slug || isSaving}
+                className={dropdownItemClass}
+              >
+                {copiedLink ? <CheckIcon className={cn(dropdownIconClass, "text-status-success")} /> : <LinkActionIcon className={dropdownIconClass} />}
+                {copiedLink ? 'Link Copiado!' : 'Copiar Link'}
+              </DropdownMenuPrimitive.Item>
+              <DropdownMenuPrimitive.Item
+                onSelect={handleClone}
+                disabled={isCloning || isSaving || isDeleting}
+                className={dropdownItemClass}
+              >
+                <Square2StackIconHero className={dropdownIconClass} /> Duplicar Produto
+              </DropdownMenuPrimitive.Item>
+
+              <DropdownMenuPrimitive.Separator className="h-px bg-border-subtle my-1" />
+              
+              <DropdownMenuPrimitive.Item
+                onSelect={() => setIsDeleteModalOpen(true)}
+                disabled={isDeleting || isSaving || isCloning}
+                className={dropdownDangerItemClass}
+              >
+                <TrashActionIcon className={dropdownDangerIconClass} /> Excluir Produto
+              </DropdownMenuPrimitive.Item>
+            </DropdownMenuPrimitive.Content>
+          </DropdownMenuPrimitive.Portal>
+        </DropdownMenuPrimitive.Root>
+      </div>
+      
+      <ProductForm
+        initialData={initialProductData}
+        onSubmit={handleFormSubmit} // onSubmit agora não espera 'stayOnPage'
+        isSaving={isSaving}
+        availableProductsForOffers={userProductsForOffers}
+        formId={FORM_ID}
+        onFormChange={handleFormChange} 
+        formRef={formRef}
+      />
+      
+      <div className="fixed bottom-0 left-0 right-0 bg-bg-surface-opaque border-t border-border-subtle p-4 shadow-top-hard z-20 md:pl-[calc(288px+1rem)]">
+        <div className="max-w-7xl mx-auto flex justify-end items-center space-x-3">
+          <Button variant="outline" onClick={handleNavigateBack} disabled={isSaving || isDeleting || isCloning}>
+            Voltar
+          </Button>
+          {/* "Salvar e Continuar" removido da barra inferior */}
+          <Button onClick={handleSave} variant="primary" isLoading={isSaving} disabled={isSaving || isDeleting || isCloning || !hasUnsavedChanges}>
+            Salvar
+          </Button>
+        </div>
       </div>
 
-       <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Coluna Principal */}
-          <div className="lg:col-span-2 space-y-6">
-            <Card title="Detalhes do Produto">
-              <div className="space-y-4">
-                <Input label="Nome do Produto" name="productName" value={productName} onChange={(e) => setProductName(e.target.value)} required />
-                <Textarea label="Descrição" name="description" value={description} onChange={(e) => setDescription(e.target.value)} required rows={5} />
-                <Input label="Preço (R$)" name="price" type="text" value={price} onChange={(e) => setPrice(e.target.value)} required />
-                <Input label="URL da Imagem Principal do Produto (Opcional)" name="imageUrl" type="url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://exemplo.com/imagem-produto.jpg"/>
-                <Input label="URL de Entrega (Opcional)" name="deliveryUrl" type="url" value={deliveryUrl} onChange={(e) => setDeliveryUrl(e.target.value)} />
-              </div>
-            </Card>
-             <Card title="Oferta Adicional (Order Bump)">
-              {orderBump ? (
-                <div className="space-y-3 p-3 border border-neutral-700 rounded-md bg-neutral-700/30">
-                  <p className="font-medium text-neutral-100">Produto: <span className="text-primary">{orderBump.name}</span></p>
-                  <Input label="Preço Customizado (R$)" type="text" value={orderBump.customPriceInCents !== undefined ? (orderBump.customPriceInCents / 100).toFixed(2).replace('.', ',') : ''} onChange={(e) => handleOfferPriceChange('bump', e.target.value)} placeholder="Preço original se vazio"/>
-                  <Button type="button" variant="danger" size="sm" onClick={() => removeOffer('bump')}>Remover</Button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-neutral-300">Selecionar Produto:</label>
-                  <select onChange={(e) => handleOfferProductSelect('bump', e.target.value)} value={orderBumpSelectValue} className="block w-full p-2.5 border rounded-md shadow-sm focus:outline-none sm:text-sm transition-colors duration-150 bg-neutral-800 border-neutral-600 focus:border-primary focus:ring-2 focus:ring-primary/70 text-neutral-100 placeholder-neutral-400" disabled={isFetchingRelatedData || userProducts.length === 0}>
-                    <option value="">Nenhum</option>
-                    {userProducts.map(p => <option key={p.id} value={p.id}>{p.name} (R$ {(p.priceInCents/100).toFixed(2).replace('.',',')})</option>)}
-                  </select>
-                  {userProducts.length === 0 && !isFetchingRelatedData && <p className="text-xs text-neutral-400">Crie outros produtos.</p>}
-                </div>
-              )}
-            </Card>
-            <Card title="Oferta Pós-Compra (Upsell)">
-             {upsell ? (
-                <div className="space-y-3 p-3 border border-neutral-700 rounded-md bg-neutral-700/30">
-                  <p className="font-medium text-neutral-100">Produto: <span className="text-primary">{upsell.name}</span></p>
-                  <Input label="Preço Customizado (R$)" type="text" value={upsell.customPriceInCents !== undefined ? (upsell.customPriceInCents / 100).toFixed(2).replace('.', ',') : ''} onChange={(e) => handleOfferPriceChange('upsell', e.target.value)} placeholder="Preço original se vazio"/>
-                  <Button type="button" variant="danger" size="sm" onClick={() => removeOffer('upsell')}>Remover</Button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-neutral-300">Selecionar Produto:</label>
-                  <select onChange={(e) => handleOfferProductSelect('upsell', e.target.value)} value={upsellSelectValue} className="block w-full p-2.5 border rounded-md shadow-sm focus:outline-none sm:text-sm transition-colors duration-150 bg-neutral-800 border-neutral-600 focus:border-primary focus:ring-2 focus:ring-primary/70 text-neutral-100 placeholder-neutral-400" disabled={isFetchingRelatedData || userProducts.length === 0}>
-                    <option value="">Nenhum</option>
-                     {userProducts.filter(p => p.id !== orderBump?.productId).map(p => <option key={p.id} value={p.id}>{p.name} (R$ {(p.priceInCents/100).toFixed(2).replace('.',',')})</option>)}
-                  </select>
-                  {userProducts.length === 0 && !isFetchingRelatedData && <p className="text-xs text-neutral-400">Crie outros produtos.</p>}
-                </div>
-              )}
-            </Card>
-          </div>
+      <AlertDialog
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        title="Confirmar Exclusão"
+        description={<>Você tem certeza que deseja excluir o produto <span className="font-semibold text-text-strong">"{initialProductData?.name}"</span>? Esta ação não poderá ser desfeita.</>}
+        onConfirm={handleDelete}
+        confirmText="Excluir Produto"
+        cancelText="Cancelar"
+        confirmButtonVariant="danger"
+      />
 
-          {/* Coluna Lateral */}
-          <div className="lg:col-span-1 space-y-6">
-            <Card title="Personalização do Checkout">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300">Cor Principal</label>
-                  <div className="grid grid-cols-5 gap-2 mt-1">
-                    {COLOR_PALETTE_OPTIONS.map(color => (
-                      <button
-                        key={color.value}
-                        type="button"
-                        title={color.name}
-                        onClick={() => handleCustomizationChange('primaryColor', color.value)}
-                        className={`h-8 w-full rounded border-2 ${checkoutCustomization.primaryColor === color.value ? 'ring-2 ring-offset-1 ring-neutral-900 border-neutral-900' : 'border-transparent hover:border-neutral-600'}`}
-                        style={{ backgroundColor: color.value }}
-                        disabled={isSaving}
-                      />
-                    ))}
-                  </div>
-                  <Input name="customColor" type="color" value={checkoutCustomization.primaryColor || '#0D9488'} onChange={(e) => handleCustomizationChange('primaryColor', e.target.value)} className="mt-2 h-10"/>
-                </div>
-                <Input label="URL do Logo Pequeno (Checkout)" name="logoUrl" value={checkoutCustomization.logoUrl || ''} onChange={(e) => handleCustomizationChange('logoUrl', e.target.value)} placeholder="https://exemplo.com/logo.png"/>
-                <Input label="URL do Vídeo (YouTube Embed)" name="videoUrl" value={checkoutCustomization.videoUrl || ''} onChange={(e) => handleCustomizationChange('videoUrl', e.target.value)} placeholder="https://youtube.com/embed/..."/>
-                <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1">Copy de Vendas</label>
-                    <MiniEditor value={checkoutCustomization.salesCopy || ''} onChange={handleSalesCopyChange} placeholder="Sua copy persuasiva..."/>
-                </div>
-                <div>
-                  <h4 className="text-sm font-medium text-neutral-300 mb-2">Selos de Garantia</h4>
-                  {(checkoutCustomization.guaranteeBadges || []).map((badge, index) => (
-                    <Card key={badge.id} className="mb-3 p-3 bg-neutral-700/50 border-neutral-600">
-                        <Input label={`URL Imagem Selo ${index + 1}`} value={badge.imageUrl} onChange={(e) => updateGuaranteeBadge(badge.id, 'imageUrl', e.target.value)} placeholder="https://exemplo.com/selo.png" className="mb-2"/>
-                        <Input label={`Texto Alt Selo ${index + 1}`} value={badge.altText} onChange={(e) => updateGuaranteeBadge(badge.id, 'altText', e.target.value)} placeholder="Descrição do selo" className="mb-2"/>
-                        <Button type="button" variant="danger" size="sm" onClick={() => removeGuaranteeBadge(badge.id)}>Remover</Button>
-                    </Card>
-                  ))} 
-                  <Button type="button" variant="secondary" size="sm" onClick={addGuaranteeBadge} leftIcon={<PlusIcon className="h-4 w-4" />}>Adicionar Selo</Button>
-                </div>
-                <div className="pt-4 border-t border-neutral-700">
-                  <h4 className="text-md font-semibold text-neutral-100 mb-3">Cronômetro de Escassez</h4>
-                  <ToggleSwitch label="Habilitar Cronômetro" enabled={checkoutCustomization.countdownTimer?.enabled || false} onChange={(isEnabled) => handleCountdownTimerChange('enabled', isEnabled)}/>
-                  {checkoutCustomization.countdownTimer?.enabled && (
-                    <div className="space-y-3 mt-3 pl-2 border-l-2 border-neutral-600">
-                       <div><label htmlFor="countdownDuration" className="block text-sm font-medium text-neutral-300 mb-1">Duração do Cronômetro</label>
-                        <select id="countdownDuration" value={checkoutCustomization.countdownTimer.durationMinutes || 15} onChange={(e) => handleCountdownTimerChange('durationMinutes', parseInt(e.target.value))} className="mt-1 block w-full p-2.5 border rounded-md shadow-sm focus:outline-none sm:text-sm transition-colors duration-150 bg-neutral-800 border-neutral-600 focus:border-primary focus:ring-2 focus:ring-primary/70 text-neutral-100 placeholder-neutral-400">
-                          {countdownDurations.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                        </select>
-                      </div>
-                      <Textarea label="Mensagem Antes do Cronômetro (Opcional)" value={checkoutCustomization.countdownTimer.messageBefore || ''} onChange={(e) => handleCountdownTimerChange('messageBefore', e.target.value)} rows={2}/>
-                      <Textarea label="Mensagem Após Expirar (Opcional)" value={checkoutCustomization.countdownTimer.messageAfter || ''} onChange={(e) => handleCountdownTimerChange('messageAfter', e.target.value)} rows={2}/>
-                      <div className="flex space-x-2">
-                        <Input label="Cor Fundo (Opc)" type="color" value={checkoutCustomization.countdownTimer.backgroundColor || '#EF4444'} onChange={(e) => handleCountdownTimerChange('backgroundColor', e.target.value)} className="h-10 w-1/2"/>
-                        <Input label="Cor Texto (Opc)" type="color" value={checkoutCustomization.countdownTimer.textColor || '#FFFFFF'} onChange={(e) => handleCountdownTimerChange('textColor', e.target.value)} className="h-10 w-1/2"/>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </Card>
-            
-            <Card title="Parâmetros UTM">
-              <div className="space-y-4">
-                <Input label="utm_source" name="utm_source" value={utmParams.source || ''} onChange={(e) => handleUtmParamChange('source', e.target.value)} placeholder="Ex: google, facebook" icon={<UtmIcon className="h-5 w-5 text-neutral-400"/>} />
-                <Input label="utm_medium" name="utm_medium" value={utmParams.medium || ''} onChange={(e) => handleUtmParamChange('medium', e.target.value)} placeholder="Ex: cpc, email" icon={<UtmIcon className="h-5 w-5 text-neutral-400"/>}/>
-                <Input label="utm_campaign" name="utm_campaign" value={utmParams.campaign || ''} onChange={(e) => handleUtmParamChange('campaign', e.target.value)} placeholder="Ex: promocao_natal" icon={<UtmIcon className="h-5 w-5 text-neutral-400"/>}/>
-                <Input label="utm_term (Opcional)" name="utm_term" value={utmParams.term || ''} onChange={(e) => handleUtmParamChange('term', e.target.value)} placeholder="Ex: palavra_chave" icon={<UtmIcon className="h-5 w-5 text-neutral-400"/>}/>
-                <Input label="utm_content (Opcional)" name="utm_content" value={utmParams.content || ''} onChange={(e) => handleUtmParamChange('content', e.target.value)} placeholder="Ex: banner_azul" icon={<UtmIcon className="h-5 w-5 text-neutral-400"/>}/>
-              </div>
-            </Card>
-
-             <Card title="Cupons de Desconto">
-              <div className="space-y-3">
-                {coupons.length === 0 && <p className="text-sm text-neutral-400">Nenhum cupom adicionado.</p>}
-                {coupons.map(coupon => (
-                  <div key={coupon.id} className="p-3 border border-neutral-700 rounded-md bg-neutral-700/50 flex justify-between items-center">
-                    <div><p className="font-semibold text-primary">{coupon.code}</p>
-                      <p className="text-xs text-neutral-300">
-                        {coupon.discountType === 'percentage' ? `${coupon.discountValue}% OFF` : `R$ ${(coupon.discountValue/100).toFixed(2)} OFF`}
-                        {coupon.isAutomatic && <span className="ml-1 text-green-400">(Automático)</span>}
-                      </p>
-                    </div>
-                    <div className="space-x-1">
-                      <Button type="button" variant="ghost" size="sm" onClick={() => openCouponModal(coupon)}>Editar</Button>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => deleteCoupon(coupon.id)} className="text-red-400"><TrashIcon className="h-4 w-4"/></Button>
-                    </div>
-                  </div>
-                ))}
-                <Button type="button" variant="secondary" onClick={() => openCouponModal()} leftIcon={<PlusIcon className="h-5 w-5"/>} className="w-full">Adicionar Cupom</Button>
-              </div>
-            </Card>
-          </div>
-        </div>
-
-        {error && <p className="mt-6 text-sm text-red-400 text-center p-3 bg-red-800/20 rounded-md border border-red-600/50">{error}</p>}
-
-        <div className="mt-8 flex justify-end space-x-3">
-          <Button type="button" variant="ghost" onClick={() => navigate('/produtos')} disabled={isSaving}>Cancelar</Button>
-          <Button type="submit" variant="primary" isLoading={isSaving} size="lg">Salvar Alterações</Button>
-        </div>
-      </form>
-      
-      {isCouponModalOpen && 
-        <CouponFormModal isOpen={isCouponModalOpen} onClose={closeCouponModal} onSave={saveCoupon} existingCoupon={editingCoupon}/>
-      }
+      <AlertDialog
+        isOpen={isLeaveConfirmModalOpen}
+        onClose={handleCancelLeave}
+        title="Alterações não Salvas"
+        description="Você possui alterações não salvas. Deseja salvá-las antes de sair?"
+        confirmText="Salvar e Sair"
+        onConfirm={() => handleConfirmLeave(true)}
+        cancelText="Continuar Editando"
+      >
+        <Button variant="danger" onClick={() => handleConfirmLeave(false)} className="mt-2 sm:mt-0">
+          Sair sem Salvar
+        </Button>
+      </AlertDialog>
     </div>
   );
 };
+
+export default ProductEditPage;

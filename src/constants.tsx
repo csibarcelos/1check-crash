@@ -14,14 +14,26 @@ import {
   DocumentDuplicateIcon as HeroIconsDocumentDuplicateIcon,
   TrashIcon as HeroIconsTrashIcon,
   PlusIcon as HeroIconsPlusIcon,
-  CheckCircleIcon as HeroIconsCheckCircleIcon,
+  CheckIcon as HeroIconsCheckIcon, // Renamed to avoid conflict
+  ChevronDownIcon as HeroIconsChevronDownIcon, // Added
   XMarkIcon as HeroIconsXMarkIcon,
   KeyIcon as HeroIconsKeyIcon,
   InformationCircleIcon as HeroIconsInformationCircleIcon,
   PencilIcon as HeroIconsPencilIcon,
+  EyeIcon as HeroIconsEyeIcon, // Added EyeIcon import
   TagIcon as HeroIconsTagIcon,
   Bars3Icon,
-  LockClosedIcon as HeroIconsLockClosedIcon 
+  LockClosedIcon as HeroIconsLockClosedIcon,
+  CloudArrowUpIcon as HeroIconsCloudArrowUpIcon, // Added for UploadIcon
+  CalendarDaysIcon as HeroIconsCalendarDaysIcon, // Added CalendarDaysIcon
+  Square2StackIcon as HeroIconsSquare2StackIcon, // Added Square2StackIcon for clone
+  EllipsisVerticalIcon as HeroIconsEllipsisVerticalIcon, // Added for three-dots menu
+  ArrowDownTrayIcon as HeroIconsArrowDownTrayIcon, // Added for Save action
+  CheckCircleIcon as HeroIconsCheckCircleIcon, // Added for Save and Continue or success states
+  LinkIcon as HeroIconsLinkIcon, // Added for generic link actions
+  ArrowUturnLeftIcon as HeroIconsArrowUturnLeftIcon, // Added for Back/Return action
+  ArrowTopRightOnSquareIcon as HeroIconsArrowTopRightOnSquareIcon, // Added for External Link indication
+  ExclamationCircleIcon as HeroIconsExclamationCircleIcon, // Added for error indication
 } from '@heroicons/react/24/outline';
 
 // Add explicit types to re-exported const icon components
@@ -86,13 +98,7 @@ export const CreditCardIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) =
   );
 };
 
-export const LinkIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
-    </svg>
-  );
-};
+export const LinkIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroIconsLinkIcon; // Changed to use HeroIcon
 
 export const CogIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => {
   return (
@@ -198,20 +204,34 @@ export const ClearFormatIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) 
   </svg>
 );
 
+export const UploadIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroIconsCloudArrowUpIcon;
+export const ArrowUturnLeftIconHero: React.FC<React.SVGProps<SVGSVGElement>> = HeroIconsArrowUturnLeftIcon;
+export const ExternalLinkIconHero: React.FC<React.SVGProps<SVGSVGElement>> = HeroIconsArrowTopRightOnSquareIcon;
+
+
 export const ChartPieIcon = HeroIconsChartPieIcon;
 export const CurrencyDollarIcon = HeroIconsCurrencyDollarIcon;
 export const UserGroupIcon = HeroIconsUserGroupIcon;
 export const DocumentDuplicateIcon = HeroIconsDocumentDuplicateIcon;
 export const TrashIcon = HeroIconsTrashIcon;
 export const PlusIcon = HeroIconsPlusIcon;
-export const CheckCircleIcon = HeroIconsCheckCircleIcon;
+export const CheckIcon = HeroIconsCheckIcon; 
+export const ChevronDownIcon = HeroIconsChevronDownIcon; 
 export const XMarkIcon = HeroIconsXMarkIcon;
 export const KeyIcon = HeroIconsKeyIcon;
 export const InformationCircleIcon = HeroIconsInformationCircleIcon;
+export const EyeIcon = HeroIconsEyeIcon; 
 export const PencilIcon = HeroIconsPencilIcon;
 export const TagIcon = HeroIconsTagIcon;
 export const Bars3IconHero = Bars3Icon;
 export const LockClosedIcon = HeroIconsLockClosedIcon; 
+export const CalendarDaysIcon = HeroIconsCalendarDaysIcon; 
+export const Square2StackIconHero = HeroIconsSquare2StackIcon;
+export const EllipsisVerticalIcon = HeroIconsEllipsisVerticalIcon;
+export const ArrowDownTrayIcon = HeroIconsArrowDownTrayIcon;
+export const CheckCircleIcon = HeroIconsCheckCircleIcon;
+export const ExclamationCircleIcon = HeroIconsExclamationCircleIcon;
+
 
 export const AppLogoIcon: React.FC<React.ImgHTMLAttributes<HTMLImageElement>> = (props) => {
   const { className: incomingClassName,alt, ...otherProps } = props;
@@ -307,4 +327,9 @@ export const generateWhatsAppLink = (rawPhoneNumber: string, message: string): s
   const cleanedPhone = cleanPhoneNumberForWhatsApp(rawPhoneNumber);
   const encodedMessage = encodeURIComponent(message);
   return `https://wa.me/${cleanedPhone}?text=${encodedMessage}`;
+};
+// Utility function for combining class names, useful for conditional styling.
+// You can create a `src/utils/cn.ts` file for this.
+export const cn = (...classes: (string | undefined | null | false)[]): string => {
+  return classes.filter(Boolean).join(' ');
 };

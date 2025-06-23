@@ -1,13 +1,33 @@
 
-import { User, Sale, SaleProductItem, PaymentMethod, PaymentStatus, Product as AppProduct, AuditLogEntry, ProductCheckoutCustomization, OrderBumpOffer, UpsellOffer, Coupon } from '@/types';
-import { adminSupabase } from '@/adminSupabase' // Adicione esta linha
+import { User, Sale, SaleProductItem, PaymentMethod, PaymentStatus, Product as AppProduct, AuditLogEntry, ProductCheckoutCustomization, OrderBumpOffer, UpsellOffer, Coupon, UtmParams } from '@/types';
+import { adminSupabase } from '@/adminSupabase';
 import { supabase } from '@/supabaseClient';
 import { Database, Json } from '@/types/supabase';
 
 type ProfileRow = Database['public']['Tables']['profiles']['Row'];
 type SaleRow = Database['public']['Tables']['sales']['Row'];
-type ProductRow = Database['public']['Tables']['products']['Row']; 
-type AuditLogEntryRow = Database['public']['Tables']['audit_log_entries']['Row']; 
+type ProductRow = Database['public']['Tables']['products']['Row'];
+type AuditLogEntryRow = Database['public']['Tables']['audit_log_entries']['Row'];
+
+// Cache simples em memória
+const cache = new Map<string, { data: any; expires: number }>();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+
+const getCachedData = <T>(key: string): T | null => {
+  const cached = cache.get(key);
+  if (cached && cached.expires > Date.now()) {
+    return cached.data as T;
+  }
+  cache.delete(key);
+  return null;
+};
+
+const setCachedData = <T>(key: string, data: T): void => {
+  cache.set(key, {
+    data,
+    expires: Date.now() + CACHE_DURATION
+  });
+};
 
 const parseJsonField = <T>(field: Json | null | undefined, defaultValue: T): T => {
   if (field === null || field === undefined) return defaultValue;
@@ -15,12 +35,38 @@ const parseJsonField = <T>(field: Json | null | undefined, defaultValue: T): T =
     try { return JSON.parse(field) as T; }
     catch (e) { console.warn('Failed to parse JSON string field:', field, e); return defaultValue; }
   }
-  return field as T;
+  // If it's already an object (and not null), assume it's the correct type or a compatible structure.
+  if (typeof field === 'object' && field !== null) {
+    return field as T;
+  }
+  return defaultValue; // Fallback for other unexpected types
 };
 
-// fromSupabaseProfileRowToUser was removed as it's unused
+const defaultCheckoutCustomizationForSuperAdmin: ProductCheckoutCustomization = {
+  primaryColor: '#0D9488',
+  logoUrl: '',
+  videoUrl: '',
+  salesCopy: '',
+  testimonials: [],
+  guaranteeBadges: [],
+  countdownTimer: {
+    enabled: false,
+    durationMinutes: 15,
+    messageBefore: 'Oferta expira em:',
+    messageAfter: 'Oferta expirada!',
+    backgroundColor: '#EF4444',
+    textColor: '#FFFFFF',
+  },
+  theme: 'light',
+  showProductName: true,
+};
 
-const fromSupabaseSaleRow = (row: SaleRow): Sale => { 
+const defaultUtmParamsForSuperAdmin: UtmParams = {
+  source: '', medium: '', campaign: '', term: '', content: ''
+};
+
+
+const fromSupabaseSaleRow = (row: SaleRow): Sale => {
   return {
     id: row.id,
     platformUserId: row.platform_user_id,
@@ -64,7 +110,7 @@ const fromSupabaseProductRow = (row: ProductRow): AppProduct => {
     description: row.description,
     priceInCents: row.price_in_cents,
     imageUrl: row.image_url || undefined,
-    checkoutCustomization: parseJsonField<ProductCheckoutCustomization>(row.checkout_customization, {}),
+    checkoutCustomization: parseJsonField<ProductCheckoutCustomization>(row.checkout_customization, defaultCheckoutCustomizationForSuperAdmin),
     deliveryUrl: row.delivery_url || undefined,
     totalSales: row.total_sales || 0,
     clicks: row.clicks || 0,
@@ -74,6 +120,7 @@ const fromSupabaseProductRow = (row: ProductRow): AppProduct => {
     orderBump: parseJsonField<OrderBumpOffer | undefined>(row.order_bump, undefined),
     upsell: parseJsonField<UpsellOffer | undefined>(row.upsell, undefined),
     coupons: parseJsonField<Coupon[]>(row.coupons, []),
+    utmParams: parseJsonField<UtmParams | null>(row.utm_params, defaultUtmParamsForSuperAdmin),
   };
 };
 
@@ -89,98 +136,305 @@ const fromSupabaseAuditLogRow = (row: AuditLogEntryRow): AuditLogEntry => ({
     details: row.details ? parseJsonField<Record<string, any>>(row.details, {}) : undefined,
 });
 
-
 export const superAdminService = {
-    getAllPlatformUsers: async (token: string): Promise<User[]> => {
+    getAllPlatformUsers: async (token: string, options?: { signal?: AbortSignal }): Promise<User[]> => {
         if (!token) throw new Error("Token de autenticação de super admin é necessário.");
-        const { data: usersList, error: usersError } = await adminSupabase.auth.admin.listUsers();
-        if (usersError) throw new Error(usersError.message || "Falha ao buscar usuários da plataforma.");
-        
-        const profilePromises = usersList.users.map(user => 
-            supabase.from('profiles').select('*').eq('id', user.id).maybeSingle<ProfileRow>()
-        );
-        const profileResults = await Promise.all(profilePromises);
 
-        return usersList.users.map((user, index) => {
-            const profileData = profileResults[index].data;
-            return {
-                id: user.id,
-                email: user.email || '',
-                name: profileData?.name || user.user_metadata?.name || user.email?.split('@')[0] || 'Usuário',
-                isSuperAdmin: profileData?.is_super_admin || false,
-                isActive: profileData?.is_active === null || profileData?.is_active === undefined ? true : profileData.is_active,
-                createdAt: user.created_at,
-            };
-        });
-    },
+        const cacheKey = 'platform-users';
+        const cachedUsers = getCachedData<User[]>(cacheKey);
+        if (cachedUsers) return cachedUsers;
 
-    getAllPlatformSales: async (token: string): Promise<Sale[]> => {
-        if (!token) throw new Error("Token de autenticação de super admin é necessário.");
-        const { data, error } = await supabase.from('sales').select('*');
-        if (error) throw new Error(error.message || "Falha ao buscar todas as vendas da plataforma.");
-        return data ? data.map(fromSupabaseSaleRow) : [];
-    },
-
-    getAllPlatformProducts: async (token: string): Promise<AppProduct[]> => {
-        if (!token) throw new Error("Token de autenticação de super admin é necessário.");
-        const { data, error } = await supabase.from('products').select('*');
-        if (error) throw new Error(error.message || "Falha ao buscar todos os produtos da plataforma.");
-        return data ? data.map(fromSupabaseProductRow) : [];
-    },
-    
-    getAllAuditLogs: async (token: string): Promise<AuditLogEntry[]> => {
-        if (!token) throw new Error("Token de autenticação de super admin é necessário.");
-        const { data, error } = await supabase.from('audit_log_entries').select('*').order('timestamp', { ascending: false });
-        if (error) {
-            if (error.code === '42P01') { // table does not exist
-                console.warn("Audit log table 'audit_log_entries' does not exist.");
-                return []; // Return empty if table is missing, as it might be an optional feature
-            }
-            throw new Error(error.message || "Falha ao buscar logs de auditoria.");
+        // Check if the operation has been aborted before making the network request
+        if (options?.signal?.aborted) {
+          throw new DOMException('Request aborted by user', 'AbortError');
         }
-        return data ? data.map(fromSupabaseAuditLogRow) : [];
+
+        try {
+            const { data: usersListResponse, error: usersError } = await adminSupabase.auth.admin.listUsers({
+                perPage: 10000 // Consider implications for extremely large user bases
+            });
+
+            if (options?.signal?.aborted) { // Check again after async operation starts
+              throw new DOMException('Request aborted by user', 'AbortError');
+            }
+
+            if (usersError) throw new Error(usersError.message || "Falha ao buscar usuários da plataforma.");
+
+            const userIds = usersListResponse.users.map(u => u.id);
+            if (userIds.length === 0) {
+                setCachedData(cacheKey, []);
+                return [];
+            }
+            
+            const { data: profiles, error: profilesError } = await supabase
+                .from('profiles')
+                .select('*')
+                .in('id', userIds);
+            
+            if (options?.signal?.aborted) {
+              throw new DOMException('Request aborted by user', 'AbortError');
+            }
+
+            if (profilesError) {
+                console.warn('Erro ao buscar perfis:', profilesError.message);
+            }
+
+            const profilesMap = new Map<string, ProfileRow>();
+            profiles?.forEach(profile => {
+                profilesMap.set(profile.id, profile);
+            });
+
+            const users = usersListResponse.users.map(user => {
+                const profileData = profilesMap.get(user.id);
+                return {
+                    id: user.id,
+                    email: user.email || '',
+                    name: profileData?.name || user.user_metadata?.name || user.email?.split('@')[0] || 'Usuário',
+                    isSuperAdmin: profileData?.is_super_admin || false,
+                    isActive: profileData?.is_active === null || profileData?.is_active === undefined ? true : profileData.is_active,
+                    createdAt: user.created_at,
+                };
+            });
+
+            setCachedData(cacheKey, users);
+            return users;
+        } catch (error: any) {
+            console.error('[SuperAdminService] Error in getAllPlatformUsers:', error.message);
+            throw error;
+        }
+    },
+
+    getAllPlatformSales: async (token: string, options?: {
+        limit?: number;
+        offset?: number;
+        dateFrom?: string;
+        dateTo?: string;
+    }): Promise<Sale[]> => {
+        if (!token) throw new Error("Token de autenticação de super admin é necessário.");
+
+        const { limit = 1000, offset = 0, dateFrom, dateTo } = options || {};
+        const cacheKey = `platform-sales-all-${limit}-${offset}-${dateFrom}-${dateTo}`;
+
+        const cachedSales = getCachedData<Sale[]>(cacheKey);
+        if (cachedSales) return cachedSales;
+
+        try {
+            let query = supabase
+                .from('sales')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .range(offset, offset + limit - 1);
+
+            if (dateFrom) query = query.gte('created_at', dateFrom);
+            if (dateTo) query = query.lte('created_at', dateTo);
+
+            const { data, error } = await query;
+
+            if (error) throw new Error(error.message || "Falha ao buscar vendas da plataforma.");
+
+            const sales = data ? data.map(fromSupabaseSaleRow) : [];
+            setCachedData(cacheKey, sales);
+            return sales;
+        } catch (error: any) {
+            console.error('[SuperAdminService] Error in getAllPlatformSales:', error.message);
+            throw error;
+        }
+    },
+
+    getAllPlatformProducts: async (token: string, options?: {
+        limit?: number;
+        offset?: number;
+    }): Promise<AppProduct[]> => {
+        if (!token) throw new Error("Token de autenticação de super admin é necessário.");
+
+        const { limit = 1000, offset = 0 } = options || {};
+        const cacheKey = `platform-products-${limit}-${offset}`;
+
+        const cachedProducts = getCachedData<AppProduct[]>(cacheKey);
+        if (cachedProducts) return cachedProducts;
+
+        try {
+            const { data, error } = await supabase
+                .from('products')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .range(offset, offset + limit - 1);
+
+            if (error) throw new Error(error.message || "Falha ao buscar produtos da plataforma.");
+
+            const products = data ? data.map(fromSupabaseProductRow) : [];
+            setCachedData(cacheKey, products);
+            return products;
+        } catch (error: any) {
+            console.error('[SuperAdminService] Error in getAllPlatformProducts:', error.message);
+            throw error;
+        }
+    },
+
+    getAllAuditLogs: async (token: string, options?: {
+        limit?: number;
+        offset?: number;
+    }): Promise<AuditLogEntry[]> => {
+        if (!token) throw new Error("Token de autenticação de super admin é necessário.");
+
+        const { limit = 500, offset = 0 } = options || {};
+        const cacheKey = `audit-logs-${limit}-${offset}`;
+
+        const cachedLogs = getCachedData<AuditLogEntry[]>(cacheKey);
+        if (cachedLogs) return cachedLogs;
+
+        try {
+            const { data, error } = await supabase
+                .from('audit_log_entries')
+                .select('*')
+                .order('timestamp', { ascending: false })
+                .range(offset, offset + limit - 1);
+
+            if (error) {
+                if (error.code === '42P01') { // table does not exist
+                    console.warn("Audit log table 'audit_log_entries' does not exist.");
+                    setCachedData(cacheKey, []);
+                    return [];
+                }
+                throw new Error(error.message || "Falha ao buscar logs de auditoria.");
+            }
+
+            const logs = data ? data.map(fromSupabaseAuditLogRow) : [];
+            setCachedData(cacheKey, logs);
+            return logs;
+        } catch (error: any) {
+            console.error('[SuperAdminService] Error in getAllAuditLogs:', error.message);
+            throw error;
+        }
+    },
+
+    getPlatformSummary: async (token: string): Promise<{
+        totalUsers: number;
+        totalSales: number; // Total sales transactions count
+        totalProducts: number;
+        totalRevenue: number; // Sum of totalAmountInCents for PAID sales
+    }> => {
+        if (!token) throw new Error("Token de autenticação de super admin é necessário.");
+
+        const cacheKey = 'platform-summary';
+        const cachedSummary = getCachedData<any>(cacheKey);
+        if (cachedSummary) return cachedSummary;
+
+        try {
+            const [usersCountRes, salesRes, productsCountRes] = await Promise.all([
+                supabase.from('profiles').select('id', { count: 'exact', head: true }),
+                supabase.from('sales').select('total_amount_in_cents, status'), // Fetch all sales for revenue calculation
+                supabase.from('products').select('id', { count: 'exact', head: true })
+            ]);
+            
+            if (usersCountRes.error) throw new Error(usersCountRes.error.message);
+            if (salesRes.error) throw new Error(salesRes.error.message);
+            if (productsCountRes.error) throw new Error(productsCountRes.error.message);
+
+            const totalRevenue = salesRes.data
+                ?.filter(sale => sale.status === PaymentStatus.PAID)
+                .reduce((sum, sale) => sum + (sale.total_amount_in_cents || 0), 0) || 0;
+
+            const summary = {
+                totalUsers: usersCountRes.count || 0,
+                totalSales: salesRes.data?.length || 0, // Total count of sales transactions
+                totalProducts: productsCountRes.count || 0,
+                totalRevenue
+            };
+
+            setCachedData(cacheKey, summary);
+            return summary;
+        } catch (error: any) {
+            console.error('[SuperAdminService] Error in getPlatformSummary:', error.message);
+            throw error;
+        }
+    },
+
+    getPaginatedSales: async (token: string, page: number = 1, pageSize: number = 50, filters: { dateFrom?: string; dateTo?: string } = {}): Promise<{
+        data: Sale[];
+        totalCount: number;
+        hasMore: boolean;
+    }> => {
+        if (!token) throw new Error("Token de autenticação de super admin é necessário.");
+        
+        const offset = (page - 1) * pageSize;
+        const cacheKey = `platform-sales-paginated-${page}-${pageSize}-${filters.dateFrom}-${filters.dateTo}`;
+        const cachedResult = getCachedData<any>(cacheKey);
+        if (cachedResult) return cachedResult;
+        
+        try {
+            let salesQuery = supabase
+                .from('sales')
+                .select('*', { count: 'exact' }) // Request count along with data
+                .order('created_at', { ascending: false })
+                .range(offset, offset + pageSize - 1);
+
+            if (filters.dateFrom) salesQuery = salesQuery.gte('created_at', filters.dateFrom);
+            if (filters.dateTo) salesQuery = salesQuery.lte('created_at', filters.dateTo);
+            
+            const { data, error, count } = await salesQuery;
+
+            if (error) throw new Error(error.message);
+
+            const sales = data ? data.map(fromSupabaseSaleRow) : [];
+            const totalCount = count || 0;
+            const hasMore = offset + pageSize < totalCount;
+            
+            const result = { data: sales, totalCount, hasMore };
+            setCachedData(cacheKey, result);
+            return result;
+
+        } catch (error: any) {
+            console.error('[SuperAdminService] Error in getPaginatedSales:', error.message);
+            throw error;
+        }
     },
 
     updateUserProfileAsSuperAdmin: async (
-        userIdToUpdate: string, 
+        userIdToUpdate: string,
         updates: Partial<Pick<User, 'name' | 'isActive' | 'isSuperAdmin'>>,
         adminToken: string
     ): Promise<{ success: boolean, message?: string }> => {
         if (!adminToken) return { success: false, message: "Token de autenticação de super admin é necessário." };
-        
-        const profileUpdates: Partial<Database['public']['Tables']['profiles']['Update']> = {};
-        if(updates.name !== undefined) profileUpdates.name = updates.name;
-        if(updates.isActive !== undefined) profileUpdates.is_active = updates.isActive;
-        if(updates.isSuperAdmin !== undefined) profileUpdates.is_super_admin = updates.isSuperAdmin;
-        
-        if (Object.keys(profileUpdates).length === 0) {
-            return { success: true, message: "Nenhuma alteração para aplicar ao perfil." };
+
+        try {
+            const profileUpdates: Partial<Database['public']['Tables']['profiles']['Update']> = {};
+            if (updates.name !== undefined) profileUpdates.name = updates.name;
+            if (updates.isActive !== undefined) profileUpdates.is_active = updates.isActive;
+            if (updates.isSuperAdmin !== undefined) profileUpdates.is_super_admin = updates.isSuperAdmin;
+
+            if (Object.keys(profileUpdates).length === 0) {
+                return { success: true, message: "Nenhuma alteração para aplicar ao perfil." };
+            }
+
+            // Supabase auto-updates 'updated_at' if using 'moddatetime' extension.
+            // If not, uncomment the line below or add a default value in DB schema.
+            // profileUpdates.updated_at = new Date().toISOString();
+
+
+            const { error: profileUpdateError } = await supabase
+                .from('profiles')
+                .update(profileUpdates)
+                .eq('id', userIdToUpdate);
+
+            if (profileUpdateError) {
+                console.error(`[SuperAdminService] Error updating profile for ${userIdToUpdate}:`, profileUpdateError);
+                return { success: false, message: profileUpdateError.message || "Erro ao atualizar perfil do usuário." };
+            }
+
+            // Clear relevant caches
+            cache.delete('platform-users');
+            cache.delete('platform-summary'); // User counts might change
+
+            return { success: true, message: "Usuário atualizado com sucesso." };
+        } catch (error: any) {
+            console.error('[SuperAdminService] Error in updateUserProfileAsSuperAdmin:', error.message);
+            return { success: false, message: "Erro interno ao atualizar usuário." };
         }
+    },
 
-        profileUpdates.updated_at = new Date().toISOString();
-
-        const { error: profileUpdateError } = await supabase
-            .from('profiles')
-            .update(profileUpdates)
-            .eq('id', userIdToUpdate);
-
-        if (profileUpdateError) {
-            console.error(`[SuperAdminService] Error updating profile for ${userIdToUpdate}:`, profileUpdateError);
-            return { success: false, message: profileUpdateError.message || "Erro ao atualizar perfil do usuário." };
-        }
-        
-        // If name was updated in Supabase Auth user_metadata (not directly supported by profile updates here)
-        // it would be:
-        // if (updates.name) {
-        //   const { error: authUserUpdateError } = await supabase.auth.admin.updateUserById(userIdToUpdate, {
-        //     user_metadata: { name: updates.name }
-        //   });
-        //   if (authUserUpdateError) {
-        //     console.warn(`[SuperAdminService] Error updating auth user_metadata for ${userIdToUpdate}:`, authUserUpdateError);
-        //     // Non-critical, so don't fail the whole operation.
-        //   }
-        // }
-
-        return { success: true, message: "Usuário atualizado com sucesso." };
+    clearCache: (): void => {
+        cache.clear();
+        console.log('[SuperAdminService] Cache cleared.');
     }
 };

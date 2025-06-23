@@ -1,226 +1,528 @@
 
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from "react-router-dom"; 
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Card } from '@/components/ui/Card';
-import { AppLogoIcon } from '../constants.tsx'; 
+import { AppLogoIcon, cn } from '../constants.tsx'; // Imported cn
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { motion, AnimatePresence, Variants } from 'framer-motion';
 
-const EmailIcon = (props: React.SVGProps<SVGSVGElement>) => (
+// Memoized Icons - evita re-criação desnecessária
+const EmailIcon = React.memo((props: React.SVGProps<SVGSVGElement>) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
   </svg>
-);
+));
+EmailIcon.displayName = 'EmailIcon';
 
-const LockClosedIcon = (props: React.SVGProps<SVGSVGElement>) => (
+const LockClosedIcon = React.memo((props: React.SVGProps<SVGSVGElement>) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
   </svg>
-);
+));
+LockClosedIcon.displayName = 'LockClosedIcon';
 
-const UserIcon = (props: React.SVGProps<SVGSVGElement>) => (
+const UserIcon = React.memo((props: React.SVGProps<SVGSVGElement>) => (
  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
   <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
 </svg>
-);
+));
+UserIcon.displayName = 'UserIcon';
 
 
-export const AuthPage: React.FC = () => {
+// Constantes movidas para fora do componente
+const pageVariants: Variants = {
+  initial: { opacity: 0, y: 20 },
+  in: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "circOut" as const } },
+  out: { opacity: 0, y: -20, transition: { duration: 0.3, ease: "circIn" as const } }
+};
+
+const cardVariants: Variants = {
+  initial: { opacity: 0, scale: 0.95 },
+  in: { opacity: 1, scale: 1, transition: { duration: 0.4, delay: 0.2, ease: "circOut" as const } },
+  out: { opacity: 0, scale: 0.95, transition: { duration: 0.2, ease: "circIn" as const } }
+};
+
+const COMMON_INPUT_CLASSES = "block w-full px-4 py-3.5 rounded-xl shadow-sm focus:outline-none sm:text-sm transition-all duration-300 ease-in-out bg-auth-input-bg border border-auth-input-border focus:border-auth-input-focus-border focus:ring-1 focus:ring-auth-input-focus-border text-auth-text-primary placeholder-auth-text-secondary caret-auth-accent-gold";
+const ICON_WRAPPER_CLASSES = "absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-auth-text-secondary";
+
+// Types para melhor performance
+type ViewType = 'login' | 'register' | 'forgotPassword' | 'emailVerification';
+
+interface FormState {
+  email: string;
+  password: string;
+  confirmPassword: string;
+  fullName: string;
+}
+
+interface FormErrors {
+  email?: string;
+  password?: string;
+  confirmPassword?: string;
+  fullName?: string;
+  general?: string;
+}
+
+// Validações otimizadas - executam apenas quando necessário
+const validateEmail = (email: string): string | undefined => {
+  if (!email) return 'E-mail é obrigatório';
+  if (!/\S+@\S+\.\S+/.test(email)) return 'E-mail inválido';
+  return undefined;
+};
+
+const validatePassword = (password: string): string | undefined => {
+  if (!password) return 'Senha é obrigatória';
+  if (password.length < 6) return 'A senha deve ter no mínimo 6 caracteres';
+  return undefined;
+};
+
+const validateFullName = (fullName: string): string | undefined => {
+  if (!fullName.trim()) return 'O nome completo é obrigatório';
+  if (fullName.trim().length < 2) return 'Nome deve ter pelo menos 2 caracteres';
+  return undefined;
+};
+
+interface AuthButtonProps {
+  type?: "button" | "submit" | "reset";
+  onClick?: () => void;
+  isLoading?: boolean;
+  children: React.ReactNode;
+  className?: string;
+  variant?: 'primary' | 'link';
+  disabled?: boolean;
+}
+
+const AuthButtonComponent: React.FC<AuthButtonProps> = ({ type = "button", onClick, isLoading, children, className = '', variant = 'primary', disabled }) => {
+  if (variant === 'link') {
+    return (
+      <button
+        type={type}
+        onClick={onClick}
+        disabled={disabled}
+        className={`font-semibold text-auth-accent-gold hover:text-auth-accent-gold-darker transition-colors duration-200 ${className}`}
+      >
+        {children}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={isLoading || disabled}
+      className={`w-full flex justify-center items-center px-6 py-3.5 border border-transparent text-base font-semibold rounded-xl shadow-lg text-auth-cta-text-dark bg-gradient-to-br from-auth-accent-gold to-auth-accent-gold-darker hover:from-auth-accent-gold-darker hover:to-auth-accent-gold focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-auth-accent-gold focus:ring-offset-auth-card-bg transition-all duration-300 ease-in-out transform hover:scale-105 ${isLoading || disabled ? 'opacity-70 cursor-not-allowed' : ''} ${className}`}
+    >
+      {isLoading ? <LoadingSpinner size="sm" color="text-auth-cta-text-dark" /> : children}
+    </button>
+  );
+};
+// AuthButton otimizado como componente separado
+const AuthButton = React.memo(AuthButtonComponent);
+AuthButton.displayName = 'AuthButton';
+
+
+const AuthPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { login, register, isAuthenticated, isLoading: authContextLoading, requestPasswordReset } = useAuth();
-  
-  const [currentView, setCurrentView] = useState<'login' | 'register' | 'forgotPassword' | 'emailVerification'>('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [fullName, setFullName] = useState(''); // Changed from 'name' to 'fullName'
-  const [error, setError] = useState<string | null>(null);
+
+  // Estado consolidado para melhor performance
+  const [currentView, setCurrentView] = useState<ViewType>('login');
+  const [formState, setFormState] = useState<FormState>({
+    email: '',
+    password: '',
+    confirmPassword: '',
+    fullName: ''
+  });
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [formLoading, setFormLoading] = useState(false);
-  const [hasMounted, setHasMounted] = useState(false); 
+  const [hasMounted, setHasMounted] = useState(false);
 
+  // Refs para evitar re-renders desnecessários
+  const hasNavigatedRef = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // Effect para mounting - otimizado
   useEffect(() => {
     setHasMounted(true);
+    document.body.classList.add('auth-page-reimagined-theme');
+    return () => {
+      document.body.classList.remove('auth-page-reimagined-theme');
+    };
   }, []);
 
+  // Effect para URL params - otimizado
   useEffect(() => {
     const params = new URLSearchParams(location.search);
+    const hash = location.hash;
+
     if (params.get('register') === 'true') {
       setCurrentView('register');
+    } else if (hash.includes('type=recovery')) {
+      setCurrentView('forgotPassword');
     }
-  }, [location.search]);
+  }, [location.search, location.hash]);
 
+  // Effect para navegação - otimizado com ref
   useEffect(() => {
-    if (hasMounted && !authContextLoading && isAuthenticated) {
+    if (hasMounted && !authContextLoading && isAuthenticated && !hasNavigatedRef.current) {
+      hasNavigatedRef.current = true;
       navigate('/dashboard');
     }
   }, [isAuthenticated, navigate, authContextLoading, hasMounted]);
 
-  const clearFormFields = () => {
-    setEmail('');
-    setPassword('');
-    setConfirmPassword('');
-    setFullName(''); // Changed from 'setName' to 'setFullName'
-    setError(null);
-    setSuccessMessage(null);
-  };
+  // Handlers otimizados com useCallback
+  const updateFormField = useCallback((field: keyof FormState, value: string) => {
+    setFormState(prev => ({ ...prev, [field]: value }));
 
-  const handleViewChange = (view: 'login' | 'register' | 'forgotPassword') => {
+    // Limpa erro do campo específico quando usuário digita
+    if (formErrors[field]) {
+      setFormErrors(prev => ({ ...prev, [field]: undefined }));
+    }
+  }, [formErrors]);
+
+  const clearForm = useCallback(() => {
+    setFormState({
+      email: '',
+      password: '',
+      confirmPassword: '',
+      fullName: ''
+    });
+    setFormErrors({});
+    setSuccessMessage(null);
+  }, []);
+
+  const handleViewChange = useCallback((view: ViewType) => {
     setCurrentView(view);
-    clearFormFields();
-  };
+    clearForm();
+  }, [clearForm]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Validação otimizada do formulário
+  const validateForm = useCallback((): boolean => {
+    const errors: FormErrors = {};
+
+    // Validação do email para todos os views
+    if (currentView !== 'emailVerification') {
+      const emailError = validateEmail(formState.email);
+      if (emailError) errors.email = emailError;
+    }
+
+    // Validações específicas por view
+    if (currentView === 'register') {
+      const fullNameError = validateFullName(formState.fullName);
+      if (fullNameError) errors.fullName = fullNameError;
+
+      const passwordError = validatePassword(formState.password);
+      if (passwordError) errors.password = passwordError;
+
+      if (formState.password !== formState.confirmPassword) {
+        errors.confirmPassword = 'As senhas não coincidem';
+      }
+    } else if (currentView === 'login') {
+      const passwordError = validatePassword(formState.password);
+      if (passwordError) errors.password = passwordError;
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  }, [currentView, formState]);
+
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSuccessMessage(null);
+
+    if (!validateForm()) return;
+
     setFormLoading(true);
+    setFormErrors(prev => ({ ...prev, general: undefined }));
+    setSuccessMessage(null);
 
     try {
       if (currentView === 'register') {
-        if (password !== confirmPassword) throw new Error('As senhas não coincidem.');
-        if (password.length < 6) throw new Error('A senha deve ter no mínimo 6 caracteres.');
-        if (!fullName.trim()) throw new Error('O nome completo é obrigatório.');
-        
         const registrationData = {
-          email,
-          password,
-          full_name: fullName,
-          // phone: optional, can be added here if a field for it exists
+          email: formState.email,
+          password: formState.password,
+          full_name: formState.fullName,
         };
         const result = await register(registrationData);
-        
-        if (result?.success) {
-          if (result.needsEmailConfirmation) {
-            setCurrentView('emailVerification');
-            setSuccessMessage(`Cadastro realizado com sucesso! Enviamos um e-mail de confirmação para ${email}. Por favor, verifique sua caixa de entrada (e spam) para ativar sua conta.`);
-          } else {
-            // Login automático, o useEffect cuidará do redirecionamento
-          }
+
+        if (result?.success && result.needsEmailConfirmation) {
+          setCurrentView('emailVerification');
+          setSuccessMessage(`Cadastro realizado! Enviamos um e-mail de confirmação para ${formState.email}. Verifique sua caixa de entrada (e spam) para ativar sua conta.`);
         }
       } else if (currentView === 'login') {
-        await login(email, password);
+        await login(formState.email, formState.password);
       } else if (currentView === 'forgotPassword') {
-        await requestPasswordReset(email);
-        setSuccessMessage(`Se uma conta com o e-mail ${email} existir, um link para redefinição de senha foi enviado.`);
+        await requestPasswordReset(formState.email);
+        setSuccessMessage(`Se uma conta com o e-mail ${formState.email} existir, um link para redefinição de senha foi enviado.`);
       }
     } catch (err: any) {
-      setError(err.message || 'Ocorreu um erro. Tente novamente.');
+      setFormErrors(prev => ({
+        ...prev,
+        general: err.message || 'Ocorreu um erro. Tente novamente.'
+      }));
     } finally {
       setFormLoading(false);
     }
-  };
+  }, [currentView, formState, validateForm, login, register, requestPasswordReset]);
 
+  // Memoized values
+  const title = useMemo(() => {
+    switch (currentView) {
+      case 'register': return 'Crie sua Conta Exclusiva';
+      case 'forgotPassword': return 'Redefinir Senha';
+      case 'emailVerification': return 'Verifique seu E-mail';
+      default: return 'Acesse a Plataforma';
+    }
+  }, [currentView]);
+
+  const isFormSubmittable = useMemo(() => {
+    if (currentView === 'emailVerification') return true; // Not a form to submit
+    if (currentView === 'forgotPassword') return !!formState.email && !validateEmail(formState.email);
+    if (currentView === 'login') {
+        return !!formState.email && !validateEmail(formState.email) &&
+               !!formState.password && !validatePassword(formState.password);
+    }
+    if (currentView === 'register') {
+        return !!formState.email && !validateEmail(formState.email) &&
+               !!formState.fullName && !validateFullName(formState.fullName) &&
+               !!formState.password && !validatePassword(formState.password) &&
+               !!formState.confirmPassword && formState.password === formState.confirmPassword;
+    }
+    return false;
+  }, [currentView, formState]);
+
+
+  // Early returns otimizados
   if (!hasMounted) {
-    return null; 
+    return null;
   }
 
-  if (authContextLoading) {
+  if (authContextLoading && !isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-900">
+      <div className="min-h-screen flex items-center justify-center auth-page-reimagined-theme">
         <LoadingSpinner size="lg" />
       </div>
     );
   }
 
-  const getTitle = () => {
-    if (currentView === 'register') return 'Crie sua conta';
-    if (currentView === 'forgotPassword') return 'Redefinir Senha';
-    if (currentView === 'emailVerification') return 'Verifique seu E-mail';
-    return 'Acesse sua conta';
-  };
-
   return (
-    <div className="min-h-screen bg-neutral-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <AppLogoIcon className="mx-auto h-20 w-auto mb-6" />
-        <h2 className="text-center text-3xl font-extrabold text-neutral-100">
-          {getTitle()}
+    <motion.div
+      key="authPageContainer"
+      className="min-h-screen auth-page-reimagined-theme flex flex-col justify-center py-12 sm:px-6 lg:px-8 overflow-hidden relative"
+      variants={pageVariants}
+      initial="initial"
+      animate="in"
+      exit="out"
+    >
+      {/* Aurora Background Effects */}
+      <div className="aurora-effect gold-aurora"></div>
+      <div className="aurora-effect green-aurora"></div>
+
+      <motion.div
+        className="sm:mx-auto sm:w-full sm:max-w-md text-center z-10"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0, transition: { duration: 0.5, delay: 0.1, ease: "circOut" as const } }}
+      >
+        <Link to="/">
+          <AppLogoIcon className="mx-auto h-24 w-auto mb-6 text-auth-accent-gold filter drop-shadow-[0_2px_3px_rgba(255,193,7,0.5)]" />
+        </Link>
+        <h2 className="text-3xl font-bold font-display text-auth-text-primary tracking-tight">
+          {title}
         </h2>
         {currentView !== 'emailVerification' && (
-          <p className="mt-2 text-center text-sm text-neutral-400">
-            {currentView === 'login' && ( <>Ou <button onClick={() => handleViewChange('register')} className="font-medium text-primary hover:text-primary-dark">crie uma nova conta gratuitamente</button></>)}
-            {currentView === 'register' && (<>Ou <button onClick={() => handleViewChange('login')} className="font-medium text-primary hover:text-primary-dark">faça login na sua conta existente</button></>)}
-            {currentView === 'forgotPassword' && (<>Lembrou a senha? <button onClick={() => handleViewChange('login')} className="font-medium text-primary hover:text-primary-dark">Faça login</button></>)}
+          <p className="mt-3 text-sm text-auth-text-secondary">
+            {currentView === 'login' && (
+              <>Não tem conta? <AuthButton variant="link" onClick={() => handleViewChange('register')}>Crie uma agora</AuthButton></>
+            )}
+            {currentView === 'register' && (
+              <>Já possui uma conta? <AuthButton variant="link" onClick={() => handleViewChange('login')}>Faça login</AuthButton></>
+            )}
+            {currentView === 'forgotPassword' && (
+              <>Lembrou a senha? <AuthButton variant="link" onClick={() => handleViewChange('login')}>Faça login</AuthButton></>
+            )}
           </p>
         )}
-      </div>
+      </motion.div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <Card className="bg-neutral-800 shadow-2xl border-neutral-700/50">
-          {currentView === 'emailVerification' ? (
-            <div className="text-center space-y-4">
-              <EmailIcon className="h-16 w-16 text-primary mx-auto"/>
-              <p className="text-neutral-300">{successMessage}</p>
-              <Button onClick={() => handleViewChange('login')} variant="primary" className="w-full">
-                Ir para Login
-              </Button>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {currentView === 'register' && (
-                <Input label="Nome Completo" name="fullName" type="text" autoComplete="name" required value={fullName} onChange={(e) => setFullName(e.target.value)} icon={<UserIcon className="h-5 w-5"/>} disabled={formLoading} />
-              )}
-              {(currentView === 'login' || currentView === 'register' || currentView === 'forgotPassword') && (
-                <Input label="Endereço de e-mail" name="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} icon={<EmailIcon className="h-5 w-5"/>} disabled={formLoading} />
-              )}
-              {(currentView === 'login' || currentView === 'register') && (
-                <Input label="Senha" name="password" type="password" autoComplete={currentView === 'register' ? "new-password" : "current-password"} required value={password} onChange={(e) => setPassword(e.target.value)} icon={<LockClosedIcon className="h-5 w-5"/>} disabled={formLoading} />
-              )}
-              {currentView === 'register' && (
-                <Input label="Confirmar Senha" name="confirmPassword" type="password" autoComplete="new-password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} icon={<LockClosedIcon className="h-5 w-5"/>} disabled={formLoading} />
-              )}
+      <motion.div
+        className="mt-8 sm:mx-auto sm:w-full sm:max-w-md z-10"
+        variants={cardVariants}
+        initial="initial"
+        animate="in"
+        exit="out"
+      >
+        <div className="bg-auth-card-bg border border-auth-card-border shadow-2xl rounded-2xl py-10 px-6 sm:px-10 backdrop-filter backdrop-blur-xl">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentView}
+              initial={{ opacity: 0, x: currentView === 'login' ? -30 : 30 }}
+              animate={{ opacity: 1, x: 0, transition: { duration: 0.4, ease: "circOut" as const } }}
+              exit={{ opacity: 0, x: currentView === 'login' ? 30 : -30, transition: { duration: 0.2, ease: "circIn" as const } }}
+            >
+              {currentView === 'emailVerification' ? (
+                <div className="text-center space-y-5">
+                  <EmailIcon className="h-16 w-16 text-auth-accent-gold mx-auto"/>
+                  <p className="text-auth-text-secondary text-base">{successMessage}</p>
+                  <AuthButton onClick={() => handleViewChange('login')}>
+                    Ir para Login
+                  </AuthButton>
+                </div>
+              ) : (
+                <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
+                  {currentView === 'register' && (
+                    <div>
+                      <label htmlFor="fullName" className="block text-sm font-semibold text-auth-text-secondary mb-1.5">
+                        Nome Completo
+                      </label>
+                      <div className="relative">
+                        <div className={ICON_WRAPPER_CLASSES}>
+                          <UserIcon className="h-5 w-5"/>
+                        </div>
+                        <input
+                          id="fullName"
+                          name="fullName"
+                          type="text"
+                          autoComplete="name"
+                          required
+                          value={formState.fullName}
+                          onChange={(e) => updateFormField('fullName', e.target.value)}
+                          className={cn(COMMON_INPUT_CLASSES, 'pl-12', formErrors.fullName ? 'border-red-500' : '')}
+                          disabled={formLoading}
+                          placeholder="Digite seu nome completo"
+                        />
+                      </div>
+                      {formErrors.fullName && (
+                        <p className="mt-1 text-sm text-red-400">{formErrors.fullName}</p>
+                      )}
+                    </div>
+                  )}
 
-              {error && <p className="text-sm text-red-400 text-center p-2 bg-red-800/20 rounded-md border border-red-600/50">{error}</p>}
-              {successMessage && currentView === 'forgotPassword' && <p className="text-sm text-green-400 text-center p-2 bg-green-800/20 rounded-md border border-green-600/50">{successMessage}</p>}
+                  <div>
+                    <label htmlFor="email" className="block text-sm font-semibold text-auth-text-secondary mb-1.5">
+                      Endereço de e-mail
+                    </label>
+                    <div className="relative">
+                      <div className={ICON_WRAPPER_CLASSES}>
+                        <EmailIcon className="h-5 w-5"/>
+                      </div>
+                      <input
+                        id="email"
+                        name="email"
+                        type="email"
+                        autoComplete="email"
+                        required
+                        value={formState.email}
+                        onChange={(e) => updateFormField('email', e.target.value)}
+                        className={cn(COMMON_INPUT_CLASSES, 'pl-12', formErrors.email ? 'border-red-500' : '')}
+                        disabled={formLoading}
+                        placeholder="seu@email.com"
+                      />
+                    </div>
+                    {formErrors.email && (
+                      <p className="mt-1 text-sm text-red-400">{formErrors.email}</p>
+                    )}
+                  </div>
 
-              <div>
-                <Button type="submit" className="w-full bg-primary text-neutral-900 hover:bg-primary-dark focus:ring-primary" isLoading={formLoading} size="lg">
-                  {currentView === 'register' ? 'Criar Conta' : currentView === 'login' ? 'Entrar' : 'Enviar Link'}
-                </Button>
-              </div>
+                  {(currentView === 'login' || currentView === 'register') && (
+                    <div>
+                      <label htmlFor="password" className="block text-sm font-semibold text-auth-text-secondary mb-1.5">
+                        Senha
+                      </label>
+                      <div className="relative">
+                        <div className={ICON_WRAPPER_CLASSES}>
+                          <LockClosedIcon className="h-5 w-5"/>
+                        </div>
+                        <input
+                          id="password"
+                          name="password"
+                          type="password"
+                          autoComplete={currentView === 'register' ? "new-password" : "current-password"}
+                          required
+                          value={formState.password}
+                          onChange={(e) => updateFormField('password', e.target.value)}
+                          className={cn(COMMON_INPUT_CLASSES, 'pl-12', formErrors.password ? 'border-red-500' : '')}
+                          disabled={formLoading}
+                          placeholder="Digite sua senha"
+                        />
+                      </div>
+                      {formErrors.password && (
+                        <p className="mt-1 text-sm text-red-400">{formErrors.password}</p>
+                      )}
+                    </div>
+                  )}
 
-              {currentView === 'login' && (
-                <div className="text-sm text-center">
-                  <button type="button" onClick={() => handleViewChange('forgotPassword')} className="font-medium text-primary hover:text-primary-dark">
-                    Esqueceu sua senha?
-                  </button>
-                </div>
+                  {currentView === 'register' && (
+                    <div>
+                      <label htmlFor="confirmPassword" className="block text-sm font-semibold text-auth-text-secondary mb-1.5">
+                        Confirmar Senha
+                      </label>
+                      <div className="relative">
+                        <div className={ICON_WRAPPER_CLASSES}>
+                          <LockClosedIcon className="h-5 w-5"/>
+                        </div>
+                        <input
+                          id="confirmPassword"
+                          name="confirmPassword"
+                          type="password"
+                          autoComplete="new-password"
+                          required
+                          value={formState.confirmPassword}
+                          onChange={(e) => updateFormField('confirmPassword', e.target.value)}
+                          className={cn(COMMON_INPUT_CLASSES, 'pl-12', formErrors.confirmPassword ? 'border-red-500' : '')}
+                          disabled={formLoading}
+                          placeholder="Confirme sua senha"
+                        />
+                      </div>
+                      {formErrors.confirmPassword && (
+                        <p className="mt-1 text-sm text-red-400">{formErrors.confirmPassword}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {formErrors.general && (
+                    <p className="text-sm text-red-400 text-center p-3 bg-red-900/30 rounded-lg border border-red-700/50">
+                      {formErrors.general}
+                    </p>
+                  )}
+
+                  {successMessage && currentView === 'forgotPassword' && (
+                    <p className="text-sm text-green-400 text-center p-3 bg-green-900/30 rounded-lg border border-green-700/50">
+                      {successMessage}
+                    </p>
+                  )}
+
+                  <div className="pt-2">
+                    <AuthButton
+                      type="submit"
+                      isLoading={formLoading}
+                      disabled={!isFormSubmittable || formLoading}
+                    >
+                      {currentView === 'register' ? 'Criar Conta' :
+                       currentView === 'login' ? 'Entrar' : 'Enviar Link'}
+                    </AuthButton>
+                  </div>
+
+                  {currentView === 'login' && (
+                    <div className="text-sm text-center">
+                      <AuthButton variant="link" onClick={() => handleViewChange('forgotPassword')}>
+                        Esqueceu sua senha?
+                      </AuthButton>
+                    </div>
+                  )}
+                </form>
               )}
-            </form>
-          )}
-          
-          {currentView !== 'emailVerification' && currentView !== 'forgotPassword' && (
-            <div className="mt-6">
-                <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-neutral-600" />
-                </div>
-                <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-neutral-800 text-neutral-400">Ou continue com</span>
-                </div>
-                </div>
-                <div className="mt-6 grid grid-cols-2 gap-3">
-                <div>
-                    <Button variant='outline' className="w-full border-neutral-600 text-neutral-300 hover:bg-neutral-700" disabled>
-                    <span className="sr-only">Entrar com Google</span>
-                    <svg className="w-5 h-5" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.16 5.48-4.08 7.18l7.64 5.92C44.64 37.26 46.98 31.45 46.98 24.55z"></path><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.64-5.92c-2.17 1.45-4.96 2.3-8.25 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path><path fill="none" d="M0 0h48v48H0z"></path></svg>
-                    </Button>
-                </div>
-                <div>
-                    <Button variant='outline' className="w-full border-neutral-600 text-neutral-300 hover:bg-neutral-700" disabled>
-                    <span className="sr-only">Entrar com Facebook</span>
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="#1877F2"><path d="M22.676 0H1.324C.593 0 0 .593 0 1.324v21.352C0 23.407.593 24 1.324 24h11.494v-9.294H9.692v-3.622h3.128V8.413c0-3.1 1.893-4.788 4.659-4.788 1.325 0 2.463.099 2.795.143v3.24l-1.918.001c-1.504 0-1.795.715-1.795 1.763v2.313h3.587l-.467 3.622h-3.12V24h6.116c.73 0 1.323-.593 1.323-1.324V1.324C24 .593 23.407 0 22.676 0z"></path></svg>
-                    </Button>
-                </div>
-                </div>
-            </div>
-           )}
-        </Card>
-      </div>
-    </div>
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </motion.div>
+
+      <p className="text-xs text-auth-text-secondary/50 text-center mt-10 z-10">
+        &copy; {new Date().getFullYear()} 1Checkout. Todos os direitos reservados.
+      </p>
+    </motion.div>
   );
 };
+
+export default AuthPage;

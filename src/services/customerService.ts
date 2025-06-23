@@ -1,5 +1,5 @@
 
-import { Customer, FunnelStage, Sale } from '@/types'; // Ajustado para alias @
+import { Customer, FunnelStage, Sale, PaymentStatus } from '@/types'; // Ajustado para alias @
 import { supabase, getSupabaseUserId } from '@/supabaseClient'; // Ajustado para alias @
 import { Database } from '@/types/supabase'; // Ajustado para alias @
 import { v4 as uuidv4 } from 'uuid';
@@ -109,8 +109,8 @@ export const customerService = {
     }
   },
 
-  upsertCustomerOnSale: async (sale: Sale, token: string | null): Promise<Customer | null> => { // Added token parameter
-    const { platformUserId, customer, products, totalAmountInCents, id: saleId, createdAt, paidAt } = sale;
+  upsertCustomerOnSale: async (sale: Sale, token: string | null): Promise<Customer | null> => { 
+    const { platformUserId, customer, products, totalAmountInCents, id: saleId, createdAt, paidAt, status } = sale;
     const logPrefix = `[customerService.upsertCustomerOnSale(saleId: ${saleId?.substring(0,8) || 'N/A'})]`;
     console.log(`${logPrefix} Iniciando upsert para venda. Token recebido: ${token ? 'Presente' : 'Ausente'}`);
 
@@ -136,7 +136,17 @@ export const customerService = {
 
 
     const purchasedProductIds = products.map(p => p.productId);
-    const saleEffectiveDate = paidAt || createdAt; 
+    
+    // Use paidAt if sale is PAID and paidAt is available, otherwise fallback to createdAt
+    let saleEffectiveDate: string;
+    if (status === PaymentStatus.PAID && paidAt) {
+      saleEffectiveDate = paidAt;
+      console.log(`${logPrefix} Usando paidAt (${paidAt}) como saleEffectiveDate.`);
+    } else {
+      saleEffectiveDate = createdAt;
+      console.log(`${logPrefix} Usando createdAt (${createdAt}) como saleEffectiveDate (status: ${status}, paidAt: ${paidAt}).`);
+    }
+
 
     if (existingCustomerData) {
       console.log(`${logPrefix} Atualizando cliente existente ID: ${existingCustomerData.id}`);
@@ -147,7 +157,7 @@ export const customerService = {
         name: customer.name || existingCustomerData.name,
         whatsapp: customer.whatsapp || existingCustomerData.whatsapp,
         products_purchased: updatedProductsPurchased,
-        funnel_stage: FunnelStage.CUSTOMER,
+        funnel_stage: FunnelStage.CUSTOMER, // Always update to customer on a new sale for an existing record
         last_purchase_date: saleEffectiveDate,
         total_orders: (existingCustomerData.total_orders || 0) + 1,
         total_spent_in_cents: (existingCustomerData.total_spent_in_cents || 0) + totalAmountInCents,
@@ -155,8 +165,10 @@ export const customerService = {
         updated_at: new Date().toISOString(),
       };
       
+      // Only set first_purchase_date if it's not already set.
       if (!existingCustomerData.first_purchase_date) {
         updates.first_purchase_date = saleEffectiveDate;
+        console.log(`${logPrefix} Definindo first_purchase_date para ${saleEffectiveDate}`);
       }
       console.log(`${logPrefix} Dados para atualização:`, updates);
 

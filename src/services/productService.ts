@@ -31,6 +31,30 @@ const parseJsonField = <T>(field: Json | null | undefined, defaultValue: T): T =
   return field as T; 
 };
 
+const defaultCheckoutCustomization: ProductCheckoutCustomization = {
+  primaryColor: '#0D9488', 
+  logoUrl: '',
+  videoUrl: '',
+  salesCopy: '',
+  testimonials: [],
+  guaranteeBadges: [],
+  countdownTimer: {
+    enabled: false,
+    durationMinutes: 15,
+    messageBefore: 'Oferta expira em:',
+    messageAfter: 'Oferta expirada!',
+    backgroundColor: '#EF4444', 
+    textColor: '#FFFFFF',
+  },
+  theme: 'light',
+  showProductName: true,
+};
+
+const defaultUtmParams: UtmParams = {
+  source: '', medium: '', campaign: '', term: '', content: ''
+};
+
+
 const fromSupabaseRow = (row: ProductRow): Product => {
   return {
     id: row.id,
@@ -40,7 +64,7 @@ const fromSupabaseRow = (row: ProductRow): Product => {
     description: row.description,
     priceInCents: row.price_in_cents,
     imageUrl: row.image_url || undefined,
-    checkoutCustomization: parseJsonField<ProductCheckoutCustomization>(row.checkout_customization, {}),
+    checkoutCustomization: parseJsonField<ProductCheckoutCustomization | null>(row.checkout_customization, defaultCheckoutCustomization),
     deliveryUrl: row.delivery_url || undefined,
     totalSales: row.total_sales || 0,
     clicks: row.clicks || 0,
@@ -50,7 +74,7 @@ const fromSupabaseRow = (row: ProductRow): Product => {
     orderBump: parseJsonField<OrderBumpOffer | undefined>(row.order_bump, undefined),
     upsell: parseJsonField<UpsellOffer | undefined>(row.upsell, undefined),
     coupons: parseJsonField<Coupon[]>(row.coupons, []),
-    utmParams: parseJsonField<UtmParams | undefined>(row.utm_params, undefined), // Parse utm_params
+    utmParams: parseJsonField<UtmParams | null>(row.utm_params, defaultUtmParams), 
   };
 };
 
@@ -148,6 +172,10 @@ export const productService = {
     if (!userId) throw new Error('Usuário não autenticado para criar produto.');
 
     const slug = generateSlugFromName(productData.name);
+    
+    const utmParamsToSave = productData.utmParams && Object.values(productData.utmParams).some(val => typeof val === 'string' && val.trim() !== '')
+      ? productData.utmParams
+      : null;
 
     const newProductData: ProductInsert = {
       platform_user_id: userId,
@@ -156,12 +184,12 @@ export const productService = {
       description: productData.description,
       price_in_cents: productData.priceInCents,
       image_url: productData.imageUrl === '' ? null : productData.imageUrl,
-      checkout_customization: productData.checkoutCustomization as unknown as Json,
+      checkout_customization: productData.checkoutCustomization as unknown as Json, // Ensure not null for DB if it's not nullable there
       delivery_url: productData.deliveryUrl === '' ? null : productData.deliveryUrl,
       order_bump: productData.orderBump as unknown as Json,
       upsell: productData.upsell as unknown as Json,
       coupons: productData.coupons as unknown as Json,
-      utm_params: productData.utmParams as unknown as Json, // Add utmParams
+      utm_params: utmParamsToSave as unknown as Json, 
     };
 
     try {
@@ -189,6 +217,10 @@ export const productService = {
         throw new Error(`Produto com ID ${id} não encontrado para atualização.`);
     }
 
+    const utmParamsToSave = updates.utmParams && Object.values(updates.utmParams).some(val => typeof val === 'string' && val.trim() !== '')
+      ? updates.utmParams
+      : null;
+
     const updatesForSupabase: ProductUpdate = {
         ...(updates.name && { name: updates.name }),
         ...(updates.description && { description: updates.description }),
@@ -199,7 +231,7 @@ export const productService = {
         ...(updates.orderBump !== undefined && { order_bump: updates.orderBump as unknown as Json }),
         ...(updates.upsell !== undefined && { upsell: updates.upsell as unknown as Json }),
         ...(updates.coupons !== undefined && { coupons: updates.coupons as unknown as Json }),
-        ...(updates.utmParams !== undefined && { utm_params: updates.utmParams as unknown as Json }), // Add utmParams
+        utm_params: utmParamsToSave as unknown as Json, // Always include, will be null if empty
     };
     
     if (updates.name && currentProduct.name !== updates.name) {

@@ -1,8 +1,7 @@
-
 import React, { createContext, useState, useContext, useEffect, ReactNode, useCallback, useRef, useMemo } from 'react';
 import { AuthUser, Session } from '@supabase/supabase-js';
 import { supabase } from '@/supabaseClient';
-import { User as BaseUser } from '../types'; // Changed from '@/types' to relative path
+import { User as BaseUser } from '../types'; 
 import { SUPER_ADMIN_EMAIL } from '../constants.tsx'; 
 
 export interface AppUser extends BaseUser {
@@ -29,17 +28,87 @@ interface AuthContextType {
   logout: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
   isLoading: boolean;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const PROFILE_FETCH_TIMEOUT = 8000; 
-const PROFILE_CACHE_DURATION = 10 * 60 * 1000; 
-const MAX_RETRIES = 2; 
+// 🚀 OTIMIZAÇÕES DE CACHE E PERFORMANCE
+const PROFILE_FETCH_TIMEOUT = 5000; // Reduzido de 8s para 5s
+const PROFILE_CACHE_DURATION = 15 * 60 * 1000; // Aumentado para 15 min
+const SESSION_CACHE_DURATION = 5 * 60 * 1000; // Cache de sessão por 5 min
+const MAX_RETRIES = 1; // Reduzido para ser mais rápido
+const DEBOUNCE_DELAY = 100; // Para debounce de chamadas
 
+// Cache global aprimorado com TTL automático
+class OptimizedCache<T> {
+  private cache = new Map<string, { data: T; timestamp: number; ttl: number }>();
+  private cleanupInterval: number; // Changed from NodeJS.Timeout to number
+
+  constructor(cleanupIntervalMs = 60000) {
+    this.cleanupInterval = window.setInterval(() => this.cleanup(), cleanupIntervalMs); // Used window.setInterval
+  }
+
+  set(key: string, data: T, ttl: number = PROFILE_CACHE_DURATION): void {
+    this.cache.set(key, { data, timestamp: Date.now(), ttl });
+  }
+
+  get(key: string): T | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+    
+    if (Date.now() - entry.timestamp > entry.ttl) {
+      this.cache.delete(key);
+      return null;
+    }
+    
+    return entry.data;
+  }
+
+  has(key: string): boolean {
+    return this.get(key) !== null;
+  }
+
+  delete(key: string): void {
+    this.cache.delete(key);
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  private cleanup(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.cache.entries()) {
+      if (now - entry.timestamp > entry.ttl) {
+        this.cache.delete(key);
+      }
+    }
+  }
+
+  destroy(): void {
+    window.clearInterval(this.cleanupInterval); // Used window.clearInterval
+    this.cache.clear();
+  }
+}
+
+// Instâncias de cache otimizadas
+const profileCache = new OptimizedCache<AppUser | null>();
+const sessionCache = new OptimizedCache<Session | null>();
 const activeProfileFetches = new Map<string, Promise<AppUser | null>>();
-const profileCache = new Map<string, { profile: AppUser | null; timestamp: number }>();
 const retryCount = new Map<string, number>();
+
+// 🚀 DEBOUNCE UTILITY
+const debounce = <T extends (...args: any[]) => any>(
+  func: T,
+  delay: number
+): ((...args: Parameters<T>) => void) => {
+  let timeoutId: number; // Changed from NodeJS.Timeout to number
+  return (...args: Parameters<T>) => {
+    window.clearTimeout(timeoutId); // Used window.clearTimeout
+    timeoutId = window.setTimeout(() => func(...args), delay); // Used window.setTimeout
+  };
+};
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AppUser | null>(null);
@@ -47,13 +116,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState(true);
   const mountedRef = useRef(true);
   const isInitialized = useRef(false);
+  const logoutSignalRef = useRef(false);
+  const lastProfileFetchRef = useRef<string>(''); // Para evitar fetches desnecessários
 
+  // 🚀 FALLBACK PROFILE OTIMIZADO COM MEMOIZAÇÃO
   const createFallbackProfile = useCallback((supabaseUser: AuthUser, reason: string): AppUser => {
     const userEmail = supabaseUser?.email || '';
-    // Prioritize user_metadata.name, then user_metadata.full_name, then split email
-    const fallbackName = supabaseUser.user_metadata?.name || supabaseUser.user_metadata?.full_name || userEmail.split('@')[0] || 'Usuário';
+    const fallbackName = supabaseUser.user_metadata?.name || 
+                        supabaseUser.user_metadata?.full_name || 
+                        userEmail.split('@')[0] || 'Usuário';
 
-    const fallbackProfile: AppUser = {
+    return {
       id: supabaseUser.id,
       email: userEmail,
       name: `${fallbackName} (${reason})`,
@@ -62,105 +135,97 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       createdAt: supabaseUser.created_at,
       isFallback: true,
     };
-    return fallbackProfile;
   }, []);
 
-  const fetchUserProfile = useCallback(async (supabaseUser: AuthUser | null, sourceCall: string): Promise<AppUser | null> => {
-    const userId = supabaseUser?.id;
-    const logPrefix = `AuthContext:fetchUserProfile(${userId?.substring(0,8)}, ${sourceCall})`;
+  // 🚀 FETCH PROFILE SUPER OTIMIZADO
+  const fetchUserProfile = useCallback(async (
+    supabaseUser: AuthUser | null, 
+    sourceCall: string,
+    forceRefresh = false
+  ): Promise<AppUser | null> => {
+    if (logoutSignalRef.current || !supabaseUser?.id) return null;
 
-    console.log(`${logPrefix} - Iniciado`);
-
-    if (!userId || !supabaseUser) {
-      console.log(`${logPrefix} - Sem usuário Supabase`);
-      return null;
+    const userId = supabaseUser.id;
+    const cacheKey = `${userId}_${sourceCall}`;
+    
+    // Evita fetches duplicados para o mesmo usuário/contexto
+    if (!forceRefresh && lastProfileFetchRef.current === cacheKey) {
+      const cached = profileCache.get(userId);
+      if (cached) return cached;
     }
 
-    const cachedEntry = profileCache.get(userId);
-    if (cachedEntry && (Date.now() - cachedEntry.timestamp < PROFILE_CACHE_DURATION)) {
-      console.log(`${logPrefix} - Retornando do cache`);
-      return cachedEntry.profile;
+    // Cache hit - retorna imediatamente
+    if (!forceRefresh && profileCache.has(userId)) {
+      return profileCache.get(userId);
     }
 
+    // Reutiliza fetch ativo
     if (activeProfileFetches.has(userId)) {
-      console.log(`${logPrefix} - Reutilizando requisição ativa`);
       return activeProfileFetches.get(userId)!;
     }
 
+    // Verifica limite de retries
     const currentRetries = retryCount.get(userId) || 0;
     if (currentRetries >= MAX_RETRIES) {
-      console.warn(`${logPrefix} - Máximo de tentativas atingido, usando fallback`);
       const fallback = createFallbackProfile(supabaseUser, 'MAX_RETRIES');
-      profileCache.set(userId, { profile: fallback, timestamp: Date.now() });
+      profileCache.set(userId, fallback);
       return fallback;
     }
 
+    lastProfileFetchRef.current = cacheKey;
+
     const fetchPromise = (async (): Promise<AppUser | null> => {
       const controller = new AbortController();
-      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+      const timeoutId = window.setTimeout(() => controller.abort(), PROFILE_FETCH_TIMEOUT);
 
       try {
-        console.log(`${logPrefix} - Consultando Supabase...`);
-
-        timeoutId = setTimeout(() => {
-          console.warn(`${logPrefix} - Timeout de ${PROFILE_FETCH_TIMEOUT}ms`);
-          controller.abort();
-        }, PROFILE_FETCH_TIMEOUT);
-
-        const { data: profileData, error: profileError } = await supabase
+        // 🚀 QUERY OTIMIZADA - apenas campos necessários
+        const { data: profileData, error } = await supabase
           .from('profiles')
           .select('id, name, is_super_admin, is_active, created_at')
           .eq('id', userId)
           .abortSignal(controller.signal)
-          .maybeSingle(); 
+          .limit(1) // Garante que retorna apenas 1 registro
+          .single(); // Mais eficiente que maybeSingle para casos esperados
 
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
+        window.clearTimeout(timeoutId);
 
-        if (profileError) {
-          console.warn(`${logPrefix} - Erro na consulta:`, profileError);
+        if (error) {
+          if (error.code === 'PGRST116') { // No rows returned
+            const fallback = createFallbackProfile(supabaseUser, 'NOT_FOUND');
+            profileCache.set(userId, fallback);
+            return fallback;
+          }
 
-          if (profileError.name === 'AbortError' || profileError.message?.includes('aborted')) {
+          if (error.name === 'AbortError') {
             retryCount.set(userId, currentRetries + 1);
-            console.warn(`${logPrefix} - Timeout, tentativa ${currentRetries + 1}/${MAX_RETRIES}`);
-
-            if (currentRetries + 1 < MAX_RETRIES) {
-              setTimeout(() => {
-                activeProfileFetches.delete(userId);
-                fetchUserProfile(supabaseUser, `${sourceCall}:RETRY_${currentRetries + 1}`);
-              }, 2000); 
-            }
             return createFallbackProfile(supabaseUser, 'TIMEOUT');
           }
-          return createFallbackProfile(supabaseUser, `ERROR_${profileError.code || 'UNKNOWN'}`);
+
+          return createFallbackProfile(supabaseUser, `ERROR_${error.code || 'UNKNOWN'}`);
         }
 
         retryCount.delete(userId);
-        let fetchedUser: AppUser;
 
-        if (!profileData) {
-          console.log(`${logPrefix} - Perfil não encontrado, criando novo`);
-          fetchedUser = createFallbackProfile(supabaseUser, 'NOT_FOUND');
-        } else {
-          console.log(`${logPrefix} - Perfil encontrado com sucesso`);
-          fetchedUser = {
-            id: userId, 
-            email: supabaseUser.email || '', 
-            name: profileData.name || supabaseUser.user_metadata?.name || supabaseUser.user_metadata?.full_name || supabaseUser.email?.split('@')[0] || 'Usuário', 
-            isSuperAdmin: (profileData.is_super_admin ?? false) || (supabaseUser.email === SUPER_ADMIN_EMAIL), 
-            isActive: profileData.is_active ?? true, 
-            createdAt: profileData.created_at || supabaseUser.created_at, 
-            isFallback: false, 
-          };
-        }
-        profileCache.set(userId, { profile: fetchedUser, timestamp: Date.now() });
+        const fetchedUser: AppUser = {
+          id: userId,
+          email: supabaseUser.email || '',
+          name: profileData.name || 
+                supabaseUser.user_metadata?.name || 
+                supabaseUser.user_metadata?.full_name || 
+                supabaseUser.email?.split('@')[0] || 'Usuário',
+          isSuperAdmin: (profileData.is_super_admin ?? false) || (supabaseUser.email === SUPER_ADMIN_EMAIL),
+          isActive: profileData.is_active ?? true,
+          createdAt: profileData.created_at || supabaseUser.created_at,
+          isFallback: false,
+        };
+
+        // Cache com TTL estendido para perfis válidos
+        profileCache.set(userId, fetchedUser, PROFILE_CACHE_DURATION);
         return fetchedUser;
 
       } catch (error: any) {
-        if (timeoutId) clearTimeout(timeoutId);
-        console.error(`${logPrefix} - Exceção capturada:`, error);
+        window.clearTimeout(timeoutId);
         if (error.name === 'AbortError') {
           retryCount.set(userId, currentRetries + 1);
           return createFallbackProfile(supabaseUser, 'ABORT_ERROR');
@@ -168,7 +233,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return createFallbackProfile(supabaseUser, 'EXCEPTION');
       } finally {
         activeProfileFetches.delete(userId);
-        console.log(`${logPrefix} - Finalizado`);
       }
     })();
 
@@ -176,33 +240,54 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return fetchPromise;
   }, [createFallbackProfile]);
 
-  const processSessionAndUser = useCallback(async (currentSession: Session | null, source: string) => {
-    const logPrefix = `processSessionAndUser(${source})`;
-    console.log(`${logPrefix} - Iniciado. Sessão: ${!!currentSession}, Montado: ${mountedRef.current}`);
-    if (!mountedRef.current) {
-      console.log(`${logPrefix} - Componente desmontado, abortando`);
-      return;
+  // 🚀 REFRESH PROFILE MANUAL (para updates em tempo real)
+  const refreshProfile = useCallback(async () => {
+    if (session?.user) {
+      const freshProfile = await fetchUserProfile(session.user, 'manual_refresh', true);
+      if (mountedRef.current && freshProfile) {
+        setUser(freshProfile);
+      }
     }
+  }, [session?.user, fetchUserProfile]);
+
+  // 🚀 PROCESS SESSION DEBOUNCED PARA EVITAR CHAMADAS EXCESSIVAS
+  const processSessionAndUser = useCallback(async (currentSession: Session | null, source: string) => {
+    if (logoutSignalRef.current && source.includes('SIGNED_IN')) {
+      return; // Ignora logins durante logout
+    }
+
+    if (!mountedRef.current) return;
+
+    // Cache de sessão para evitar processamento desnecessário
+    const sessionCacheKey = `${currentSession?.user?.id || 'null'}_${source}`;
+    if (sessionCache.has(sessionCacheKey) && !source.includes('manual_refresh')) {
+      const cachedSession = sessionCache.get(sessionCacheKey);
+      if (cachedSession === currentSession) return;
+    }
+
+    setIsLoading(true);
+
     try {
       let newAppProfile: AppUser | null = null;
+      
       if (currentSession?.user) {
-        console.log(`${logPrefix} - Buscando perfil do usuário...`);
-        newAppProfile = await fetchUserProfile(currentSession.user, source);
-        console.log(`${logPrefix} - Perfil obtido:`, { email: newAppProfile?.email, name: newAppProfile?.name, isFallback: newAppProfile?.isFallback });
+        // Usa cache agressivo para TOKEN_REFRESHED se o usuário for válido
+        if (source.includes('TOKEN_REFRESHED') && user && !user.isFallback) {
+          newAppProfile = user; // Reutiliza perfil existente
+        } else {
+          newAppProfile = await fetchUserProfile(currentSession.user, source);
+        }
       }
+
       if (mountedRef.current) {
         setSession(currentSession);
-        setUser(prevUser => {
-          if (source.includes('TOKEN_REFRESHED') && prevUser && !prevUser.isFallback && newAppProfile?.isFallback) {
-            console.log(`${logPrefix} - TOKEN_REFRESHED: mantendo perfil válido existente`);
-            return prevUser;
-          }
-          console.log(`${logPrefix} - Usuário atualizado. Autenticado: ${!!(currentSession && newAppProfile && newAppProfile.isActive)}`);
-          return newAppProfile;
-        });
+        setUser(newAppProfile);
+        
+        // Cache da sessão processada
+        sessionCache.set(sessionCacheKey, currentSession, SESSION_CACHE_DURATION);
       }
-    } catch (error: any) {
-      console.error(`${logPrefix} - Erro:`, error);
+    } catch (error) {
+      console.error(`processSessionAndUser(${source}) - Erro:`, error);
       if (mountedRef.current) {
         setUser(null);
         setSession(null);
@@ -210,208 +295,251 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       if (mountedRef.current) {
         setIsLoading(false);
-        console.log(`${logPrefix} - isLoading = false`);
       }
     }
-  }, [fetchUserProfile]);
+  }, [fetchUserProfile, user]);
 
+  // Debounced version para evitar spam
+  const debouncedProcessSession = useMemo(
+    () => debounce(processSessionAndUser, DEBOUNCE_DELAY),
+    [processSessionAndUser]
+  );
+
+  // 🚀 INICIALIZAÇÃO OTIMIZADA
   useEffect(() => {
-    if (isInitialized.current) {
-      console.log("AuthProvider - Já inicializado, ignorando");
-      return;
-    }
+    if (isInitialized.current) return;
+    
     isInitialized.current = true;
     mountedRef.current = true;
-    console.log("AuthProvider - Inicializando...");
-    let cleanupFunctions: (() => void)[] = [];
+
+    let authListenerCleanup: (() => void) | undefined;
+
     const initializeAuth = async () => {
       try {
+        // Tentativa de recuperar sessão do cache primeiro
+        const cachedSession = sessionCache.get('initial_session');
+        if (cachedSession) {
+          await processSessionAndUser(cachedSession, 'cached_session');
+          // Não retorne aqui, pois o listener ainda precisa ser configurado
+        }
+
         const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+        
         if (error) {
-          console.error("AuthProvider - Erro ao obter sessão inicial:", error);
+          console.error("Erro ao obter sessão inicial:", error);
           if (mountedRef.current) setIsLoading(false);
           return;
         }
-        console.log("AuthProvider - Sessão inicial:", !!initialSession);
-        if (mountedRef.current) await processSessionAndUser(initialSession, "initialGetSession");
+
+        if (initialSession && !cachedSession) { // Só salva no cache se não veio do cache
+          sessionCache.set('initial_session', initialSession, SESSION_CACHE_DURATION);
+        }
+        
+        // Processa a sessão (ou a do cache ou a recém-buscada), mas só se não foi processada pelo cache
+        if (!cachedSession && mountedRef.current) {
+             await processSessionAndUser(initialSession, "initial_session");
+        }
+
+
+        // Listener otimizado
         const { data: authListener } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-          console.log(`AuthProvider - Evento: ${event}, Nova sessão: ${!!newSession}`);
-          if (!mountedRef.current) {
-            console.log("AuthProvider - Componente desmontado, ignorando evento");
-            return;
+          if (!mountedRef.current) return;
+
+          // Usa debounced para eventos que podem vir em rajada
+          if (event === 'TOKEN_REFRESHED') {
+            debouncedProcessSession(newSession, `onAuthStateChange:${event}`);
+          } else {
+            await processSessionAndUser(newSession, `onAuthStateChange:${event}`);
           }
-          if (event === 'TOKEN_REFRESHED' && newSession?.user?.id === session?.user?.id && user && !user.isFallback) {
-            console.log("AuthProvider - TOKEN_REFRESHED para usuário válido, apenas atualizando sessão");
-            setSession(newSession);
-            return;
-          }
-          await processSessionAndUser(newSession, `onAuthStateChange:${event}`);
         });
-        cleanupFunctions.push(() => authListener?.subscription?.unsubscribe());
-        console.log("AuthProvider - Listener configurado");
+        authListenerCleanup = () => authListener?.subscription?.unsubscribe();
+
+
       } catch (error) {
-        console.error("AuthProvider - Erro na inicialização:", error);
+        console.error("Erro na inicialização:", error);
         if (mountedRef.current) setIsLoading(false);
       }
     };
+
     initializeAuth();
+
     return () => {
-      console.log("AuthProvider - Cleanup");
       isInitialized.current = false;
       mountedRef.current = false;
-      cleanupFunctions.forEach(cleanup => cleanup());
+      authListenerCleanup?.();
       activeProfileFetches.clear();
       retryCount.clear();
+      // profileCache.clear(); // A classe OptimizedCache tem seu próprio destroy
+      // sessionCache.clear();
+      profileCache.destroy(); // Chamar destroy para limpar o intervalo
+      sessionCache.destroy(); // Chamar destroy para limpar o intervalo
     };
-  }, []); 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Dependências devem ser mínimas para evitar re-inicialização
 
+  // 🚀 LOGIN OTIMIZADO
   const login = useCallback(async (email: string, password: string) => {
-    console.log("AuthContext:login - Iniciando login para", email);
-    if (!mountedRef.current) {
-      console.log("AuthContext:login - Componente não montado");
-      return;
-    }
+    logoutSignalRef.current = false;
+    if (!mountedRef.current) return;
+    
     setIsLoading(true);
+    
     try {
-      const { error, data: loginData } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      console.log("AuthContext:login - Login realizado com sucesso", loginData);
-      // processSessionAndUser será chamado pelo onAuthStateChange
+      // processSessionAndUser será chamado pelo listener
     } catch (error: any) {
-      console.error("AuthContext:login - Erro:", error);
       if (mountedRef.current) setIsLoading(false);
-      let displayMessage = 'Falha no login.';
-      if (error.message === 'Invalid login credentials') {
-          displayMessage = 'Credenciais inválidas. Verifique seu e-mail e senha.';
-      } else {
-          displayMessage = error.message || displayMessage;
-      }
+      
+      const errorMessages: Record<string, string> = {
+        'Invalid login credentials': 'Credenciais inválidas. Verifique seu e-mail e senha.',
+        'Email not confirmed': 'E-mail não confirmado. Verifique sua caixa de entrada.',
+        'Too many requests': 'Muitas tentativas. Tente novamente em alguns minutos.',
+      };
+      
+      const displayMessage = errorMessages[error.message] || error.message || 'Falha no login.';
       throw new Error(displayMessage);
     }
   }, []);
 
-  const register = async (
-    data: RegisterData
-  ): Promise<{ success: boolean; needsEmailConfirmation?: boolean }> => {
+  // 🚀 REGISTER OTIMIZADO (sem mudanças significativas, mas com melhor tratamento de erro)
+  const register = useCallback(async (data: RegisterData): Promise<{ success: boolean; needsEmailConfirmation?: boolean }> => {
+    logoutSignalRef.current = false;
+    
     try {
-      console.log(`AuthContext:register - Iniciando registro para ${data.email}`);
-
-      const { data: signUpData, error: signUpError } =
-        await supabase.auth.signUp({
-          email: data.email,
-          password: data.password,
-          options: {
-            data: {
-              full_name: data.full_name,
-              phone: data.phone,
-            },
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: data.email,
+        password: data.password,
+        options: {
+          data: {
+            full_name: data.full_name,
+            phone: data.phone,
           },
-        });
+        },
+      });
 
       if (signUpError) {
-        console.error('AuthContext:register - Erro no signUp:', signUpError.message);
-        // Verifica se o erro é de usuário já registrado
-        if (signUpError.message.toLowerCase().includes("user already registered")) {
-          throw new Error("Este e-mail já está cadastrado.");
-        }
-        throw signUpError;
-      }
-      
-      console.log('AuthContext:register - signUpData:', signUpData);
-
-      if (signUpData.user && !signUpData.session) {
-         console.log('AuthContext:register - Usuário criado, confirmação de e-mail pendente:', signUpData.user.email);
-         return { success: true, needsEmailConfirmation: true };
+        const errorMessages: Record<string, string> = {
+          'user already registered': 'Este e-mail já está cadastrado.',
+          'Password should be at least 6 characters': 'A senha deve ter no mínimo 6 caracteres.',
+          'Unable to validate email address': 'E-mail inválido.',
+          'Database error saving new user': 'Erro ao finalizar cadastro. Tente novamente.',
+        };
+        
+        let displayMessage = signUpError.message; // Default to original message
+        Object.keys(errorMessages).forEach(key => {
+          if (signUpError.message.toLowerCase().includes(key.toLowerCase())) {
+            displayMessage = errorMessages[key];
+          }
+        });
+        
+        throw new Error(displayMessage);
       }
 
       if (signUpData.user && signUpData.session) {
-         console.log('AuthContext:register - Usuário registrado e logado (auto-confirmação):', signUpData.user.email);
-         await processSessionAndUser(signUpData.session, 'register');
-         return { success: true, needsEmailConfirmation: false };
+        await processSessionAndUser(signUpData.session, 'register_autologin');
+        return { success: true, needsEmailConfirmation: false };
       }
-      
-      // Este caso pode ocorrer se o usuário existir, mas não está confirmado, e tenta se registrar novamente.
-      // O Supabase pode reenviar o e-mail de confirmação.
-      if (signUpData.user && !signUpData.session && signUpData.user.email_confirmed_at === null) {
-          console.log('AuthContext:register - Tentativa de registro de usuário existente não confirmado. E-mail de confirmação pode ter sido reenviado para:', signUpData.user.email);
-          return { success: true, needsEmailConfirmation: true };
-      }
-      
-      console.warn('AuthContext:register - Cenário de registro não esperado:', signUpData);
+
       return { success: true, needsEmailConfirmation: true };
 
     } catch (error: any) {
-      console.error(`AuthContext:register - Erro capturado:`, error);
-      let displayMessage = 'Falha no registro.';
-      if (error.message) {
-        if (error.message.toLowerCase().includes("user already registered") || error.message === "Este e-mail já está cadastrado.") {
-          displayMessage = "Este e-mail já está cadastrado.";
-        } else if (error.message.includes("Password should be at least 6 characters")) {
-          displayMessage = "A senha deve ter no mínimo 6 caracteres.";
-        } else if (error.message.includes("Unable to validate email address")) {
-          displayMessage = "E-mail inválido.";
-        } else if (error.message.includes("Database error saving new user")) {
-          displayMessage = "Ocorreu um erro ao finalizar seu cadastro. Tente novamente ou contate o suporte.";
-        } else {
-          displayMessage = error.message; // Use the Supabase error message directly if not one of the common ones
-        }
-      }
-      throw new Error(displayMessage);
+      throw new Error(error.message || 'Falha no registro.');
     }
-  };
+  }, [processSessionAndUser]);
 
-
+  // 🚀 LOGOUT SUPER OTIMIZADO
   const logout = useCallback(async () => {
-    console.log("AuthContext:logout - Iniciando logout");
     if (!mountedRef.current) return;
-    setIsLoading(true); 
+    
+    logoutSignalRef.current = true;
+    setIsLoading(true);
+
     try {
+      // Limpa caches imediatamente
       if (session?.user?.id) {
         const userId = session.user.id;
         activeProfileFetches.delete(userId);
         profileCache.delete(userId);
         retryCount.delete(userId);
       }
+      
+      // Limpa todos os caches de sessão
+      sessionCache.clear();
+      sessionCache.delete('initial_session');
+
+
       const { error } = await supabase.auth.signOut();
-      if (error) console.error("AuthContext:logout - Erro:", error);
-      console.log("AuthContext:logout - Logout realizado");
-      // processSessionAndUser será chamado pelo onAuthStateChange
+      if (error) console.warn("Aviso no signOut:", error.message);
+
     } catch (error: any) {
-      console.error("AuthContext:logout - Exceção:", error);
-       if (mountedRef.current) { // Garante que o estado só é atualizado se montado
+      console.error("Erro inesperado no logout:", error);
+    } finally {
+      if (mountedRef.current) {
         setUser(null);
         setSession(null);
         setIsLoading(false);
       }
+      
+      // Reset do sinal com timeout
+      window.setTimeout(() => { // Use window.setTimeout for browser
+        logoutSignalRef.current = false;
+      }, 1000);
     }
   }, [session?.user?.id]);
 
   const requestPasswordReset = useCallback(async (email: string) => {
-    console.log("AuthContext:requestPasswordReset - Solicitando para", email);
-    if (!mountedRef.current) return;
+    logoutSignalRef.current = false;
+    
     try {
-      // O redirectTo deve ser o URL da sua página de autenticação onde o usuário pode definir uma nova senha.
-      // Se você não tem uma rota específica para reset de senha, redirecione para a página de login e
-      // trate o evento de 'PASSWORD_RECOVERY' lá.
-      const redirectTo = `${window.location.origin}/auth#type=recovery`; 
+      const redirectTo = `${window.location.origin}/auth#type=recovery`;
       const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
       if (error) throw error;
-      console.log("AuthContext:requestPasswordReset - E-mail enviado com redirect para:", redirectTo);
     } catch (error: any) {
-      console.error("AuthContext:requestPasswordReset - Erro:", error);
       throw new Error(error.message || 'Falha ao solicitar redefinição de senha.');
     }
   }, []);
 
-  const isAuthenticatedValue = useMemo(() => !!(session && user && user.isActive && !user.isFallback), [session, user]);
-  const isSuperAdminValue = useMemo(() => isAuthenticatedValue && (user?.isSuperAdmin ?? false), [isAuthenticatedValue, user?.isSuperAdmin]);
-  const accessTokenValue = useMemo(() => session?.access_token || null, [session?.access_token]);
+  // 🚀 VALORES MEMOIZADOS OTIMIZADOS
+  const isAuthenticatedValue = useMemo(() => 
+    !!(session && user && user.isActive && !user.isFallback), 
+    [session, user]
+  );
+  
+  const isSuperAdminValue = useMemo(() => 
+    isAuthenticatedValue && (user?.isSuperAdmin ?? false), 
+    [isAuthenticatedValue, user?.isSuperAdmin]
+  );
+  
+  const accessTokenValue = useMemo(() => 
+    session?.access_token || null, 
+    [session?.access_token]
+  );
 
   const contextValue = useMemo(() => ({
-    user, session, accessToken: accessTokenValue, isAuthenticated: isAuthenticatedValue,
-    isSuperAdmin: isSuperAdminValue, login, register, logout, requestPasswordReset, isLoading,
+    user,
+    session,
+    accessToken: accessTokenValue,
+    isAuthenticated: isAuthenticatedValue,
+    isSuperAdmin: isSuperAdminValue,
+    login,
+    register,
+    logout,
+    requestPasswordReset,
+    refreshProfile,
+    isLoading,
   }), [
-    user, session, accessTokenValue, isAuthenticatedValue, isSuperAdminValue, login, register, logout, requestPasswordReset, isLoading,
+    user,
+    session,
+    accessTokenValue,
+    isAuthenticatedValue,
+    isSuperAdminValue,
+    login,
+    register,
+    logout,
+    requestPasswordReset,
+    refreshProfile,
+    isLoading,
   ]);
 
   return (

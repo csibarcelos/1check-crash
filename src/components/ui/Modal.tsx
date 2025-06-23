@@ -1,5 +1,6 @@
 import React, { Fragment } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
+import { motion } from "framer-motion";
 import { XMarkIcon } from '../../constants.tsx'; 
 
 interface ModalProps {
@@ -8,27 +9,23 @@ interface ModalProps {
   title?: string;
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl';
-  theme?: 'light' | 'dark';
+  theme?: 'light' | 'dark-app'; // 'dark-app' para o tema interno, 'light' para checkout claro (se necessário)
 }
 
-export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 'md', theme = 'dark' }) => {
+export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 'md', theme = 'dark-app' }) => {
   const sizeClasses = {
-    sm: 'sm:max-w-sm',
-    md: 'sm:max-w-md',
-    lg: 'sm:max-w-lg',
-    xl: 'sm:max-w-xl',
-    '2xl': 'sm:max-w-2xl',
-    '3xl': 'sm:max-w-3xl',
+    sm: 'sm:max-w-sm', md: 'sm:max-w-md', lg: 'sm:max-w-lg',
+    xl: 'sm:max-w-xl', '2xl': 'sm:max-w-2xl', '3xl': 'sm:max-w-3xl',
   };
 
   const isLightTheme = theme === 'light';
 
   const panelClasses = isLightTheme
     ? 'checkout-light-theme bg-[var(--checkout-color-bg-surface)] border-[var(--checkout-color-border-subtle)]'
-    : 'bg-bg-surface border-border-subtle';
+    : 'bg-bg-surface bg-opacity-70 backdrop-blur-lg border-border-subtle'; // Glassmorphism
 
   const titleClasses = isLightTheme
-    ? 'text-[var(--checkout-color-primary-DEFAULT)]' 
+    ? 'text-[var(--checkout-color-text-strong)]' // Use a strong text from light theme
     : 'text-accent-gold';
 
   const closeButtonClasses = isLightTheme
@@ -39,39 +36,61 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
     ? 'text-[var(--checkout-color-text-default)]'
     : 'text-text-default';
 
+  const modalVariants = {
+    hidden: { opacity: 0, scale: 0.95, y: 20 },
+    visible: { opacity: 1, scale: 1, y: 0, transition: { duration: 0.3, ease: "circOut" as const } },
+    exit: { opacity: 0, scale: 0.95, y: 10, transition: { duration: 0.2, ease: "circIn" as const } }
+  };
+  
+  const overlayVariants = {
+    hidden: { opacity: 0 },
+    visible: { opacity: 1, transition: { duration: 0.3 } },
+    exit: { opacity: 0, transition: { duration: 0.2 } }
+  };
 
   return (
     <Transition.Root show={isOpen} as={Fragment}>
-      <Dialog as="div" className="relative z-50" onClose={onClose}>
+      <Dialog as="div" className="relative z-50 app-dark-theme" onClose={onClose}>
         <Transition.Child
           as={Fragment}
-          enter="ease-out duration-300"
+          enter="ease-out duration-300" // Headless UI enter
           enterFrom="opacity-0"
           enterTo="opacity-100"
-          leave="ease-in duration-200"
+          leave="ease-in duration-200" // Headless UI leave
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity" />
+          <motion.div 
+            variants={overlayVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            className="fixed inset-0 bg-black/80 backdrop-blur-md" 
+          />
         </Transition.Child>
 
         <div className="fixed inset-0 z-10 overflow-y-auto">
           <div className="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
             <Transition.Child
-              as={Fragment}
+              as={Fragment} // For Headless UI to manage show/hide
               enter="ease-out duration-300"
-              enterFrom="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-              enterTo="opacity-100 translate-y-0 sm:scale-100"
+              enterFrom="opacity-0 scale-95"
+              enterTo="opacity-100 scale-100"
               leave="ease-in duration-200"
-              leaveFrom="opacity-100 translate-y-0 sm:scale-100"
-              leaveTo="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+              leaveFrom="opacity-100 scale-100"
+              leaveTo="opacity-0 scale-95"
             >
               <Dialog.Panel 
-                className={`relative transform overflow-hidden rounded-2xl text-left shadow-2xl transition-all sm:my-8 sm:w-full border ${panelClasses} ${sizeClasses[size]}`}
+                as={motion.div} // Apply Framer Motion directly to Dialog.Panel
+                variants={modalVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className={`relative overflow-hidden rounded-3xl text-left shadow-2xl sm:my-8 sm:w-full border ${panelClasses} ${sizeClasses[size]}`}
               >
                 <div className={`px-6 py-5 border-b ${isLightTheme ? 'border-[var(--checkout-color-border-subtle)]' : 'border-border-subtle'} flex justify-between items-center`}>
                   {title && (
-                    <Dialog.Title as="h3" className={`text-xl font-semibold leading-7 ${titleClasses}`}>
+                    <Dialog.Title as="h3" className={`text-xl font-display font-semibold leading-7 ${titleClasses}`}>
                       {title}
                     </Dialog.Title>
                   )}

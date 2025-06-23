@@ -1,223 +1,403 @@
-import React, { useEffect, useState, useCallback } from 'react';
+
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Card } from '@/components/ui/Card';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Modal } from '@/components/ui/Modal';
-import { Button, ToggleSwitch } from '@/components/ui/Button';
+import { Button } from '@/components/ui/Button';
+import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { Input } from '@/components/ui/Input';
 import { User } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
-import { UsersIcon, SUPER_ADMIN_EMAIL } from '../../constants.tsx'; 
-import { superAdminService } from '@/services/superAdminService'; 
+import { UsersIcon, SUPER_ADMIN_EMAIL } from '../../constants.tsx';
+import { superAdminService } from '@/services/superAdminService';
+import { Table, TableHeader } from '@/components/ui/Table';
 
-export const SuperAdminUsersPage: React.FC = () => {
+const ITEMS_PER_PAGE = 15;
+const DEBOUNCE_DELAY = 300;
+
+interface UserUpdate {
+  name?: string;
+  isActive?: boolean;
+  isSuperAdmin?: boolean;
+}
+
+const SuperAdminUsersPage: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { accessToken, user: loggedInSuperAdmin } = useAuth();
-
+  
+  // Modal state
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isUserDetailsModalOpen, setIsUserDetailsModalOpen] = useState(false);
-  
   const [modalUserName, setModalUserName] = useState('');
   const [modalIsActive, setModalIsActive] = useState(true);
   const [modalIsSuperAdmin, setModalIsSuperAdmin] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
   const [isSavingUser, setIsSavingUser] = useState(false);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  
+  // Refs para evitar chamadas desnecessárias
+  const fetchUsersAbortController = useRef<AbortController | null>(null);
+  const lastFetchTime = useRef<number>(0);
+  const usersCacheRef = useRef<User[]>([]);
 
-
-  const fetchUsers = useCallback(async () => {
+  // Debounced fetch para evitar múltiplas chamadas
+  const fetchUsers = useCallback(async (force = false) => {
     if (!accessToken) {
       setError("Autenticação de super admin necessária.");
       setIsLoading(false);
       return;
     }
+
+    const now = Date.now();
+    
+    // Evita chamadas muito próximas (debounce)
+    if (!force && now - lastFetchTime.current < DEBOUNCE_DELAY) {
+      return;
+    }
+
+    // Cancela requisição anterior se ainda estiver pendente
+    if (fetchUsersAbortController.current) {
+      fetchUsersAbortController.current.abort();
+    }
+
+    fetchUsersAbortController.current = new AbortController();
+    lastFetchTime.current = now;
+    
     setIsLoading(true);
     setError(null);
+    
     try {
-      const usersData = await superAdminService.getAllPlatformUsers(accessToken); 
-      setUsers(usersData.sort((a,b) => (a.email > b.email) ? 1 : -1)); // Sort by email
-      if (usersData.length === 0) {
+      const usersData = await superAdminService.getAllPlatformUsers(
+        accessToken,
+        { signal: fetchUsersAbortController.current.signal }
+      );
+      
+      // Otimização: só atualiza se os dados realmente mudaram
+      const sortedUsers = usersData.sort((a, b) => (a.email > b.email) ? 1 : -1);
+      
+      if (JSON.stringify(usersCacheRef.current) !== JSON.stringify(sortedUsers)) {
+        usersCacheRef.current = sortedUsers;
+        setUsers(sortedUsers);
       }
     } catch (err: any) {
-      setError(err.message || 'Falha ao carregar usuários.');
+      // Ignora erros de abort
+      if (err.name !== 'AbortError') {
+        console.error('Erro ao buscar usuários:', err);
+        setError(err.message || 'Falha ao carregar usuários.');
+      }
     } finally {
       setIsLoading(false);
+      fetchUsersAbortController.current = null;
     }
   }, [accessToken]);
 
+  // Effect otimizado com cleanup
   useEffect(() => {
     fetchUsers();
+    
+    return () => {
+      if (fetchUsersAbortController.current) {
+        fetchUsersAbortController.current.abort();
+      }
+    };
   }, [fetchUsers]);
 
-  const handleOpenUserDetails = (user: User) => {
+  // Cleanup no unmount
+  useEffect(() => {
+    return () => {
+      if (fetchUsersAbortController.current) {
+        fetchUsersAbortController.current.abort();
+      }
+    };
+  }, []);
+
+  // Memoização dos dados paginados
+  const paginatedUsers = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return users.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [users, currentPage]);
+
+  const totalPages = useMemo(() => Math.ceil(users.length / ITEMS_PER_PAGE), [users.length]);
+
+  // Handlers otimizados
+  const handleOpenUserDetails = useCallback((user: User) => {
     setSelectedUser(user);
     setModalUserName(user.name || '');
     setModalIsActive(user.isActive !== undefined ? user.isActive : true);
     setModalIsSuperAdmin(user.isSuperAdmin || false);
     setModalError(null);
     setIsUserDetailsModalOpen(true);
-  };
+  }, []);
 
-  const handleCloseUserDetails = () => {
+  const handleCloseUserDetails = useCallback(() => {
     setSelectedUser(null);
     setIsUserDetailsModalOpen(false);
     setModalError(null);
-  };
+  }, []);
 
-  const handleSaveChanges = async () => {
+  const handlePageChange = useCallback((page: number) => {
+    setCurrentPage(page);
+  }, []);
+
+  // Otimização: atualização local primeiro, depois sincronização
+  const handleSaveChanges = useCallback(async () => {
     if (!selectedUser || !accessToken) {
-        setModalError("Usuário selecionado ou token inválido.");
-        return;
+      setModalError("Usuário selecionado ou token inválido.");
+      return;
     }
+
     setModalError(null);
     setIsSavingUser(true);
 
-    const updates: Partial<Pick<User, 'name' | 'isActive' | 'isSuperAdmin'>> = {};
-    if (modalUserName !== (selectedUser.name || '')) updates.name = modalUserName.trim() || undefined; 
-    if (modalIsActive !== (selectedUser.isActive !== undefined ? selectedUser.isActive : true)) updates.isActive = modalIsActive;
-    
-    const isMainSuperAdmin = selectedUser.email === SUPER_ADMIN_EMAIL;
-    if (!isMainSuperAdmin && modalIsSuperAdmin !== (selectedUser.isSuperAdmin || false)) {
-        updates.isSuperAdmin = modalIsSuperAdmin;
+    const updates: UserUpdate = {};
+    const originalName = selectedUser.name || '';
+    const originalIsActive = selectedUser.isActive !== undefined ? selectedUser.isActive : true;
+    const originalIsSuperAdmin = selectedUser.isSuperAdmin || false;
+
+    if (modalUserName !== originalName) {
+      updates.name = modalUserName.trim() || undefined;
+    }
+    if (modalIsActive !== originalIsActive) {
+      updates.isActive = modalIsActive;
     }
 
+    const isMainSuperAdmin = selectedUser.email === SUPER_ADMIN_EMAIL;
+    if (!isMainSuperAdmin && modalIsSuperAdmin !== originalIsSuperAdmin) {
+      updates.isSuperAdmin = modalIsSuperAdmin;
+    }
 
     if (Object.keys(updates).length === 0) {
-        setModalError("Nenhuma alteração detectada.");
-        setIsSavingUser(false);
-        return;
+      setModalError("Nenhuma alteração detectada.");
+      setIsSavingUser(false);
+      return;
     }
 
     try {
-        console.log(`[SuperAdminUsersPage] Calling service to update user ${selectedUser.id} with:`, updates);
-        const result = await superAdminService.updateUserProfileAsSuperAdmin(selectedUser.id, updates, accessToken);
-        console.log(`[SuperAdminUsersPage] Update result:`, result);
-        
-        if (result.success) {
-            await fetchUsers(); 
-            handleCloseUserDetails();
-        } else {
-            setModalError(result.message || "Falha ao salvar alterações no backend.");
-        }
+      // Atualização otimista da UI
+      const updatedUser = { ...selectedUser, ...updates };
+      setUsers(prevUsers => 
+        prevUsers.map(user => 
+          user.id === selectedUser.id ? updatedUser : user
+        ).sort((a, b) => (a.email > b.email) ? 1 : -1)
+      );
+
+      const result = await superAdminService.updateUserProfileAsSuperAdmin(
+        selectedUser.id, 
+        updates, 
+        accessToken
+      );
+
+      if (result.success) {
+        usersCacheRef.current = users.map(user => 
+          user.id === selectedUser.id ? updatedUser : user
+        );
+        handleCloseUserDetails();
+      } else {
+        // Reverte a atualização otimista em caso de erro
+        setUsers(usersCacheRef.current);
+        setModalError(result.message || "Falha ao salvar alterações no backend.");
+      }
     } catch (err: any) {
-        console.error("[SuperAdminUsersPage] Error during save changes:", err);
-        setModalError(err.message || "Falha ao salvar alterações.");
+      // Reverte a atualização otimista em caso de erro
+      setUsers(usersCacheRef.current);
+      setModalError(err.message || "Falha ao salvar alterações.");
     } finally {
-        setIsSavingUser(false);
+      setIsSavingUser(false);
     }
-  };
+  }, [selectedUser, accessToken, modalUserName, modalIsActive, modalIsSuperAdmin, users, handleCloseUserDetails]);
 
-  const isCurrentUserSelected = selectedUser?.id === loggedInSuperAdmin?.id;
+  // Memoização dos headers da tabela
+  const userTableHeaders = useMemo((): TableHeader<User>[] => [
+    { 
+      key: 'name', 
+      label: 'Nome', 
+      renderCell: (user) => user.name || 'N/A' 
+    },
+    { 
+      key: 'email', 
+      label: 'Email' 
+    },
+    {
+      key: 'isActive',
+      label: 'Status Ativo',
+      renderCell: (user) => {
+        const isActive = user.isActive !== undefined ? user.isActive : true;
+        return isActive ? (
+          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-status-success/20 text-status-success">
+            Sim
+          </span>
+        ) : (
+          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-status-error/20 text-status-error">
+            Não
+          </span>
+        );
+      },
+    },
+    {
+      key: 'isSuperAdmin',
+      label: 'Super Admin?',
+      renderCell: (user) => user.isSuperAdmin ? (
+        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-accent-blue-neon/20 text-accent-blue-neon">
+          Sim
+        </span>
+      ) : (
+        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-neutral-700 text-text-muted">
+          Não
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      label: 'Ações',
+      renderCell: (user) => (
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={(e) => { 
+            e.stopPropagation(); 
+            handleOpenUserDetails(user); 
+          }} 
+          className="text-accent-blue-neon hover:text-opacity-80"
+        >
+          Editar
+        </Button>
+      ),
+    },
+  ], [handleOpenUserDetails]);
 
-  if (isLoading) {
-    return <div className="flex justify-center items-center h-64"><LoadingSpinner size="lg" /></div>;
+  // Valores calculados memoizados
+  const isCurrentUserSelected = useMemo(() => 
+    selectedUser?.id === loggedInSuperAdmin?.id
+  , [selectedUser?.id, loggedInSuperAdmin?.id]);
+
+  const isMainSuperAdminSelected = useMemo(() => 
+    selectedUser?.email === SUPER_ADMIN_EMAIL
+  , [selectedUser?.email]);
+
+  const isSaveDisabled = useMemo(() => 
+    isSavingUser ||
+    (isMainSuperAdminSelected && modalIsSuperAdmin === false) ||
+    (isCurrentUserSelected && isMainSuperAdminSelected && modalIsActive === false)
+  , [isSavingUser, isMainSuperAdminSelected, modalIsSuperAdmin, isCurrentUserSelected, modalIsActive]);
+
+  if (isLoading && users.length === 0) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <LoadingSpinner size="lg" />
+        <p className="ml-2 text-text-muted">Carregando...</p>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-3">
-        <UsersIcon className="h-8 w-8 text-primary" />
-        <h1 className="text-3xl font-bold text-neutral-800">Todos os Usuários ({users.length})</h1>
+        <UsersIcon className="h-8 w-8 text-accent-blue-neon" />
+        <h1 className="text-3xl font-display font-bold text-text-strong">
+          Todos os Usuários ({users.length})
+        </h1>
       </div>
 
-      {error && <p className="text-red-500 bg-red-50 p-3 rounded-md">{error}</p>}
+      {error && (
+        <p className="text-status-error bg-status-error/10 p-3 rounded-xl border border-status-error/30">
+          {error}
+        </p>
+      )}
       
-      {users.length === 0 && !isLoading && !error && (
-         <p className="p-6 text-center text-neutral-500">Nenhum usuário encontrado na plataforma.</p>
-      )}
-
-
-      {users.length > 0 && (
-        <Card className="p-0 sm:p-0">
-            <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-neutral-200">
-                <thead className="bg-neutral-100">
-                    <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Nome</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Email</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Status Ativo</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Super Admin?</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">Ações</th>
-                    </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-neutral-200">
-                    {users.map((user) => (
-                    <tr key={user.id} className="hover:bg-primary-light/10 cursor-pointer" onClick={() => handleOpenUserDetails(user)}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-neutral-900">{user.name || 'N/A'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-700">{user.email}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-700">
-                            {(user.isActive !== undefined ? user.isActive : true) ? 
-                                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Sim</span> : 
-                                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Não</span>
-                            }
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-700">
-                            {user.isSuperAdmin ? 
-                                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Sim</span> : 
-                                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-neutral-100 text-neutral-800">Não</span>
-                            }
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-500">
-                            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleOpenUserDetails(user); }}>Editar</Button>
-                        </td>
-                    </tr>
-                    ))}
-                </tbody>
-                </table>
-            </div>
-        </Card>
-      )}
+      <Card className="p-0 sm:p-0">
+        <Table<User>
+          headers={userTableHeaders}
+          data={paginatedUsers}
+          rowKey="id"
+          isLoading={isLoading}
+          onRowClick={handleOpenUserDetails}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={handlePageChange}
+          itemsPerPage={ITEMS_PER_PAGE}
+          totalItems={users.length}
+          emptyStateMessage="Nenhum usuário encontrado na plataforma."
+        />
+      </Card>
 
       {selectedUser && (
-        <Modal isOpen={isUserDetailsModalOpen} onClose={handleCloseUserDetails} title={`Editar Usuário: ${selectedUser.name || selectedUser.email}`}>
+        <Modal 
+          isOpen={isUserDetailsModalOpen} 
+          onClose={handleCloseUserDetails} 
+          title={`Editar Usuário: ${selectedUser.name || selectedUser.email}`}
+        >
           <div className="space-y-4">
-            <div><span className="font-semibold">ID:</span> {selectedUser.id}</div>
-            <div><span className="font-semibold">Email:</span> {selectedUser.email}</div>
-            <Input 
-                label="Nome" 
-                value={modalUserName} 
-                onChange={(e) => setModalUserName(e.target.value)} 
-                disabled={isSavingUser}
+            <div>
+              <span className="font-semibold text-text-muted">ID:</span>{' '}
+              <span className="text-text-default">{selectedUser.id}</span>
+            </div>
+            <div>
+              <span className="font-semibold text-text-muted">Email:</span>{' '}
+              <span className="text-text-default">{selectedUser.email}</span>
+            </div>
+            <Input
+              label="Nome"
+              value={modalUserName}
+              onChange={(e) => setModalUserName(e.target.value)}
+              disabled={isSavingUser}
             />
             <ToggleSwitch
-                label="Conta Ativa"
-                enabled={modalIsActive}
-                onChange={setModalIsActive}
-                disabled={isSavingUser || (isCurrentUserSelected && selectedUser.email === SUPER_ADMIN_EMAIL)}
+              label="Conta Ativa"
+              enabled={modalIsActive}
+              onEnabledChange={setModalIsActive}
+              disabled={isSavingUser || (isCurrentUserSelected && isMainSuperAdminSelected)}
             />
             <ToggleSwitch
-                label="Status de Super Admin"
-                enabled={modalIsSuperAdmin}
-                onChange={setModalIsSuperAdmin}
-                disabled={isSavingUser || selectedUser.email === SUPER_ADMIN_EMAIL} 
+              label="Status de Super Admin"
+              enabled={modalIsSuperAdmin}
+              onEnabledChange={setModalIsSuperAdmin}
+              disabled={isSavingUser || isMainSuperAdminSelected}
             />
-            {modalError && <p className="text-sm text-red-500 p-2 bg-red-50 rounded">{modalError}</p>}
-             {(isCurrentUserSelected && selectedUser.email === SUPER_ADMIN_EMAIL) && (
-              <p className="text-xs text-yellow-600 bg-yellow-50 p-2 rounded-md">
+            
+            {modalError && (
+              <p className="text-sm text-status-error p-2 bg-status-error/10 rounded-xl border border-status-error/30">
+                {modalError}
+              </p>
+            )}
+            
+            {isCurrentUserSelected && isMainSuperAdminSelected && (
+              <p className="text-xs text-status-warning bg-status-warning/10 p-2 rounded-md border border-status-warning/30">
                 As configurações de atividade para o usuário Super Admin principal ({SUPER_ADMIN_EMAIL}) não podem ser alteradas por aqui. O status de Super Admin também é fixo.
               </p>
             )}
-             {selectedUser.email === SUPER_ADMIN_EMAIL && !isCurrentUserSelected && (
-                <p className="text-xs text-yellow-600 bg-yellow-50 p-2 rounded-md">
-                    O status de Super Admin para o e-mail ({SUPER_ADMIN_EMAIL}) é gerenciado automaticamente e não pode ser desmarcado aqui.
-                </p>
-             )}
+            
+            {isMainSuperAdminSelected && !isCurrentUserSelected && (
+              <p className="text-xs text-status-warning bg-status-warning/10 p-2 rounded-md border border-status-warning/30">
+                O status de Super Admin para o e-mail ({SUPER_ADMIN_EMAIL}) é gerenciado automaticamente e não pode ser desmarcado aqui.
+              </p>
+            )}
           </div>
-           <div className="mt-6 flex justify-end space-x-3">
-            <Button variant="ghost" onClick={handleCloseUserDetails} disabled={isSavingUser}>Cancelar</Button>
+          
+          <div className="mt-6 flex justify-end space-x-3">
             <Button 
-                variant="primary" 
-                onClick={handleSaveChanges} 
-                isLoading={isSavingUser} 
-                disabled={
-                    isSavingUser || 
-                    (selectedUser.email === SUPER_ADMIN_EMAIL && modalIsSuperAdmin === false) || 
-                    (isCurrentUserSelected && selectedUser.email === SUPER_ADMIN_EMAIL && modalIsActive === false) 
-                }
-            >Salvar Alterações</Button>
+              variant="ghost" 
+              onClick={handleCloseUserDetails} 
+              disabled={isSavingUser}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleSaveChanges}
+              isLoading={isSavingUser}
+              disabled={isSaveDisabled}
+            >
+              Salvar Alterações
+            </Button>
           </div>
         </Modal>
       )}
     </div>
   );
 };
+
+export default SuperAdminUsersPage;

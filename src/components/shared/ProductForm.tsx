@@ -37,8 +37,8 @@ interface ProductFormProps {
   isSaving: boolean;
   availableProductsForOffers?: Product[];
   formId?: string;
-  onFormChange?: () => void; // Nova prop
-  formRef?: React.RefObject<HTMLFormElement>; // Nova prop
+  onFormChange?: () => void; 
+  formRef?: React.RefObject<HTMLFormElement>; 
 }
 
 export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit, isSaving, availableProductsForOffers = [], formId = "product-form", onFormChange, formRef }) => {
@@ -72,13 +72,14 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
   const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
 
   const notifyChange = useCallback(() => {
+    console.log("[ProductForm] notifyChange called. isInitialLoadDone.current:", isInitialLoadDone.current);
     if (isInitialLoadDone.current && onFormChange) {
+      console.log("[ProductForm] onFormChange is being invoked.");
       onFormChange();
     }
   }, [onFormChange]);
 
   useEffect(() => {
-    // Popula os estados
     setProductName(initialData?.name || '');
     setDescription(initialData?.description || '');
     setPrice(initialData?.priceInCents ? (initialData.priceInCents / 100).toFixed(2).replace('.', ',') : '');
@@ -96,10 +97,9 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
     setCoupons(initialData?.coupons || []);
     setImageInputMode(initialData?.imageUrl && !initialData.imageUrl.startsWith('https://supabase-generated-url') ? 'url' : 'url');
     
-    // Marca que o carregamento inicial foi concluído
-    // Usar setTimeout para garantir que todos os setters de estado tenham sido processados
     const timer = setTimeout(() => {
         isInitialLoadDone.current = true;
+        console.log("[ProductForm] Initial load complete. isInitialLoadDone.current set to true.");
     }, 0);
     return () => clearTimeout(timer);
   }, [initialData]);
@@ -186,17 +186,13 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
   const handleCustomizationChange = <K extends keyof ProductCheckoutCustomization, V extends ProductCheckoutCustomization[K]>(field: K, value: V) => { setCheckoutCustomization(prev => ({ ...prev, [field]: value })); notifyChange(); };
   const handleCountdownTimerChange = <K extends keyof NonNullable<ProductCheckoutCustomization['countdownTimer']>>(field: K, value: NonNullable<ProductCheckoutCustomization['countdownTimer']>[K]) => { setCheckoutCustomization(prev => ({ ...prev, countdownTimer: { ...(prev.countdownTimer || defaultCheckoutCustomizationValues.countdownTimer!), [field]: value } })); notifyChange(); };
   const handleUtmParamChange = (param: keyof UtmParams, value: string) => { setUtmParams(prev => ({ ...prev, [param]: value })); notifyChange(); };
-  const handleSalesCopyChange = (html: string) => { handleCustomizationChange('salesCopy', html); }; // notifyChange já está em handleCustomizationChange
+  const handleSalesCopyChange = (html: string) => { handleCustomizationChange('salesCopy', html); }; 
   const addGuaranteeBadge = () => { handleCustomizationChange('guaranteeBadges', [...(checkoutCustomization.guaranteeBadges || []), { id: `badge_${Date.now()}`, imageUrl: '', altText: '' }]); };
   const updateGuaranteeBadge = (id: string, field: 'imageUrl' | 'altText', value: string) => { handleCustomizationChange('guaranteeBadges', (checkoutCustomization.guaranteeBadges || []).map(b => b.id === id ? { ...b, [field]: value } : b)); };
   const removeGuaranteeBadge = (id: string) => { handleCustomizationChange('guaranteeBadges', (checkoutCustomization.guaranteeBadges || []).filter(b => b.id !== id)); };
   
   const handleOfferProductSelect = (type: 'bump' | 'upsell', selectedProdId: string) => {
-    if (!selectedProdId) { 
-      if (type === 'bump') setOrderBump(undefined);
-      else setUpsell(undefined);
-      notifyChange(); return;
-    }
+    if (!selectedProdId) { if (type === 'bump') setOrderBump(undefined); else setUpsell(undefined); notifyChange(); return; }
     const selectedProductOffer = availableProductsForOffers.find(p => p.id === selectedProdId);
     if (!selectedProductOffer) { if (type === 'bump') setOrderBump(undefined); else setUpsell(undefined); notifyChange(); return; }
     const offerData = { productId: selectedProductOffer.id, name: selectedProductOffer.name, description: selectedProductOffer.description.substring(0, 100) + (selectedProductOffer.description.length > 100 ? '...' : ''), customPriceInCents: selectedProductOffer.priceInCents, imageUrl: selectedProductOffer.imageUrl || selectedProductOffer.checkoutCustomization?.logoUrl || '', };
@@ -218,25 +214,14 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
 
   const countdownDurationOptions = [ { label: 'Nenhum', value: "0" }, { label: '5 minutos', value: "5" }, { label: '10 minutos', value: "10" }, { label: '15 minutos', value: "15" }, { label: '20 minutos', value: "20" }, { label: '30 minutos', value: "30" }, { label: '60 minutos', value: "60" }, ].map(cd => ({ value: cd.value, label: cd.label }));
   
-  const offerProductComboboxOptions = availableProductsForOffers.map(p => ({
-    value: p.id,
-    label: `${p.name} (R$ ${(p.priceInCents / 100).toFixed(2).replace('.', ',')})`
-  }));
-  
-  const upsellProductComboboxOptions = availableProductsForOffers
-    .filter(p => p.id !== orderBump?.productId)
-    .map(p => ({
-      value: p.id,
-      label: `${p.name} (R$ ${(p.priceInCents / 100).toFixed(2).replace('.', ',')})`
-    }));
+  const offerProductComboboxOptions = availableProductsForOffers.map(p => ({ value: p.id, label: `${p.name} (R$ ${(p.priceInCents / 100).toFixed(2).replace('.', ',')})` }));
+  const upsellProductComboboxOptions = availableProductsForOffers.filter(p => p.id !== orderBump?.productId).map(p => ({ value: p.id, label: `${p.name} (R$ ${(p.priceInCents / 100).toFixed(2).replace('.', ',')})` }));
 
-  // Use um wrapper para os setters de estado para chamar notifyChange
   const wrappedSetProductName = (val: string) => { setProductName(val); notifyChange(); };
   const wrappedSetDescription = (val: string) => { setDescription(val); notifyChange(); };
   const wrappedSetPrice = (val: string) => { setPrice(val); notifyChange(); };
   const wrappedSetDeliveryUrl = (val: string) => { setDeliveryUrl(val); notifyChange(); };
   const wrappedSetImageInputMode = (val: 'url' | 'upload') => { setImageInputMode(val); notifyChange(); };
-
 
   return (
     <form onSubmit={handleInternalSubmit} id={formId} ref={formRef}>

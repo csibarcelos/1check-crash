@@ -1,8 +1,9 @@
+
 import React from 'react';
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
 import { useAuth } from '@/contexts/AuthContext'; 
 import { useNavigate } from "react-router-dom"; 
-import { CogIcon, LogoutIcon, Bars3IconHero, cn } from '../../constants.tsx'; 
+import { CogIcon, LogoutIcon, Bars3IconHero, cn, UserCircleIcon } from '../../constants.tsx'; 
 
 interface HeaderProps {
   setSidebarOpen: (open: boolean) => void;
@@ -23,7 +24,7 @@ export const Header: React.FC<HeaderProps> = ({ setSidebarOpen }) => {
     <header className="relative bg-bg-surface backdrop-blur-md shadow-lg flex-shrink-0 border-b border-border-subtle z-30">
       <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-20"> 
-          <div className="flex items-center md:hidden"> {/* Botão só aparece em mobile */}
+          <div className="flex items-center md:hidden">
             <button
               type="button"
               className="p-2 rounded-xl text-text-muted hover:text-text-strong hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent-blue-neon transition-colors duration-150"
@@ -33,7 +34,7 @@ export const Header: React.FC<HeaderProps> = ({ setSidebarOpen }) => {
               <Bars3IconHero className="h-6 w-6" aria-hidden="true" />
             </button>
           </div>
-          <div className="flex-1"></div> {/* Espaçador para empurrar o menu do usuário para a direita */}
+          <div className="flex-1"></div> 
           <div className="ml-auto flex items-center">
             <DropdownMenuPrimitive.Root>
               <DropdownMenuPrimitive.Trigger asChild>
@@ -61,6 +62,17 @@ export const Header: React.FC<HeaderProps> = ({ setSidebarOpen }) => {
                   </DropdownMenuPrimitive.Label>
                   
                   <DropdownMenuPrimitive.Item
+                    onSelect={() => navigate('/minha-conta')} 
+                    className={cn(
+                        "group relative flex cursor-default select-none items-center rounded-lg px-3 py-2.5 text-sm text-text-default outline-none transition-colors",
+                        "data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-white/10 data-[highlighted]:text-accent-blue-neon"
+                    )}
+                  >
+                    <UserCircleIcon className="mr-3 h-5 w-5 text-text-muted group-data-[highlighted]:text-accent-blue-neon" aria-hidden="true" />
+                    Minha Conta
+                  </DropdownMenuPrimitive.Item>
+
+                  <DropdownMenuPrimitive.Item
                     onSelect={() => navigate('/configuracoes')}
                     className={cn(
                         "group relative flex cursor-default select-none items-center rounded-lg px-3 py-2.5 text-sm text-text-default outline-none transition-colors",
@@ -68,7 +80,7 @@ export const Header: React.FC<HeaderProps> = ({ setSidebarOpen }) => {
                     )}
                   >
                     <CogIcon className="mr-3 h-5 w-5 text-text-muted group-data-[highlighted]:text-accent-blue-neon" aria-hidden="true" />
-                    Configurações
+                    Configurações da Plataforma
                   </DropdownMenuPrimitive.Item>
                   <DropdownMenuPrimitive.Item
                     onSelect={handleLogout}

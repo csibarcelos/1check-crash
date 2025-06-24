@@ -16,7 +16,7 @@ import {
   Square2StackIconHero, 
   TrashIcon as TrashActionIcon, 
   EllipsisVerticalIcon, 
-  ExternalLinkIconHero, // Added for "open in new tab"
+  ExternalLinkIconHero, 
   cn 
 } from '../constants.tsx';
 import { useAuth } from '@/contexts/AuthContext';
@@ -195,7 +195,7 @@ const ProductsPage: React.FC = () => {
                 variant="ghost" 
                 size="sm" 
                 className="p-1.5 text-text-muted hover:text-accent-blue-neon data-[state=open]:bg-neutral-700"
-                onClick={(e) => e.stopPropagation()} // Prevent row click when opening menu
+                onClick={(e) => e.stopPropagation()} 
                 aria-label={`Mais ações para ${product.name}`}
                 title="Mais Ações"
               >
@@ -212,7 +212,7 @@ const ProductsPage: React.FC = () => {
                   "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
                   "data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2"
                 )}
-                onClick={(e) => e.stopPropagation()} // Prevent row click when interacting with menu content
+                onClick={(e) => e.stopPropagation()} 
               >
                 <DropdownMenuPrimitive.Item
                   onSelect={(e) => { e.stopPropagation(); handleViewCheckoutInNewTab(product); }}
@@ -276,7 +276,7 @@ const ProductsPage: React.FC = () => {
             data={paginatedProducts}
             rowKey="id"
             isLoading={isLoading}
-            onRowClick={handleRowClick} // Added row click handler
+            onRowClick={handleRowClick} 
             currentPage={currentPage}
             totalPages={totalPages}
             onPageChange={setCurrentPage}

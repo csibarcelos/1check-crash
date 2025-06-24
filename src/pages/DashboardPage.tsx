@@ -10,8 +10,8 @@ import { dashboardService, DashboardData } from '@/services/dashboardService';
 import { 
     ShoppingCartIcon, 
     UserGroupIcon, 
-    CurrencyDollarIcon,
-    CalendarDaysIcon, // Importando ícone de calendário
+    CurrencyDollarIcon, // Updated import
+    CalendarDaysIcon,
 } from '../constants.tsx'; 
 import { useAuth } from '@/contexts/AuthContext';
 import { motion, Variants } from "framer-motion";

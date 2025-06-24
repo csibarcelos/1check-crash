@@ -1,7 +1,7 @@
 
 import React from 'react';
 import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { Button, ButtonProps } from '@/components/ui/Button';
 import { cn } from '../../constants';
 
@@ -18,13 +18,13 @@ interface AlertDialogProps {
   children?: React.ReactNode; // Para botões adicionais
 }
 
-const overlayVariants = {
+const overlayVariants: Variants = {
   hidden: { opacity: 0 },
   visible: { opacity: 1, transition: { duration: 0.3 } },
   exit: { opacity: 0, transition: { duration: 0.2, delay: 0.1 } },
 };
 
-const contentVariants = {
+const contentVariants: Variants = {
   hidden: { opacity: 0, scale: 0.95, y: 20 },
   visible: { opacity: 1, scale: 1, y: 0, transition: { duration: 0.3, ease: "circOut" as const } },
   exit: { opacity: 0, scale: 0.95, y: 10, transition: { duration: 0.2, ease: "circIn" as const } },

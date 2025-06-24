@@ -14,7 +14,7 @@ import { useToast } from '@/contexts/ToastContext';
 import {
   ArrowUturnLeftIconHero, ExternalLinkIconHero, LinkIcon as LinkActionIcon, Square2StackIconHero,
   TrashIcon as TrashActionIcon, ArrowDownTrayIcon, CheckIcon, EllipsisVerticalIcon, cn
-} from '../constants.tsx'; // Removed CheckCircleIcon as it's not used after removing "Save and Continue"
+} from '../constants.tsx'; 
 
 const FORM_ID = "product-edit-form";
 
@@ -36,17 +36,33 @@ const ProductEditPage: React.FC = () => {
 
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isLeaveConfirmModalOpen, setIsLeaveConfirmModalOpen] = useState(false);
-  const [shouldNavigateAfterSave, setShouldNavigateAfterSave] = useState(false); // New state for navigation
+  const [shouldNavigateAfterSave, setShouldNavigateAfterSave] = useState(false); 
   
   const formRef = useRef<HTMLFormElement>(null);
 
+  useEffect(() => {
+    console.log("[ProductEditPage] hasUnsavedChanges updated to:", hasUnsavedChanges);
+  }, [hasUnsavedChanges]);
+
   const blocker = useBlocker(() => {
+    console.log("[ProductEditPage] Blocker triggered. hasUnsavedChanges:", hasUnsavedChanges);
     if (hasUnsavedChanges) {
       setIsLeaveConfirmModalOpen(true);
       return true; 
     }
     return false; 
   });
+  
+  useEffect(() => {
+    console.log("[ProductEditPage] Blocker state changed:", blocker.state);
+    console.log("[ProductEditPage] isLeaveConfirmModalOpen state:", isLeaveConfirmModalOpen);
+    if (!hasUnsavedChanges && isLeaveConfirmModalOpen && blocker.state === 'blocked') {
+      console.log("[ProductEditPage] Proceeding with navigation as no unsaved changes or modal open.");
+      setIsLeaveConfirmModalOpen(false);
+      blocker.proceed();
+    }
+  }, [hasUnsavedChanges, isLeaveConfirmModalOpen, blocker]);
+
 
   const fetchProductAndRelatedData = useCallback(async (id: string) => {
     if (!accessToken) {
@@ -56,7 +72,7 @@ const ProductEditPage: React.FC = () => {
     }
     setIsLoading(true);
     setHasUnsavedChanges(false); 
-    setShouldNavigateAfterSave(false); // Reset on new data load
+    setShouldNavigateAfterSave(false); 
     try {
       const [fetchedProduct, allUserProducts] = await Promise.all([
         productService.getProductById(id, accessToken),
@@ -87,21 +103,13 @@ const ProductEditPage: React.FC = () => {
     }
   }, [productId, fetchProductAndRelatedData, navigate, showToast]);
 
-  // Effect to handle navigation after a successful save (for direct save buttons)
+  
   useEffect(() => {
     if (shouldNavigateAfterSave && !hasUnsavedChanges) {
       navigate('/produtos');
-      setShouldNavigateAfterSave(false); // Reset flag
+      setShouldNavigateAfterSave(false); 
     }
   }, [shouldNavigateAfterSave, hasUnsavedChanges, navigate]);
-
-  // Effect to handle blocker proceeding after modal actions
-  useEffect(() => {
-    if (!hasUnsavedChanges && isLeaveConfirmModalOpen && blocker.state === 'blocked') {
-        setIsLeaveConfirmModalOpen(false);
-        blocker.proceed();
-    }
-  }, [hasUnsavedChanges, isLeaveConfirmModalOpen, blocker]);
 
 
   const handleFormSubmit = async (formData: Omit<Product, 'id' | 'platformUserId' | 'slug' | 'totalSales' | 'clicks' | 'checkoutViews' | 'conversionRate' | 'abandonmentRate'>) => {
@@ -117,14 +125,14 @@ const ProductEditPage: React.FC = () => {
       if (updatedProduct) {
         setInitialProductData(updatedProduct);
       } else {
-        await fetchProductAndRelatedData(productId); // Refetch if update didn't return full data
+        await fetchProductAndRelatedData(productId); 
       }
       
-      // Navigation logic:
-      // If shouldNavigateAfterSave is true (set by direct "Salvar" button), the useEffect for it will handle navigation.
-      // If a blocker was active (e.g., "Salvar e Sair" from modal), the hasUnsavedChanges becoming false
-      // will trigger the other useEffect to call blocker.proceed().
-      // We don't navigate directly from here if a blocker might be involved to avoid race conditions.
+      if (shouldNavigateAfterSave) {
+        console.log("[ProductEditPage] Navigate after save condition met. Navigating to /produtos");
+        navigate('/produtos');
+        setShouldNavigateAfterSave(false);
+      }
 
     } catch (err: any) {
       showToast({ title: "Erro ao Atualizar", description: err.message || 'Falha ao atualizar produto. Tente novamente.', variant: "error" });
@@ -144,10 +152,18 @@ const ProductEditPage: React.FC = () => {
     }
   };
 
-  const handleSave = () => {
-    setShouldNavigateAfterSave(true); // Signal that navigation should occur after successful save
+  const handleSaveAndExit = () => {
+    console.log("[ProductEditPage] handleSaveAndExit called.");
+    setShouldNavigateAfterSave(true); 
     triggerFormSubmit();
   };
+  
+  const handleSave = () => {
+    console.log("[ProductEditPage] handleSave called.");
+    setShouldNavigateAfterSave(false); // Não navegar, apenas salvar
+    triggerFormSubmit();
+  };
+
 
   const handleNavigateBack = () => {
     if (hasUnsavedChanges) {
@@ -226,26 +242,28 @@ const ProductEditPage: React.FC = () => {
   }, [isLoading]);
 
   const handleConfirmLeave = async (saveFirst: boolean) => {
+    console.log("[ProductEditPage] handleConfirmLeave. saveFirst:", saveFirst);
     if (saveFirst) {
-      // "Salvar e Sair"
-      // The useEffect for blocker will handle proceed() if save is successful
-      // because hasUnsavedChanges will become false and isLeaveConfirmModalOpen is true.
-      setShouldNavigateAfterSave(false); // Ensure we don't double-navigate if save is very fast
-      triggerFormSubmit(); 
+      handleSaveAndExit(); 
+      setIsLeaveConfirmModalOpen(false); // Fechar o modal, a navegação ocorrerá após o save se bem-sucedido
     } else {
-      // "Sair sem Salvar"
       setIsLeaveConfirmModalOpen(false);
-      setHasUnsavedChanges(false); // Discard changes
-      if (blocker.state === 'blocked') {
-        blocker.proceed();
-      } else {
-        // Fallback if somehow not blocked but modal was shown (should not happen with current useBlocker logic)
-        navigate('/produtos'); 
-      }
+      setHasUnsavedChanges(false); 
+      setTimeout(() => { // Adicionar um pequeno delay para garantir que o estado hasUnsavedChanges seja processado
+        if (blocker.state === 'blocked') {
+          console.log("[ProductEditPage] Proceeding with blocker after 'Don't Save'.");
+          blocker.proceed();
+        } else {
+          console.log("[ProductEditPage] Blocker not in 'blocked' state, navigating directly.");
+          navigate('/produtos'); // Fallback se o blocker não estiver mais ativo
+        }
+      }, 0);
     }
   };
+  
 
   const handleCancelLeave = () => {
+    console.log("[ProductEditPage] handleCancelLeave called.");
     setIsLeaveConfirmModalOpen(false);
     if (blocker.state === 'blocked') {
       blocker.reset();
@@ -307,9 +325,15 @@ const ProductEditPage: React.FC = () => {
                 disabled={isSaving || isDeleting || isCloning || !hasUnsavedChanges}
                 className={dropdownItemClass}
               >
-                <ArrowDownTrayIcon className={dropdownIconClass} /> Salvar
+                <ArrowDownTrayIcon className={dropdownIconClass} /> Salvar Alterações
               </DropdownMenuPrimitive.Item>
-              {/* "Salvar e Continuar" removido do Dropdown */}
+              <DropdownMenuPrimitive.Item
+                onSelect={handleSaveAndExit}
+                disabled={isSaving || isDeleting || isCloning || !hasUnsavedChanges}
+                className={dropdownItemClass}
+              >
+                <ArrowDownTrayIcon className={dropdownIconClass} /> Salvar e Sair
+              </DropdownMenuPrimitive.Item>
               
               <DropdownMenuPrimitive.Separator className="h-px bg-border-subtle my-1" />
 
@@ -352,7 +376,7 @@ const ProductEditPage: React.FC = () => {
       
       <ProductForm
         initialData={initialProductData}
-        onSubmit={handleFormSubmit} // onSubmit agora não espera 'stayOnPage'
+        onSubmit={handleFormSubmit} 
         isSaving={isSaving}
         availableProductsForOffers={userProductsForOffers}
         formId={FORM_ID}
@@ -363,11 +387,11 @@ const ProductEditPage: React.FC = () => {
       <div className="fixed bottom-0 left-0 right-0 bg-bg-surface-opaque border-t border-border-subtle p-4 shadow-top-hard z-20 md:pl-[calc(288px+1rem)]">
         <div className="max-w-7xl mx-auto flex justify-end items-center space-x-3">
           <Button variant="outline" onClick={handleNavigateBack} disabled={isSaving || isDeleting || isCloning}>
-            Voltar
+            Voltar para Produtos
           </Button>
-          {/* "Salvar e Continuar" removido da barra inferior */}
+          
           <Button onClick={handleSave} variant="primary" isLoading={isSaving} disabled={isSaving || isDeleting || isCloning || !hasUnsavedChanges}>
-            Salvar
+            Salvar Alterações
           </Button>
         </div>
       </div>

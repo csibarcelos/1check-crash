@@ -5,10 +5,10 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Modal } from '@/components/ui/Modal';
-import { Customer, FunnelStage, Product as ProductType } from '@/types';
+import { Customer, FunnelStage, Product as ProductType } from '../types';
 import { customerService } from '@/services/customerService';
 import { productService } from '@/services/productService';
-import { UsersIcon, WhatsAppIcon, generateWhatsAppLink } from '../constants.tsx';
+import { UserGroupIcon, WhatsAppIcon, generateWhatsAppLink } from '../constants.tsx'; // Changed UsersIcon to UserGroupIcon
 import { useAuth } from '@/contexts/AuthContext';
 import { Table, TableHeader } from '@/components/ui/Table'; 
 
@@ -229,7 +229,7 @@ const ClientesPage: React.FC = () => {
             totalItems={filteredCustomers.length}
             emptyStateMessage={
                 <div className="text-center py-12">
-                    <UsersIcon className="h-16 w-16 text-neutral-500 mx-auto mb-4" />
+                    <UserGroupIcon className="h-16 w-16 text-neutral-500 mx-auto mb-4" />
                     <p className="text-lg text-neutral-400">
                     {allCustomers.length === 0 ? "Nenhum cliente registrado." : "Nenhum cliente encontrado com os filtros atuais."}
                     </p>
@@ -281,12 +281,13 @@ const ClientesPage: React.FC = () => {
                 <h3 className="text-md font-semibold text-neutral-100 border-b border-neutral-600 pb-1 mb-2">IDs das Vendas ({selectedCustomer.saleIds?.length || 0})</h3>
                 {selectedCustomer.saleIds && selectedCustomer.saleIds.length > 0 ? (
                   <div className="flex flex-wrap gap-1">
-                    {selectedCustomer.saleIds.map((saleId: string, index: number) => {
-                      const displayString = saleId.substring(0, 12) + (saleId.length > 12 ? '...' : '');
-                      // Ensure itemKey is always a string and unique
-                      const itemKey: string = saleId + '-' + index.toString();
-                      return (<span key={itemKey} className="px-2 py-0.5 bg-neutral-700 text-xs text-neutral-300 rounded-full">{displayString}</span>);
-                    })}
+                    {selectedCustomer.saleIds
+                      .filter((idInput): idInput is string => typeof idInput === 'string') // Ensure elements are strings
+                      .map((currentSaleId: string, index: number) => {
+                        const displayString = currentSaleId.substring(0, 12) + (currentSaleId.length > 12 ? '...' : '');
+                        const itemKey = `${currentSaleId}-${index}`; // This line was 210
+                        return (<span key={itemKey} className="px-2 py-0.5 bg-neutral-700 text-xs text-neutral-300 rounded-full">{displayString}</span>);
+                      })}
                   </div>
                 ) : <p className="text-neutral-400">Nenhum ID de venda associado.</p>}
             </section>

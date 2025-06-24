@@ -1,4 +1,5 @@
-import React, { Suspense } from "react"; // Adicionado Suspense e React (se não estiver lá)
+
+import React, { Suspense } from "react"; 
 import { createBrowserRouter, Outlet } from "react-router-dom";
 import { MainLayout } from '@/components/layout/MainLayout';
 import { SuperAdminLayout } from '@/components/layout/SuperAdminLayout';
@@ -6,18 +7,12 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { ProtectedRoute, SuperAdminProtectedRoute } from './App';
 import { ErrorBoundary } from '@/ErrorBoundary';
 
-// Componente de Fallback para Suspense
-const RouteLoadingFallback = () => (
-  <div className="flex justify-center items-center h-screen bg-bg-main">
-    <LoadingSpinner size="lg" />
-    <p className="ml-3 text-text-muted text-lg">Carregando página...</p>
-  </div>
-);
+const RouteLoadingFallback = () => ( <div className="flex justify-center items-center h-screen bg-bg-main"> <LoadingSpinner size="lg" /> <p className="ml-3 text-text-muted text-lg">Carregando página...</p> </div> );
 
-// Lazy load dos componentes de página
 const HomePage = React.lazy(() => import('@/pages/HomePage'));
 const AuthPage = React.lazy(() => import('@/pages/AuthPage'));
 const DashboardPage = React.lazy(() => import('@/pages/DashboardPage'));
+const LiveViewPage = React.lazy(() => import('@/pages/LiveViewPage')); // Nova página
 const ProductsPage = React.lazy(() => import('@/pages/ProductsPage'));
 const ProductCreatePage = React.lazy(() => import('@/pages/ProductCreatePage'));
 const ProductEditPage = React.lazy(() => import('@/pages/ProductEditPage'));
@@ -28,8 +23,9 @@ const ClientesPage = React.lazy(() => import('@/pages/ClientesPage'));
 const CarrinhosAbandonadosPage = React.lazy(() => import('@/pages/CarrinhosAbandonadosPage'));
 const IntegracoesPage = React.lazy(() => import('@/pages/IntegracoesPage'));
 const ConfiguracoesPage = React.lazy(() => import('@/pages/ConfiguracoesPage'));
+const MinhaContaPage = React.lazy(() => import('@/pages/MinhaContaPage')); 
 
-// Super Admin Pages - Lazy Load
+// Super Admin Pages
 const SuperAdminDashboardPage = React.lazy(() => import('@/pages/superadmin/SuperAdminDashboardPage'));
 const PlatformSettingsPage = React.lazy(() => import('@/pages/superadmin/PlatformSettingsPage'));
 const SuperAdminUsersPage = React.lazy(() => import('@/pages/superadmin/SuperAdminUsersPage'));
@@ -37,13 +33,7 @@ const SuperAdminSalesPage = React.lazy(() => import('@/pages/superadmin/SuperAdm
 const SuperAdminAuditLogPage = React.lazy(() => import('@/pages/superadmin/SuperAdminAuditLogPage'));
 const SuperAdminAllProductsPage = React.lazy(() => import('@/pages/superadmin/SuperAdminAllProductsPage'));
 
-const RootLayout = () => {
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <Outlet />
-    </Suspense>
-  );
-};
+const RootLayout = () => { return ( <Suspense fallback={<RouteLoadingFallback />}> <Outlet /> </Suspense> ); };
 
 export const router = createBrowserRouter([
   {
@@ -54,7 +44,9 @@ export const router = createBrowserRouter([
       { path: "/", element: <HomePage /> },
       { path: "/checkout/:slug", element: <CheckoutPage /> },
       { path: "/thank-you/:orderId", element: <ThankYouPage /> },
+      
       { path: "/dashboard", element: <ProtectedRoute><MainLayout><DashboardPage /></MainLayout></ProtectedRoute> },
+      { path: "/live-view", element: <ProtectedRoute><MainLayout><LiveViewPage /></MainLayout></ProtectedRoute> }, // Nova rota
       { path: "/produtos", element: <ProtectedRoute><MainLayout><ProductsPage /></MainLayout></ProtectedRoute> },
       { path: "/produtos/novo", element: <ProtectedRoute><MainLayout><ProductCreatePage /></MainLayout></ProtectedRoute> },
       { path: "/produtos/editar/:productId", element: <ProtectedRoute><MainLayout><ProductEditPage /></MainLayout></ProtectedRoute> },
@@ -63,6 +55,7 @@ export const router = createBrowserRouter([
       { path: "/carrinhos-abandonados", element: <ProtectedRoute><MainLayout><CarrinhosAbandonadosPage /></MainLayout></ProtectedRoute> },
       { path: "/integracoes", element: <ProtectedRoute><MainLayout><IntegracoesPage /></MainLayout></ProtectedRoute> },
       { path: "/configuracoes", element: <ProtectedRoute><MainLayout><ConfiguracoesPage /></MainLayout></ProtectedRoute> },
+      { path: "/minha-conta", element: <ProtectedRoute><MainLayout><MinhaContaPage /></MainLayout></ProtectedRoute> }, 
       
       { path: "/superadmin/dashboard", element: <SuperAdminProtectedRoute><SuperAdminLayout><SuperAdminDashboardPage /></SuperAdminLayout></SuperAdminProtectedRoute> },
       { path: "/superadmin/configuracoes-plataforma", element: <SuperAdminProtectedRoute><SuperAdminLayout><PlatformSettingsPage /></SuperAdminLayout></SuperAdminProtectedRoute> },

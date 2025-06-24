@@ -200,7 +200,7 @@ export function Table<T extends { id: string | number }>({
             <motion.tr
               key={getRowKey(row)}
               variants={tableRowVariants}
-              layout 
+              layout
               className={cn(
                 "transition-colors duration-150",
                 onRowClick ? "cursor-pointer hover:bg-white/5" : "hover:bg-white/10",

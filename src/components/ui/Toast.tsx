@@ -1,7 +1,7 @@
 
 import React from 'react';
 import * as ToastPrimitives from '@radix-ui/react-toast';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { cn } from '../../constants.tsx';
 import { XMarkIcon, CheckIcon, InformationCircleIcon } from '../../constants.tsx'; // Assumindo que tem ExclamationTriangleIcon
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline'; // Import específico
@@ -10,13 +10,13 @@ import { ExclamationTriangleIcon } from '@heroicons/react/24/outline'; // Import
 import { useToast as useAppToast, ToastOptions as AppToastOptions } from '@/contexts/ToastContext'; 
 
 // Variants for Framer Motion
-const viewportVariants = {
+const viewportVariants: Variants = {
   initial: { opacity: 0 },
   animate: { opacity: 1, transition: { staggerChildren: 0.1 } },
   exit: { opacity: 0 },
 };
 
-const toastVariants = {
+const toastVariants: Variants = {
   initial: { opacity: 0, y: 50, scale: 0.3 },
   animate: { opacity: 1, y: 0, scale: 1 },
   exit: { opacity: 0, y: 20, scale: 0.5, transition: { duration: 0.2 } },

@@ -8,7 +8,7 @@ import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { Input } from '@/components/ui/Input';
 import { User } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
-import { UsersIcon, SUPER_ADMIN_EMAIL } from '../../constants.tsx';
+import { UserGroupIcon, SUPER_ADMIN_EMAIL } from '../../constants.tsx'; // Changed UsersIcon to UserGroupIcon
 import { superAdminService } from '@/services/superAdminService';
 import { Table, TableHeader } from '@/components/ui/Table';
 
@@ -296,7 +296,7 @@ const SuperAdminUsersPage: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-3">
-        <UsersIcon className="h-8 w-8 text-accent-blue-neon" />
+        <UserGroupIcon className="h-8 w-8 text-accent-blue-neon" />
         <h1 className="text-3xl font-display font-bold text-text-strong">
           Todos os Usuários ({users.length})
         </h1>

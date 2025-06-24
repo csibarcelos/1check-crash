@@ -1,6 +1,7 @@
+
 import React, { Fragment } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { motion } from "framer-motion";
+import { motion, Variants } from "framer-motion";
 import { XMarkIcon } from '../../constants.tsx'; 
 
 interface ModalProps {
@@ -36,13 +37,13 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
     ? 'text-[var(--checkout-color-text-default)]'
     : 'text-text-default';
 
-  const modalVariants = {
+  const modalVariants: Variants = {
     hidden: { opacity: 0, scale: 0.95, y: 20 },
     visible: { opacity: 1, scale: 1, y: 0, transition: { duration: 0.3, ease: "circOut" as const } },
     exit: { opacity: 0, scale: 0.95, y: 10, transition: { duration: 0.2, ease: "circIn" as const } }
   };
   
-  const overlayVariants = {
+  const overlayVariants: Variants = {
     hidden: { opacity: 0 },
     visible: { opacity: 1, transition: { duration: 0.3 } },
     exit: { opacity: 0, transition: { duration: 0.2 } }

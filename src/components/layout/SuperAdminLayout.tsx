@@ -1,7 +1,8 @@
+
 import React from 'react';
 import { Sidebar } from '@/components/layout/Sidebar'; 
 import { Header } from '@/components/layout/Header'; 
-import { motion } from "framer-motion";
+import { motion, Variants } from "framer-motion";
 import { useLocation } from "react-router-dom"; // Importado useLocation
 
 interface SuperAdminLayoutProps {
@@ -10,7 +11,7 @@ interface SuperAdminLayoutProps {
 
 const MotionMain = motion.main;
 
-const mainVariants = {
+const mainVariants: Variants = {
   hidden: { opacity: 0, y: 15 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "circOut" as const } },
   exit: { opacity: 0, y: -15, transition: { duration: 0.2, ease: "circIn" as const } }

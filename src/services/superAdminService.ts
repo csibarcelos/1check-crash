@@ -1,7 +1,8 @@
 
 import { User, Sale, SaleProductItem, PaymentMethod, PaymentStatus, Product as AppProduct, AuditLogEntry, ProductCheckoutCustomization, OrderBumpOffer, UpsellOffer, Coupon, UtmParams } from '@/types';
 import { adminSupabase } from '@/adminSupabase';
-import { supabase } from '@/supabaseClient';
+// Removed: import { supabase } from '@/supabaseClient'; 
+// adminSupabase will be used for all super admin operations for consistency and RLS bypass.
 import { Database, Json } from '@/types/supabase';
 
 type ProfileRow = Database['public']['Tables']['profiles']['Row'];
@@ -144,17 +145,16 @@ export const superAdminService = {
         const cachedUsers = getCachedData<User[]>(cacheKey);
         if (cachedUsers) return cachedUsers;
 
-        // Check if the operation has been aborted before making the network request
         if (options?.signal?.aborted) {
           throw new DOMException('Request aborted by user', 'AbortError');
         }
 
         try {
             const { data: usersListResponse, error: usersError } = await adminSupabase.auth.admin.listUsers({
-                perPage: 10000 // Consider implications for extremely large user bases
+                perPage: 10000 
             });
 
-            if (options?.signal?.aborted) { // Check again after async operation starts
+            if (options?.signal?.aborted) {
               throw new DOMException('Request aborted by user', 'AbortError');
             }
 
@@ -166,7 +166,7 @@ export const superAdminService = {
                 return [];
             }
             
-            const { data: profiles, error: profilesError } = await supabase
+            const { data: profiles, error: profilesError } = await adminSupabase // Changed to adminSupabase
                 .from('profiles')
                 .select('*')
                 .in('id', userIds);
@@ -219,7 +219,7 @@ export const superAdminService = {
         if (cachedSales) return cachedSales;
 
         try {
-            let query = supabase
+            let query = adminSupabase // Changed to adminSupabase
                 .from('sales')
                 .select('*')
                 .order('created_at', { ascending: false })
@@ -254,7 +254,7 @@ export const superAdminService = {
         if (cachedProducts) return cachedProducts;
 
         try {
-            const { data, error } = await supabase
+            const { data, error } = await adminSupabase // Changed to adminSupabase
                 .from('products')
                 .select('*')
                 .order('created_at', { ascending: false })
@@ -284,14 +284,14 @@ export const superAdminService = {
         if (cachedLogs) return cachedLogs;
 
         try {
-            const { data, error } = await supabase
+            const { data, error } = await adminSupabase // Changed to adminSupabase
                 .from('audit_log_entries')
                 .select('*')
                 .order('timestamp', { ascending: false })
                 .range(offset, offset + limit - 1);
 
             if (error) {
-                if (error.code === '42P01') { // table does not exist
+                if (error.code === '42P01') { 
                     console.warn("Audit log table 'audit_log_entries' does not exist.");
                     setCachedData(cacheKey, []);
                     return [];
@@ -310,9 +310,9 @@ export const superAdminService = {
 
     getPlatformSummary: async (token: string): Promise<{
         totalUsers: number;
-        totalSales: number; // Total sales transactions count
+        totalSales: number; 
         totalProducts: number;
-        totalRevenue: number; // Sum of totalAmountInCents for PAID sales
+        totalRevenue: number; 
     }> => {
         if (!token) throw new Error("Token de autenticação de super admin é necessário.");
 
@@ -322,9 +322,9 @@ export const superAdminService = {
 
         try {
             const [usersCountRes, salesRes, productsCountRes] = await Promise.all([
-                supabase.from('profiles').select('id', { count: 'exact', head: true }),
-                supabase.from('sales').select('total_amount_in_cents, status'), // Fetch all sales for revenue calculation
-                supabase.from('products').select('id', { count: 'exact', head: true })
+                adminSupabase.from('profiles').select('id', { count: 'exact', head: true }), // Changed to adminSupabase
+                adminSupabase.from('sales').select('total_amount_in_cents, status'), // Changed to adminSupabase
+                adminSupabase.from('products').select('id', { count: 'exact', head: true }) // Changed to adminSupabase
             ]);
             
             if (usersCountRes.error) throw new Error(usersCountRes.error.message);
@@ -337,7 +337,7 @@ export const superAdminService = {
 
             const summary = {
                 totalUsers: usersCountRes.count || 0,
-                totalSales: salesRes.data?.length || 0, // Total count of sales transactions
+                totalSales: salesRes.data?.length || 0, 
                 totalProducts: productsCountRes.count || 0,
                 totalRevenue
             };
@@ -363,9 +363,9 @@ export const superAdminService = {
         if (cachedResult) return cachedResult;
         
         try {
-            let salesQuery = supabase
+            let salesQuery = adminSupabase // Changed to adminSupabase
                 .from('sales')
-                .select('*', { count: 'exact' }) // Request count along with data
+                .select('*', { count: 'exact' }) 
                 .order('created_at', { ascending: false })
                 .range(offset, offset + pageSize - 1);
 
@@ -403,16 +403,8 @@ export const superAdminService = {
             if (updates.isActive !== undefined) profileUpdates.is_active = updates.isActive;
             if (updates.isSuperAdmin !== undefined) profileUpdates.is_super_admin = updates.isSuperAdmin;
 
-            if (Object.keys(profileUpdates).length === 0) {
-                return { success: true, message: "Nenhuma alteração para aplicar ao perfil." };
-            }
 
-            // Supabase auto-updates 'updated_at' if using 'moddatetime' extension.
-            // If not, uncomment the line below or add a default value in DB schema.
-            // profileUpdates.updated_at = new Date().toISOString();
-
-
-            const { error: profileUpdateError } = await supabase
+            const { error: profileUpdateError } = await adminSupabase // Changed to adminSupabase
                 .from('profiles')
                 .update(profileUpdates)
                 .eq('id', userIdToUpdate);
@@ -422,9 +414,8 @@ export const superAdminService = {
                 return { success: false, message: profileUpdateError.message || "Erro ao atualizar perfil do usuário." };
             }
 
-            // Clear relevant caches
             cache.delete('platform-users');
-            cache.delete('platform-summary'); // User counts might change
+            cache.delete('platform-summary'); 
 
             return { success: true, message: "Usuário atualizado com sucesso." };
         } catch (error: any) {

@@ -6,7 +6,7 @@ import { DEFAULT_CURRENCY } from '../constants.tsx';
 
 type SaleRow = Database['public']['Tables']['sales']['Row'];
 type SaleInsert = Database['public']['Tables']['sales']['Insert'];
-type SaleUpdate = Database['public']['Tables']['sales']['Update']; // Adicionado
+type SaleUpdate = Database['public']['Tables']['sales']['Update']; 
 
 const parseJsonField = <T>(field: Json | null | undefined, defaultValue: T): T => { 
   if (field === null || field === undefined) return defaultValue;
@@ -60,7 +60,6 @@ export const salesService = {
   },
   getSaleById: async (id: string, _token: string | null): Promise<Sale | undefined> => { 
     try {
-      // Modificado para buscar por id OU push_in_pay_transaction_id
       const { data, error } = await supabase
         .from('sales')
         .select('*')
@@ -113,8 +112,8 @@ export const salesService = {
       original_amount_before_discount_in_cents: saleData.originalAmountBeforeDiscountInCents,
       discount_applied_in_cents: saleData.discountAppliedInCents,
       coupon_code_used: saleData.couponCodeUsed,
-      created_at: new Date().toISOString(), // Set creation timestamp here
-      paid_at: saleData.paidAt, // Will be undefined for WAITING_PAYMENT
+      created_at: new Date().toISOString(), 
+      paid_at: saleData.paidAt, 
       tracking_parameters: saleData.trackingParameters as unknown as Json,
       platform_commission_in_cents: platformCommissionCalculated,
       commission_total_price_in_cents: platformCommissionBase,
@@ -144,18 +143,26 @@ export const salesService = {
     }
   },
 
-  updateSaleStatus: async (
+  updateSaleFields: async (
     saleId: string,
-    updates: { status: PaymentStatus; paidAt?: string; },
+    updates: Partial<Pick<Sale, 'status' | 'paidAt' | 'upsellPushInPayTransactionId' | 'upsellStatus' | 'totalAmountInCents' | 'upsellAmountInCents' | 'products'>>,
     _token: string | null 
   ): Promise<Sale | undefined> => {
-    const updatePayload: SaleUpdate = {
-      status: updates.status,
+    const updatePayload: Partial<SaleUpdate> = { 
       updated_at: new Date().toISOString(),
     };
-    if (updates.paidAt) {
-      updatePayload.paid_at = updates.paidAt;
-    }
+
+    if (updates.status !== undefined) updatePayload.status = updates.status;
+    if (updates.paidAt !== undefined) updatePayload.paid_at = updates.paidAt;
+    if (updates.upsellPushInPayTransactionId !== undefined) updatePayload.upsell_push_in_pay_transaction_id = updates.upsellPushInPayTransactionId;
+    if (updates.upsellStatus !== undefined) updatePayload.upsell_status = updates.upsellStatus;
+    if (updates.totalAmountInCents !== undefined) updatePayload.total_amount_in_cents = updates.totalAmountInCents;
+    if (updates.upsellAmountInCents !== undefined) updatePayload.upsell_amount_in_cents = updates.upsellAmountInCents;
+    if (updates.products !== undefined) updatePayload.products = updates.products as unknown as Json;
+    
+    // Nota: Se a comissão precisar ser recalculada com base no novo totalAmountInCents,
+    // essa lógica precisaria ser adicionada aqui ou, idealmente, em um trigger/função de banco de dados.
+    // Para este escopo, estamos apenas atualizando os campos fornecidos.
 
     try {
       const { data, error } = await supabase
@@ -166,21 +173,22 @@ export const salesService = {
         .single<SaleRow>();
 
       if (error) {
-        console.error(`Supabase updateSaleStatus error for sale ${saleId}:`, error);
+        console.error(`Supabase updateSaleFields error for sale ${saleId}:`, error);
         if (error.code === 'PGRST116') { 
-          console.warn(`Venda ${saleId} não encontrada para atualização de status.`);
+          console.warn(`[salesService.ts] Venda ${saleId} não encontrada para atualização de campos (PGRST116). Isso pode ser um problema de RLS ou o ID está incorreto.`);
           return undefined;
         }
-        throw new Error(error.message || `Falha ao atualizar status da venda ${saleId}.`);
+        throw new Error(error.message || `Falha ao atualizar campos da venda ${saleId}. Verifique as permissões RLS.`);
       }
       if (!data) {
-        console.warn(`Atualização da venda ${saleId} não retornou dados, mas sem erro.`);
+        console.warn(`[salesService.ts] Atualização da venda ${saleId} não retornou dados, mas sem erro.`);
         return undefined; 
       }
+      console.log(`[salesService.ts] Venda ${saleId} atualizada com sucesso:`, data);
       return fromSupabaseSaleRow(data);
     } catch (genericError: any) {
-      console.error(`Exception in updateSaleStatus for sale ${saleId}:`, genericError);
-      throw new Error(genericError.message || `Falha geral ao atualizar status da venda ${saleId}.`);
+      console.error(`[salesService.ts] Exception in updateSaleFields for sale ${saleId}:`, genericError);
+      throw new Error(genericError.message || `Falha geral ao atualizar campos da venda ${saleId}.`);
     }
   },
 };

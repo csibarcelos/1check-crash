@@ -1,3 +1,4 @@
+
 import { Sale, Customer, Product, PaymentStatus } from '@/types'; // Ajustado para alias @
 import { DateRange } from 'react-day-picker';
 
@@ -21,71 +22,45 @@ const getEndOfDate = (date: Date): Date => {
   return newDate;
 };
 
-const filterSalesByDateRange = (sales: Sale[], dateRange: string, customRange?: DateRange): Sale[] => {
+// Helper to filter sales or customers based on a date field and range
+const filterItemsByDateRange = <T extends { createdAt?: string; paidAt?: string; firstPurchaseDate?: string }>(
+  items: T[],
+  dateRange: string,
+  dateField: 'createdAt' | 'paidAt' | 'firstPurchaseDate',
+  customRange?: DateRange
+): T[] => {
   const now = new Date();
   let startDate: Date | null = null;
   let endDate: Date | null = null;
 
   if (dateRange === 'custom' && customRange?.from) {
     startDate = getStartOfDate(customRange.from);
-    endDate = customRange.to ? getEndOfDate(customRange.to) : getEndOfDate(customRange.from); // Se 'to' não estiver definido, usa 'from' como fim também
+    endDate = customRange.to ? getEndOfDate(customRange.to) : getEndOfDate(customRange.from);
   } else {
     switch (dateRange) {
-      case 'today':
-        startDate = getStartOfDate(now);
-        endDate = getEndOfDate(now);
-        break;
-      case 'yesterday':
-        const yesterday = new Date(now);
-        yesterday.setDate(now.getDate() - 1);
-        startDate = getStartOfDate(yesterday);
-        endDate = getEndOfDate(yesterday);
-        break;
-      case 'last7days':
-        startDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6));
-        endDate = getEndOfDate(now); 
-        break;
-      case 'last30days':
-        startDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29));
-        endDate = getEndOfDate(now); 
-        break;
-      case 'thisMonth':
-        startDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), 1));
-        endDate = getEndOfDate(now); 
-        break;
-      case 'lastMonth':
-        startDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth() - 1, 1));
-        endDate = getEndOfDate(new Date(now.getFullYear(), now.getMonth(), 0));
-        break;
-      case 'all':
-      default:
-        console.log(`[dashboardService] filterSalesByDateRange: Range 'all', returning all ${sales.length} sales.`);
-        return sales; 
+      case 'today': startDate = getStartOfDate(now); endDate = getEndOfDate(now); break;
+      case 'yesterday': const y = new Date(now); y.setDate(now.getDate() - 1); startDate = getStartOfDate(y); endDate = getEndOfDate(y); break;
+      case 'last7days': startDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)); endDate = getEndOfDate(now); break;
+      case 'last30days': startDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29)); endDate = getEndOfDate(now); break;
+      case 'thisMonth': startDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), 1)); endDate = getEndOfDate(now); break;
+      case 'lastMonth': startDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth() - 1, 1)); endDate = getEndOfDate(new Date(now.getFullYear(), now.getMonth(), 0)); break;
+      case 'all': default: return items;
     }
   }
-  console.log(`[dashboardService] filterSalesByDateRange: Range '${dateRange}', Start: ${startDate?.toISOString()}, End: ${endDate?.toISOString()}`);
 
-  const filtered = sales.filter(sale => {
-    const dateToFilter = (sale.status === PaymentStatus.PAID && sale.paidAt) ? sale.paidAt : sale.createdAt;
-    
-    if(!dateToFilter) {
-        return false; 
-    }
-    const saleDate = new Date(dateToFilter);
-
-    if (isNaN(saleDate.getTime())) {
-      console.warn(`[dashboardService] Invalid date for sale ID ${sale.id}: dateToFilter=${dateToFilter}`);
-      return false;
-    }
+  return items.filter(item => {
+    const itemDateStr = item[dateField];
+    if (!itemDateStr) return false;
+    const itemDate = new Date(itemDateStr);
+    if (isNaN(itemDate.getTime())) return false;
     
     let include = true;
-    if (startDate) include = include && saleDate >= startDate;
-    if (endDate) include = include && saleDate <= endDate;
+    if (startDate) include = include && itemDate >= startDate;
+    if (endDate) include = include && itemDate <= endDate;
     return include;
   });
-  console.log(`[dashboardService] filterSalesByDateRange: Filtered to ${filtered.length} sales.`);
-  return filtered;
 };
+
 
 const filterSalesByProduct = (sales: Sale[], productId: string): Sale[] => {
   if (productId === 'all') {
@@ -102,73 +77,45 @@ export const dashboardService = {
     products: Product[]; 
     dateRange: string;
     productId: string;
-    customRange?: DateRange; // Add customRange here
+    customRange?: DateRange;
   }): DashboardData => {
-    const { sales, customers, dateRange, productId, customRange } = params; // Destructure customRange
-    console.log(`[dashboardService.getDashboardData] Called with dateRange: ${dateRange}, productId: ${productId}, customRange: ${customRange?.from}-${customRange?.to}, salesCount: ${sales.length}, customersCount: ${customers.length}`);
+    const { sales, customers, dateRange, productId, customRange } = params;
 
-    let filteredSalesByDate = filterSalesByDateRange(sales, dateRange, customRange); // Pass customRange
-    console.log(`[dashboardService.getDashboardData] Sales after date filter (${dateRange}): ${filteredSalesByDate.length}`);
-    let filteredSalesByProductAndDate = filterSalesByProduct(filteredSalesByDate, productId);
-    console.log(`[dashboardService.getDashboardData] Sales after product filter (${productId}): ${filteredSalesByProductAndDate.length}`);
-    
-    const paidSalesInPeriod = filteredSalesByProductAndDate.filter(sale => sale.status === PaymentStatus.PAID && sale.paidAt);
-    console.log(`[dashboardService.getDashboardData] Paid sales in period (with paidAt): ${paidSalesInPeriod.length}. Sample:`, paidSalesInPeriod.slice(0,2).map(s => ({id: s.id, paidAt: s.paidAt, total: s.totalAmountInCents})));
+    // 1. Filter sales by product first (applies to all subsequent calculations)
+    const productFilteredSales = filterSalesByProduct(sales, productId);
+
+    // 2. Filter PAID sales by date range using 'paid_at'
+    const paidSalesInPeriod = filterItemsByDateRange(
+        productFilteredSales.filter(s => s.status === PaymentStatus.PAID && s.paidAt), 
+        dateRange, 
+        'paidAt', 
+        customRange
+    );
 
     const totalRevenue = paidSalesInPeriod.reduce((sum, sale) => sum + Number(sale.totalAmountInCents || 0), 0);
     const numberOfSales = paidSalesInPeriod.length; 
     const averageTicket = numberOfSales > 0 ? totalRevenue / numberOfSales : 0;
     
-    const newCustomersInPeriod = customers.filter(customer => {
-        if (!customer.firstPurchaseDate) return false;
-        const firstPurchaseDate = new Date(customer.firstPurchaseDate);
-        if (isNaN(firstPurchaseDate.getTime())) return false;
-
-        let isNewInSelectedPeriod = false;
-        const now = new Date();
-        let rangeStartDate: Date | null = null;
-        let rangeEndDate: Date | null = null;
-
-        if (dateRange === 'custom' && customRange?.from) {
-            rangeStartDate = getStartOfDate(customRange.from);
-            rangeEndDate = customRange.to ? getEndOfDate(customRange.to) : getEndOfDate(customRange.from);
-        } else {
-            switch (dateRange) {
-                case 'today': rangeStartDate = getStartOfDate(now); rangeEndDate = getEndOfDate(now); break;
-                case 'yesterday': const y = new Date(now); y.setDate(now.getDate() - 1); rangeStartDate = getStartOfDate(y); rangeEndDate = getEndOfDate(y); break;
-                case 'last7days': rangeStartDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)); rangeEndDate = getEndOfDate(now); break;
-                case 'last30days': rangeStartDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29)); rangeEndDate = getEndOfDate(now); break;
-                case 'thisMonth': rangeStartDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), 1)); rangeEndDate = getEndOfDate(now); break;
-                case 'lastMonth': rangeStartDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth() - 1, 1)); rangeEndDate = getEndOfDate(new Date(now.getFullYear(), now.getMonth(), 0)); break;
-                case 'all': isNewInSelectedPeriod = true; break; 
-                default: isNewInSelectedPeriod = true; 
-            }
-        }
-        
-        if (!isNewInSelectedPeriod && rangeStartDate && rangeEndDate) {
-            isNewInSelectedPeriod = firstPurchaseDate >= rangeStartDate && firstPurchaseDate <= rangeEndDate;
-        }
-
-        if (!isNewInSelectedPeriod) return false;
-        
-        if (productId !== 'all') {
-            const purchasedTargetProduct = customer.productsPurchased.includes(productId);
-            return purchasedTargetProduct;
-        }
-        return true;
-    });
+    // 3. Filter new customers by date range using 'firstPurchaseDate'
+    // And also ensure they bought the selected product (if not 'all')
+    const newCustomersInPeriod = filterItemsByDateRange(customers, dateRange, 'firstPurchaseDate', customRange)
+      .filter(customer => {
+        if (productId === 'all') return true;
+        // Check if one of the customer's sale IDs corresponds to a sale of the selected product
+        return customer.saleIds.some(saleId => {
+          const sale = productFilteredSales.find(s => s.id === saleId);
+          return sale && sale.status === PaymentStatus.PAID; // Ensure it's a paid sale for the product
+        });
+      });
     const newCustomers = newCustomersInPeriod.length;
-    console.log(`[dashboardService.getDashboardData] Calculated newCustomers: ${newCustomers}`);
 
-
+    // 4. Sales Trend (based on PAID sales in period)
     const salesTrend: { periodLabel: string; amount: number }[] = [];
     const now = new Date();
 
     if (dateRange === 'today') {
       const hourlySales: { [hour: string]: number } = {};
-      for (let i = 0; i < 24; i++) { 
-        hourlySales[String(i).padStart(2, '0') + 'h'] = 0;
-      }
+      for (let i = 0; i < 24; i++) { hourlySales[String(i).padStart(2, '0') + 'h'] = 0; }
       paidSalesInPeriod.forEach(sale => { 
         if (sale.paidAt) { 
             const saleDate = new Date(sale.paidAt);
@@ -180,15 +127,11 @@ export const dashboardService = {
             }
         }
       });
-      console.log("[dashboardService] Hourly sales for today:", hourlySales);
-      for (const hour in hourlySales) {
-        salesTrend.push({ periodLabel: hour, amount: hourlySales[hour] });
-      }
+      for (const hour in hourlySales) { salesTrend.push({ periodLabel: hour, amount: hourlySales[hour] }); }
     } else { 
       const aggregatedSales: { [periodKey: string]: number } = {};
       let loopStartDate: Date;
       let loopEndDate = getEndOfDate(now); 
-      // let periodFormat: 'DD/MM' | 'MMM/YY' = 'DD/MM'; // Removido, pois não era usado
       let granularity: 'day' | 'month' = 'day';
 
       if (dateRange === 'custom' && customRange?.from) {
@@ -196,7 +139,7 @@ export const dashboardService = {
         loopEndDate = customRange.to ? getEndOfDate(customRange.to) : getEndOfDate(customRange.from);
         const diffTime = Math.abs(loopEndDate.getTime() - loopStartDate.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        if (diffDays > 90) { granularity = 'month'; /* periodFormat = 'MMM/YY'; */ }
+        if (diffDays > 90) { granularity = 'month'; }
       } else if (dateRange === 'all' && paidSalesInPeriod.length > 0) {
           const firstSaleDate = new Date(paidSalesInPeriod.reduce((min, s) => s.paidAt ? Math.min(min, new Date(s.paidAt).getTime()) : min, Date.now()));
           const lastSaleDate = new Date(paidSalesInPeriod.reduce((max, s) => s.paidAt ? Math.max(max, new Date(s.paidAt).getTime()) : max, 0));
@@ -206,34 +149,27 @@ export const dashboardService = {
           const diffTime = Math.abs(loopEndDate.getTime() - loopStartDate.getTime());
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-          if (diffDays > 90) { 
+          if (diffDays === 0 && paidSalesInPeriod.length > 0) { // Handle all sales on a single day
+              granularity = 'day'; // Default to day, will be overridden by 'today' logic if dateRange is today
+              loopStartDate = getStartOfDate(firstSaleDate);
+              loopEndDate = getEndOfDate(firstSaleDate);
+          } else if (diffDays > 90) { 
               granularity = 'month';
-              // periodFormat = 'MMM/YY'; // Removido
               loopStartDate = new Date(firstSaleDate.getFullYear(), firstSaleDate.getMonth(), 1); 
               loopEndDate = new Date(lastSaleDate.getFullYear(), lastSaleDate.getMonth() + 1, 0); 
           }
-          console.log(`[dashboardService] 'all' range: ${diffDays} days. Granularity: ${granularity}. Start: ${loopStartDate.toISOString()}, End: ${loopEndDate.toISOString()}`);
       } else {
           switch(dateRange) {
-              case 'yesterday':
-                  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
-                  loopStartDate = getStartOfDate(yesterday); loopEndDate = getEndOfDate(yesterday);
-                  break;
+              case 'yesterday': const y = new Date(now); y.setDate(now.getDate() - 1); loopStartDate = getStartOfDate(y); loopEndDate = getEndOfDate(y); break;
               case 'last7days': loopStartDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)); break;
               case 'last30days': loopStartDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29)); break;
               case 'thisMonth': loopStartDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), 1)); break;
-              case 'lastMonth':
-                  loopStartDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth() - 1, 1));
-                  loopEndDate = getEndOfDate(new Date(now.getFullYear(), now.getMonth(), 0));
-                  break;
-              default: 
-                  loopStartDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)); 
+              case 'lastMonth': loopStartDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth() - 1, 1)); loopEndDate = getEndOfDate(new Date(now.getFullYear(), now.getMonth(), 0)); break;
+              default: loopStartDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)); // Default to last 7 days if range not 'all' or 'custom'
           }
       }
       
-      console.log(`[dashboardService.getDashboardData] Aggregation loop: Start=${loopStartDate.toISOString()}, End=${loopEndDate.toISOString()}, Granularity=${granularity}`);
-      
-      if (!isNaN(loopStartDate.getTime())) { 
+      if (!isNaN(loopStartDate.getTime()) && paidSalesInPeriod.length > 0) { 
         if (granularity === 'day') {
             for (let d = new Date(loopStartDate); d <= loopEndDate; d.setDate(d.getDate() + 1)) {
                 const dayKey = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -261,13 +197,10 @@ export const dashboardService = {
             }
         }
       });
-      console.log(`[dashboardService] Aggregated sales for period (granularity: ${granularity}):`, aggregatedSales);
 
-      for (const period in aggregatedSales) {
-        salesTrend.push({ periodLabel: period, amount: aggregatedSales[period] });
-      }
+      for (const period in aggregatedSales) { salesTrend.push({ periodLabel: period, amount: aggregatedSales[period] }); }
       
-      if (dateRange !== 'today') {
+      if (dateRange !== 'today' && salesTrend.length > 0) { // Keep original order for 'today' (hourly)
         salesTrend.sort((a, b) => {
           let dateA: Date, dateB: Date;
           if (granularity === 'day') {
@@ -275,7 +208,7 @@ export const dashboardService = {
             const [dayB, monthB] = b.periodLabel.split('/').map(Number);
             const year = (dateRange === 'all' && loopEndDate.getFullYear() !== loopStartDate.getFullYear()) 
                          ? (monthA > monthB ? loopStartDate.getFullYear() : loopEndDate.getFullYear()) 
-                         : now.getFullYear();
+                         : now.getFullYear(); // Assume current year if not 'all' with year span
             dateA = new Date(year, monthA - 1, dayA); 
             dateB = new Date(year, monthB - 1, dayB);
           } else { 
@@ -289,14 +222,7 @@ export const dashboardService = {
         });
       }
     }
-    console.log(`[dashboardService.getDashboardData] Final salesTrend length: ${salesTrend.length}, data (first 5):`, salesTrend.slice(0,5));
 
-    return {
-      totalRevenue,
-      numberOfSales,
-      averageTicket,
-      newCustomers,
-      salesTrend,
-    };
+    return { totalRevenue, numberOfSales, averageTicket, newCustomers, salesTrend, };
   },
 };

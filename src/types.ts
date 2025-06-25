@@ -1,3 +1,4 @@
+
 // User Authentication
 export interface User {
   id: string;
@@ -119,6 +120,18 @@ export interface Product {
   utmParams?: UtmParams | null; // Updated to allow null
 }
 
+// Buyer <<-- NEW INTERFACE
+export interface Buyer {
+  id: string;
+  session_id?: string;
+  auth_user_id?: string;
+  email?: string;
+  name?: string;
+  whatsapp?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 // Sale
 export enum PaymentStatus {
   WAITING_PAYMENT = 'waiting_payment',
@@ -148,6 +161,7 @@ export interface SaleProductItem {
 
 export interface Sale {
   id: string;
+  buyerId?: string; // <<-- NEW FIELD
   platformUserId: string;
   pushInPayTransactionId: string; 
   upsellPushInPayTransactionId?: string; 
@@ -348,6 +362,7 @@ export interface PushInPayPixRequest {
   discountAppliedInCents?: number;
   isUpsellTransaction?: boolean; 
   originalSaleId?: string;      
+  buyerId?: string; // <<-- NEW FIELD for generating PIX payload if needed by EF
 }
 
 export interface PushInPayPixResponseData {
@@ -461,4 +476,14 @@ export interface ApiError {
 
 export interface ApiErrorResponse {
   error: ApiError;
+}
+
+// Live View Event Type
+export interface LiveViewEvent {
+  type: 'checkout_enter' | 'checkout_leave' | 'pix_pending_enter' | 'pix_pending_leave' | 'sale_confirmed_recent';
+  payload?: {
+    timestamp?: number;
+    userId?: string;
+    checkoutSessionId?: string;
+  };
 }

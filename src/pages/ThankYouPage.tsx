@@ -1,50 +1,42 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams, useLocation, useNavigate } from "react-router-dom"; 
+import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { salesService } from '@/services/salesService'; 
+import { salesService } from '@/services/salesService';
 import { productService } from '@/services/productService';
-import { Sale, SaleProductItem, Product, UpsellOffer, PushInPayPixRequest, PushInPayPixResponseData, PushInPayPixResponse, AppSettings, UtmifyOrderPayload, PaymentStatus as AppPaymentStatus, UtmifyCustomer, UtmifyProduct, UtmifyTrackingParameters, LiveViewEvent } from '@/types'; 
-import { CheckIcon, DocumentDuplicateIcon, MOCK_WEBHOOK_URL, PLATFORM_NAME, LIVE_VIEW_CHANNEL_NAME } from '../constants.tsx'; 
-import { supabase } from '@/supabaseClient'; 
-import { Input } from '@/components/ui/Input'; 
+import { Sale, SaleProductItem, Product, UpsellOffer, PushInPayPixResponseData, AppSettings, PaymentStatus as AppPaymentStatus } from '@/types'; // LiveViewEvent commented out
+// import { LIVE_VIEW_CHANNEL_NAME, LiveViewEvent } from '../constants.tsx'; // TEMPORARILY HIDDEN
+import { CheckIcon, DocumentDuplicateIcon, MOCK_WEBHOOK_URL, cn, ExternalLinkIconHero } from '../constants.tsx'; // Removed PLATFORM_NAME (unused), LIVE_VIEW_CHANNEL_NAME
+import { supabase } from '@/supabaseClient';
+import { Input } from '@/components/ui/Input';
 import { settingsService } from '@/services/settingsService';
-import { utmifyService } from '@/services/utmifyService';
 import { useAuth } from '@/contexts/AuthContext';
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner'; // Import LoadingSpinner
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 
 const POLLING_INITIAL_INTERVAL = 3000;
 const POLLING_MAX_INTERVAL = 15000;
-// const POLLING_TIMEOUT_DURATION = 5 * 60 * 1000; // Removido, pois o polling principal não está nesta página
-const UPSELL_POLLING_TIMEOUT_DURATION = 10 * 60 * 1000; // 10 minutos para o upsell
+const UPSELL_POLLING_TIMEOUT_DURATION = 10 * 60 * 1000;
 const MANUAL_CHECK_COOLDOWN_MS = 10000;
-const UPSELL_MODAL_DELAY_MS = 3000; // 3 segundos de atraso para o modal de upsell
+const UPSELL_MODAL_DELAY_MS = 3000;
 
 
 const formatCurrency = (valueInCents: number): string => {
     return `R$ ${(valueInCents / 100).toFixed(2).replace('.', ',')}`;
 };
 
-const triggerConversionEvent = (orderId: string, orderValue: number, currency: string, products: SaleProductItem[]) => {
-  console.log(`CONVERSION EVENT: Order ${orderId}, Value ${orderValue} ${currency}, Products:`, products.map(p => p.name));
-};
-
 const getContrastingTextColorForDynamicTheme = (hexColor?: string, theme?: 'light' | 'dark'): string => {
-    const defaultDarkThemeCtaText = 'var(--reimagined-cta-text)'; 
+    const defaultDarkThemeCtaText = 'var(--reimagined-cta-text)';
     const defaultLightThemeCtaText = 'var(--checkout-color-primary-cta-text)';
-
     if (!hexColor) return theme === 'dark' ? defaultDarkThemeCtaText : defaultLightThemeCtaText;
     try {
       const r = parseInt(hexColor.slice(1, 3), 16);
       const g = parseInt(hexColor.slice(3, 5), 16);
       const b = parseInt(hexColor.slice(5, 7), 16);
       const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-      return luminance > 0.5 ? (theme === 'dark' ? defaultDarkThemeCtaText : '#1F2937') : (theme === 'dark' ? defaultDarkThemeCtaText : '#FFFFFF'); 
-    } catch (e) {
-      return theme === 'dark' ? defaultDarkThemeCtaText : defaultLightThemeCtaText;
-    }
+      return luminance > 0.5 ? (theme === 'dark' ? defaultDarkThemeCtaText : '#1F2937') : (theme === 'dark' ? defaultDarkThemeCtaText : '#FFFFFF');
+    } catch (e) { return theme === 'dark' ? defaultDarkThemeCtaText : defaultLightThemeCtaText; }
 };
 
 const ThankYouPage: React.FC = () => {
@@ -53,25 +45,24 @@ const ThankYouPage: React.FC = () => {
   const navigate = useNavigate();
   const queryParams = new URLSearchParams(location.search);
   const originalProductIdFromUrl = queryParams.get('origProdId');
-  const checkoutSessionIdFromUrl = queryParams.get('csid'); 
+  const checkoutSessionIdFromUrl = queryParams.get('csid');
 
-  const { user, accessToken } = useAuth(); 
+  const { user } = useAuth(); // Removed accessToken as it was unused
 
   const [mainSaleDetails, setMainSaleDetails] = useState<Sale | null>(null);
   const [originalProductDetails, setOriginalProductDetails] = useState<Product | null>(null);
-  const [appSettings, setAppSettings] = useState<AppSettings | null>(null); 
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [upsellOffer, setUpsellOffer] = useState<UpsellOffer | null>(null);
   const [upsellProductDetails, setUpsellProductDetails] = useState<Product | null>(null);
   const [upsellProductPrice, setUpsellProductPrice] = useState<number | null>(null);
-  const [purchasedProducts, setPurchasedProducts] = useState<Product[]>([]);
-  
+
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   const [showUpsellModal, setShowUpsellModal] = useState(false);
   const [isUpsellModalReadyToShow, setIsUpsellModalReadyToShow] = useState(false);
   const [isProcessingUpsell, setIsProcessingUpsell] = useState(false);
-  const [upsellPixData, setUpsellPixData] = useState<PushInPayPixResponseData | null>(null); 
+  const [upsellPixData, setUpsellPixData] = useState<PushInPayPixResponseData | null>(null);
   const [upsellErrorMessage, setUpsellErrorMessage] = useState<string | null>(null);
   const [copySuccessUpsell, setCopySuccessUpsell] = useState(false);
   const [currentTheme, setCurrentTheme] = useState<'light' | 'dark'>('light');
@@ -87,11 +78,10 @@ const ThankYouPage: React.FC = () => {
   const upsellManualCheckTimeoutRef = useRef<number | null>(null);
   const upsellModalDelayTimerRef = useRef<number | null>(null);
 
-
-  const sendLiveViewEvent = useCallback((event: LiveViewEvent) => {
-    const channel = supabase.channel(LIVE_VIEW_CHANNEL_NAME);
-    channel.send({ type: 'broadcast', event: 'live_view_event', payload: event }).catch(err => console.error("[ThankYouPage] Error sending broadcast message:", err));
-  }, []);
+  // const sendLiveViewEvent = useCallback((event: LiveViewEvent) => { // TEMPORARILY HIDDEN
+  //   const channel = supabase.channel(LIVE_VIEW_CHANNEL_NAME); // TEMPORARILY HIDDEN
+  //   channel.send({ type: 'broadcast', event: 'live_view_event', payload: event }).catch(err => console.error("[ThankYouPage] Error sending broadcast message:", err)); // TEMPORARILY HIDDEN
+  // }, []); // TEMPORARILY HIDDEN
 
   useEffect(() => {
     upsellPaymentStatusRef.current = upsellPaymentStatus;
@@ -101,50 +91,14 @@ const ThankYouPage: React.FC = () => {
     document.title = "Obrigado pela sua Compra!";
     const themeToApply = currentTheme === 'dark' ? 'checkout-reimagined-theme' : 'checkout-light-theme';
     document.body.classList.add(themeToApply);
-    sendLiveViewEvent({ type: 'sale_confirmed_recent', payload: { userId: user?.id, checkoutSessionId: checkoutSessionIdFromUrl || undefined, timestamp: Date.now() } });
-    return () => { 
-        document.body.classList.remove(themeToApply); 
+    // sendLiveViewEvent({ type: 'sale_confirmed_recent', payload: { userId: user?.id, checkoutSessionId: checkoutSessionIdFromUrl || undefined, timestamp: Date.now() } }); // TEMPORARILY HIDDEN
+    return () => {
+        document.body.classList.remove(themeToApply);
         if (upsellModalDelayTimerRef.current) clearTimeout(upsellModalDelayTimerRef.current);
     };
-  }, [currentTheme, sendLiveViewEvent, user?.id, checkoutSessionIdFromUrl]);
+  // }, [currentTheme, sendLiveViewEvent, user?.id, checkoutSessionIdFromUrl]); // TEMPORARILY HIDDEN (removed sendLiveViewEvent)
+  }, [currentTheme, user?.id, checkoutSessionIdFromUrl]);
 
-  const sendApprovedPaymentToUtmify = async (saleDetails: Sale, productOwnerUserId: string, isUpsell = false) => {
-    const logPrefix = `[ThankYouPage.sendUtmify(saleId: ${saleDetails.pushInPayTransactionId.substring(0,8)}, upsell: ${isUpsell})]`;
-    if (!productOwnerUserId) { console.log(`${logPrefix} Aborted: Product owner ID missing.`); return; }
-    console.log(`${logPrefix} Preparing UTMify payload.`);
-
-    const customerPayload: UtmifyCustomer = {
-      name: saleDetails.customer.name, email: saleDetails.customer.email, whatsapp: saleDetails.customer.whatsapp,
-      phone: saleDetails.customer.whatsapp || null, document: null, ip: saleDetails.customer.ip,
-    };
-    const productsPayload: UtmifyProduct[] = saleDetails.products
-      .filter(item => isUpsell ? item.isUpsell : !item.isUpsell) 
-      .map(item => ({
-        id: item.productId, name: item.name, quantity: item.quantity, priceInCents: item.priceInCents,
-        planId: item.productId, planName: item.name,
-    }));
-    if (productsPayload.length === 0 && isUpsell) { console.log(`${logPrefix} No upsell products found in sale.products array for UTMify. Skipping.`); return; }
-
-
-    const trackingParamsPayload: UtmifyTrackingParameters = {
-      utm_source: saleDetails.trackingParameters?.utm_source || null, utm_medium: saleDetails.trackingParameters?.utm_medium || null,
-      utm_campaign: saleDetails.trackingParameters?.utm_campaign || null, utm_term: saleDetails.trackingParameters?.utm_term || null,
-      utm_content: saleDetails.trackingParameters?.utm_content || null,
-    };
-    const payload: UtmifyOrderPayload = {
-      orderId: isUpsell ? saleDetails.upsellPushInPayTransactionId! : saleDetails.pushInPayTransactionId,
-      platform: PLATFORM_NAME, paymentMethod: saleDetails.paymentMethod as "pix" | "credit_card" | "boleto",
-      status: isUpsell ? saleDetails.upsellStatus! : saleDetails.status,
-      createdAt: saleDetails.createdAt, approvedDate: saleDetails.paidAt || new Date().toISOString(),
-      customer: customerPayload, products: productsPayload, trackingParameters: trackingParamsPayload,
-      commission: saleDetails.commission, couponCodeUsed: saleDetails.couponCodeUsed,
-      discountAppliedInCents: isUpsell ? 0 : saleDetails.discountAppliedInCents, 
-      originalAmountBeforeDiscountInCents: isUpsell ? saleDetails.upsellAmountInCents! : saleDetails.originalAmountBeforeDiscountInCents,
-      isUpsellTransaction: isUpsell, originalSaleId: isUpsell ? saleDetails.id : undefined,
-    };
-    try { await utmifyService.sendOrderDataToUtmify(payload, productOwnerUserId); console.log(`${logPrefix} UTMify event sent.`); } 
-    catch (utmifyError) { console.error(`${logPrefix} Failed to send UTMify event.`, utmifyError); }
-  };
 
   const fetchInitialData = useCallback(async () => {
     if (!mainSaleTransactionId) { setError("ID do pedido principal não encontrado."); setIsLoading(false); return; }
@@ -153,31 +107,24 @@ const ThankYouPage: React.FC = () => {
       const fetchedSale = await salesService.getSaleById(mainSaleTransactionId, null);
       if (!fetchedSale) { setError("Detalhes do pedido principal não encontrados."); setIsLoading(false); return; }
       setMainSaleDetails(fetchedSale);
-      triggerConversionEvent(fetchedSale.id, fetchedSale.totalAmountInCents, fetchedSale.commission?.currency || 'BRL', fetchedSale.products);
       if (fetchedSale.platformUserId) {
         setAppSettings(await settingsService.getAppSettingsByUserId(fetchedSale.platformUserId, null));
-        if (fetchedSale.status === AppPaymentStatus.PAID) {
-          await sendApprovedPaymentToUtmify(fetchedSale, fetchedSale.platformUserId, false);
-        }
       }
-      if (fetchedSale.products.length > 0) {
-        const productDetails = await Promise.all(fetchedSale.products.map(item => productService.getProductById(item.productId, null)));
-        setPurchasedProducts(productDetails.filter((p): p is Product => p !== undefined));
-      }
+      
       if (originalProductIdFromUrl) {
         const origProduct = await productService.getProductById(originalProductIdFromUrl, null);
-        setOriginalProductDetails(origProduct);
+        setOriginalProductDetails(origProduct || null);
         setCurrentTheme(origProduct?.checkoutCustomization?.theme || 'light');
         if (origProduct?.upsell && !fetchedSale.upsellPushInPayTransactionId && fetchedSale.status === AppPaymentStatus.PAID) {
           setUpsellOffer(origProduct.upsell);
           const fullUpsellProd = await productService.getProductById(origProduct.upsell.productId, null);
-          setUpsellProductDetails(fullUpsellProd);
+          setUpsellProductDetails(fullUpsellProd || null); 
           setUpsellProductPrice(origProduct.upsell.customPriceInCents ?? fullUpsellProd?.priceInCents ?? 0);
-          
+
           if (upsellModalDelayTimerRef.current) clearTimeout(upsellModalDelayTimerRef.current);
           upsellModalDelayTimerRef.current = window.setTimeout(() => {
-            setIsUpsellModalReadyToShow(true); // Controls the modal rendering
-            setShowUpsellModal(true); // Controls the open state managed by Modal component
+            setIsUpsellModalReadyToShow(true);
+            setShowUpsellModal(true);
           }, UPSELL_MODAL_DELAY_MS);
         }
       } else { setCurrentTheme('light'); }
@@ -188,21 +135,29 @@ const ThankYouPage: React.FC = () => {
   useEffect(() => { fetchInitialData(); }, [fetchInitialData]);
 
   const checkUpsellPaymentStatus = useCallback(async (upsellTxId: string) => {
-    if (!mainSaleDetails?.platformUserId || !upsellOffer || upsellProductPrice === null) {
-      console.warn("[ThankYouPage.checkUpsellPaymentStatus] Dados insuficientes para verificar status do upsell.");
+    if (!mainSaleDetails?.platformUserId || !upsellOffer || upsellProductPrice === null || !upsellProductDetails) {
+      console.warn("[ThankYouPage.checkUpsellPaymentStatus] Dados insuficientes para verificar pagamento do upsell.");
       return;
     }
-    console.log(`[ThankYouPage.checkUpsellPaymentStatus] Checking status for Upsell TX ID: ${upsellTxId}`);
     let mappedStatus: AppPaymentStatus | null = null;
     try {
-      const { data: statusRes, error: funcErr } = await supabase.functions.invoke<PushInPayPixResponse>('verificar-status-pix', { body: { transactionId: upsellTxId, productOwnerUserId: mainSaleDetails.platformUserId } });
+      const { data: statusRes, error: funcErr } = await supabase.functions.invoke('verificar-status-pix', { 
+        body: { 
+            transactionId: upsellTxId, 
+            productOwnerUserId: mainSaleDetails.platformUserId, 
+            saleId: mainSaleDetails.id,
+            isUpsellTransaction: true 
+        } 
+      });
       if (funcErr || !statusRes || !statusRes.success || !statusRes.data) throw new Error(statusRes?.message || funcErr?.message || "Falha ao verificar status do PIX do upsell.");
-      
+
       const rawStatus = statusRes.data.status.toLowerCase();
       switch (rawStatus) {
         case 'paid': case 'approved': mappedStatus = AppPaymentStatus.PAID; break;
         case 'created': case 'waiting_payment': case 'pending': case 'processing': mappedStatus = AppPaymentStatus.WAITING_PAYMENT; break;
-        default: mappedStatus = AppPaymentStatus.FAILED; 
+        case 'expired': mappedStatus = AppPaymentStatus.EXPIRED; break; // New mapping
+        case 'cancelled': mappedStatus = AppPaymentStatus.CANCELLED; break; // New mapping
+        default: mappedStatus = AppPaymentStatus.FAILED;
       }
       setUpsellPaymentStatus(mappedStatus);
 
@@ -210,26 +165,46 @@ const ThankYouPage: React.FC = () => {
         if (upsellPollingIntervalTimerIdRef.current) clearTimeout(upsellPollingIntervalTimerIdRef.current);
         setIsPollingUpsellPayment(false);
         
-        const updatedSaleProducts = [...mainSaleDetails.products, { productId: upsellOffer.productId, name: upsellOffer.name, quantity: 1, priceInCents: upsellProductPrice, originalPriceInCents: upsellProductPrice, isUpsell: true, deliveryUrl: upsellProductDetails?.deliveryUrl, slug: upsellProductDetails?.slug }];
-        const updatedTotalAmount = mainSaleDetails.totalAmountInCents + upsellProductPrice;
-
-        const saleUpdates = {
-          upsellPushInPayTransactionId: upsellTxId,
-          upsellStatus: AppPaymentStatus.PAID,
-          upsellAmountInCents: upsellProductPrice,
-          totalAmountInCents: updatedTotalAmount,
-          products: updatedSaleProducts,
+        const newUpsellProductItem: SaleProductItem = { 
+            productId: upsellOffer.productId, 
+            name: upsellProductDetails.name, // Usar o nome do upsellProductDetails
+            quantity: 1, 
+            priceInCents: upsellProductPrice, 
+            originalPriceInCents: upsellProductPrice, // Assumindo que o preço do upsell é o preço original para o item de upsell
+            isUpsell: true, 
+            deliveryUrl: upsellProductDetails.deliveryUrl, 
+            slug: upsellProductDetails.slug 
         };
-        
-        const updatedSale = await salesService.updateSaleFields(mainSaleDetails.id, saleUpdates, accessToken);
-        if (updatedSale) {
-          setMainSaleDetails(updatedSale); 
-          await sendApprovedPaymentToUtmify(updatedSale, mainSaleDetails.platformUserId, true);
-        } else {
-          setUpsellErrorMessage("Erro ao registrar a compra da oferta adicional no pedido principal.");
-        }
-        sendLiveViewEvent({ type: 'sale_confirmed_recent', payload: { userId: user?.id, checkoutSessionId: checkoutSessionIdFromUrl || undefined, timestamp: Date.now() }});
 
+        setMainSaleDetails(prev => {
+            if (!prev) return null;
+            const updatedSaleProducts = [...prev.products, newUpsellProductItem];
+            const updatedTotalAmount = prev.totalAmountInCents + upsellProductPrice;
+            return { 
+                ...prev, 
+                upsellPushInPayTransactionId: upsellTxId, 
+                upsellStatus: AppPaymentStatus.PAID, 
+                upsellAmountInCents: upsellProductPrice, 
+                totalAmountInCents: updatedTotalAmount, 
+                products: updatedSaleProducts 
+            };
+        });
+
+        console.log('[ThankYouPage] Pagamento do upsell confirmado. Enviando evento de tracking...');
+        const { error: trackError } = await supabase.functions.invoke(
+          'send-upsell-utmify-event',
+          {
+            body: {
+              originalSaleId: mainSaleDetails.id,
+              upsellProductId: upsellOffer.productId,
+              upsellPriceInCents: upsellProductPrice
+            }
+          }
+        );
+        if (trackError) console.warn('[ThankYouPage] AVISO: Falha ao registrar o evento de tracking do upsell.', trackError);
+        else console.log('[ThankYouPage] Evento de tracking do upsell enviado com sucesso!');
+        
+        // sendLiveViewEvent({ type: 'sale_confirmed_recent', payload: { userId: user?.id, checkoutSessionId: checkoutSessionIdFromUrl || undefined, timestamp: Date.now() }}); // TEMPORARILY HIDDEN
       } else if (mappedStatus !== AppPaymentStatus.WAITING_PAYMENT) {
         if (upsellPollingIntervalTimerIdRef.current) clearTimeout(upsellPollingIntervalTimerIdRef.current);
         setIsPollingUpsellPayment(false);
@@ -237,12 +212,13 @@ const ThankYouPage: React.FC = () => {
       }
     } catch (statusErr: any) {
       console.error("[ThankYouPage.checkUpsellPaymentStatus] Erro:", statusErr.message);
-      if (upsellPaymentStatusRef.current !== AppPaymentStatus.PAID) { setUpsellErrorMessage("Erro ao verificar status do pagamento do upsell."); }
+      if (upsellPaymentStatusRef.current !== AppPaymentStatus.PAID) setUpsellErrorMessage("Erro ao verificar status do pagamento do upsell.");
     }
-  }, [mainSaleDetails, upsellOffer, upsellProductPrice, accessToken, user?.id, checkoutSessionIdFromUrl, sendLiveViewEvent, upsellProductDetails]);
+  // }, [mainSaleDetails, upsellOffer, upsellProductDetails, upsellProductPrice, user?.id, checkoutSessionIdFromUrl, sendLiveViewEvent]); // TEMPORARILY HIDDEN (removed sendLiveViewEvent)
+  }, [mainSaleDetails, upsellOffer, upsellProductDetails, upsellProductPrice, user?.id, checkoutSessionIdFromUrl]);
+
 
   const startUpsellPaymentPolling = useCallback((upsellTxId: string) => {
-    console.log(`[ThankYouPage.startUpsellPaymentPolling] Starting for Upsell TX ID: ${upsellTxId}`);
     setIsPollingUpsellPayment(true); upsellPollingAttemptRef.current = 0; upsellPollingStartTimeRef.current = Date.now();
     const poll = async () => {
       if (Date.now() - upsellPollingStartTimeRef.current > UPSELL_POLLING_TIMEOUT_DURATION) {
@@ -270,31 +246,39 @@ const ThankYouPage: React.FC = () => {
   }, [upsellPixData, canManuallyCheckUpsell, isManualCheckingUpsell, checkUpsellPaymentStatus]);
 
   useEffect(() => {
-    return () => { 
+    return () => {
       if (upsellPollingIntervalTimerIdRef.current) clearTimeout(upsellPollingIntervalTimerIdRef.current);
       if (upsellManualCheckTimeoutRef.current) clearTimeout(upsellManualCheckTimeoutRef.current);
     };
   }, []);
 
-
   const handleAcceptUpsell = async () => {
-    if (!mainSaleDetails || !upsellOffer || upsellProductPrice === null || upsellProductPrice <= 0) { setUpsellErrorMessage("Não foi possível processar a oferta adicional. Detalhes ausentes."); return; }
+    if (!mainSaleDetails || !upsellOffer || upsellProductPrice === null || upsellProductPrice <= 0 || !upsellProductDetails) {
+      setUpsellErrorMessage("Não foi possível processar a oferta adicional. Detalhes ausentes ou inválidos."); return;
+    }
     setIsProcessingUpsell(true); setUpsellErrorMessage(null); setUpsellPixData(null);
     try {
-      const upsellPixPayload: PushInPayPixRequest = {
-        value: upsellProductPrice, originalValueBeforeDiscount: upsellProductPrice, webhook_url: MOCK_WEBHOOK_URL, 
+      const upsellPixPayload = {
+        value: upsellProductPrice, originalValueBeforeDiscount: upsellProductPrice, webhook_url: MOCK_WEBHOOK_URL,
         customerName: mainSaleDetails.customer.name, customerEmail: mainSaleDetails.customer.email, customerWhatsapp: mainSaleDetails.customer.whatsapp,
-        products: [{ productId: upsellOffer.productId, name: upsellOffer.name, quantity: 1, priceInCents: upsellProductPrice, originalPriceInCents: upsellProductPrice, isUpsell: true, deliveryUrl: upsellProductDetails?.deliveryUrl, slug: upsellProductDetails?.slug }],
+        products: [{ productId: upsellOffer.productId, name: upsellProductDetails.name, quantity: 1, priceInCents: upsellProductPrice, originalPriceInCents: upsellProductPrice, isUpsell: true, deliveryUrl: upsellProductDetails.deliveryUrl, slug: upsellProductDetails.slug }],
         isUpsellTransaction: true, originalSaleId: mainSaleDetails.id,
       };
-      const { data: pixFuncRes, error: funcErr } = await supabase.functions.invoke<PushInPayPixResponse>('gerar-pix', { body: { payload: upsellPixPayload, productOwnerUserId: mainSaleDetails.platformUserId } });
+      const { data: pixFuncRes, error: funcErr } = await supabase.functions.invoke('gerar-pix', { 
+        body: { 
+            payload: upsellPixPayload,
+            productOwnerUserId: mainSaleDetails.platformUserId, 
+            saleId: mainSaleDetails.id 
+        } 
+      });
+
       if (funcErr) { let msg = "Falha ao gerar PIX para oferta adicional."; if (typeof funcErr.message === 'string') { try { const parsed = JSON.parse(funcErr.message); msg = parsed?.error || parsed?.message || funcErr.message; } catch (e) { msg = funcErr.message; } } throw new Error(msg); }
-      if (pixFuncRes && pixFuncRes.success && pixFuncRes.data) { setUpsellPixData(pixFuncRes.data); startUpsellPaymentPolling(pixFuncRes.data.id); setUpsellPaymentStatus(AppPaymentStatus.WAITING_PAYMENT); } 
-      else { throw new Error(pixFuncRes?.message || "Resposta inválida do PIX para upsell."); }
+      if (pixFuncRes && (pixFuncRes as any).success && (pixFuncRes as any).data) { setUpsellPixData((pixFuncRes as any).data); startUpsellPaymentPolling((pixFuncRes as any).data.id); setUpsellPaymentStatus(AppPaymentStatus.WAITING_PAYMENT); }
+      else { throw new Error((pixFuncRes as any)?.message || "Resposta inválida do PIX para upsell."); }
     } catch (paymentError: any) { setUpsellErrorMessage(paymentError.message || "Erro ao processar oferta adicional.");
     } finally { setIsProcessingUpsell(false); }
   };
-  
+
   const handleDeclineUpsell = () => { setShowUpsellModal(false); setUpsellPixData(null); if (upsellPollingIntervalTimerIdRef.current) clearTimeout(upsellPollingIntervalTimerIdRef.current); setIsPollingUpsellPayment(false); };
   const copyUpsellPixCode = () => { if (upsellPixData?.qr_code) { navigator.clipboard.writeText(upsellPixData.qr_code).then(() => { setCopySuccessUpsell(true); setTimeout(() => setCopySuccessUpsell(false), 2000); }); } };
 
@@ -310,52 +294,78 @@ const ThankYouPage: React.FC = () => {
   const mutedTextColor = currentTheme === 'dark' ? 'text-[var(--reimagined-text-muted)]' : 'text-[var(--checkout-color-text-muted)]';
   const mainBgColor = currentTheme === 'dark' ? 'var(--reimagined-bg-main)' : 'var(--checkout-color-bg-main)';
 
+  if (isLoading) { return <div className={cn(themeContainerClass, "flex justify-center items-center h-screen")} style={{color: defaultTextColor, backgroundColor: mainBgColor}}><LoadingSpinner size="lg" /><p className="ml-3">Carregando...</p></div>; }
+  if (error || !mainSaleDetails) { return ( <div className={cn(themeContainerClass, "flex flex-col items-center justify-center min-h-screen p-6 text-center")} style={{color: defaultTextColor, backgroundColor: mainBgColor}}> <Card className={cn(cardThemeClass, "max-w-md w-full shadow-xl")}> <h1 className="text-2xl font-bold text-red-500 mb-3">Erro no Pedido</h1> <p className="mb-6">{error || "Pedido não encontrado."}</p> <Button onClick={() => navigate('/')} className={cn(buttonThemeClass, "primary")}>Voltar para Home</Button> </Card> </div> ); }
 
-  if (isLoading) { return <div className={`${themeContainerClass} flex justify-center items-center h-screen`} style={{color: defaultTextColor, backgroundColor: mainBgColor}}><LoadingSpinner size="lg" /><p className="ml-3">Carregando...</p></div>; }
-  if (error || !mainSaleDetails) { return ( <div className={`${themeContainerClass} flex flex-col items-center justify-center min-h-screen p-6 text-center`} style={{color: defaultTextColor, backgroundColor: mainBgColor}}> <Card className={`${cardThemeClass} max-w-md w-full shadow-xl`}> <h1 className="text-2xl font-bold text-red-500 mb-3">Erro no Pedido</h1> <p className="mb-6">{error || "Pedido não encontrado."}</p> <Button onClick={() => navigate('/')} className={`${buttonThemeClass} primary`}>Voltar para Home</Button> </Card> </div> ); }
-  
   return (
-    <div className={`${themeContainerClass} min-h-screen flex flex-col items-center justify-center p-4 md:p-6`} style={{color: defaultTextColor, backgroundColor: mainBgColor}}>
-      <Card className={`${cardThemeClass} max-w-lg w-full shadow-2xl border border-green-300/50`}>
+    <div className={cn(themeContainerClass, "min-h-screen flex flex-col items-center justify-center p-4 md:p-6")} style={{color: defaultTextColor, backgroundColor: mainBgColor}}>
+      <Card className={cn(cardThemeClass, "max-w-lg w-full shadow-2xl border border-green-300/50")}>
         <div className="text-center">
           <CheckIcon className="h-16 w-16 text-green-500 mx-auto mb-4" />
           <h1 className="text-3xl font-bold mb-3" style={{color: strongTextColor}}>Obrigado pela sua compra!</h1>
-          <p className="mb-2" style={{color: defaultTextColor}}>Seu pedido <span className="font-semibold" style={{color: primaryColorForPage}}>#{(mainSaleDetails.pushInPayTransactionId || 'INVÁLIDO').substring(0, 12)}...</span> foi confirmado.</p>
+          <p className="mb-2" style={{color: defaultTextColor}}>Seu pedido <span className="font-semibold" style={{color: primaryColorForPage}}>#{(mainSaleDetails.id || 'INVÁLIDO').substring(0, 12)}...</span> foi confirmado.</p>
           <p className="mb-6" style={{color: mutedTextColor}}>Enviamos um e-mail para <span className="font-semibold" style={{color: defaultTextColor}}>{mainSaleDetails.customer.email}</span> com os detalhes do seu pedido e instruções de acesso.</p>
           <div className="p-4 rounded-md border mb-6" style={{backgroundColor: mainBgColor, borderColor: cardBorderColor}}>
             <h3 className="font-semibold mb-2" style={{color: strongTextColor}}>Resumo da Compra:</h3>
-            <ul className="text-sm space-y-1" style={{color: mutedTextColor}}> {mainSaleDetails.products.map((item, index) => ( <li key={index} className="flex justify-between"><span style={{color: defaultTextColor}}>{item.name} (x{item.quantity}) {item.isOrderBump ? <span className="text-xs text-green-600">(Oferta Adicional)</span> : item.isUpsell ? <span className="text-xs text-green-600">(Oferta Pós-Compra)</span>: ""}</span><span style={{color: defaultTextColor}}>{formatCurrency(item.priceInCents)}</span></li> ))} {mainSaleDetails.discountAppliedInCents && mainSaleDetails.discountAppliedInCents > 0 && ( <li className="flex justify-between text-red-600 border-t border-dashed border-red-200/50 pt-1 mt-1"><span>Desconto ({mainSaleDetails.couponCodeUsed})</span><span>-{formatCurrency(mainSaleDetails.discountAppliedInCents)}</span></li> )} <li className="flex justify-between font-bold border-t pt-1 mt-1" style={{borderColor: cardBorderColor, color: strongTextColor}}><span>Total:</span><span>{formatCurrency(mainSaleDetails.totalAmountInCents)}</span></li> </ul>
+            <ul className="text-sm space-y-1" style={{color: mutedTextColor}}> {mainSaleDetails.products.map((item, index) => ( <li key={`${item.productId}-${index}`} className="flex justify-between"><span style={{color: defaultTextColor}}>{item.name} (x{item.quantity}) {item.isOrderBump ? <span className="text-xs text-green-600">(Oferta Adicional)</span> : item.isUpsell ? <span className="text-xs text-green-600">(Oferta Pós-Compra)</span>: ""}</span><span style={{color: defaultTextColor}}>{formatCurrency(item.priceInCents)}</span></li> ))} {mainSaleDetails.discountAppliedInCents && mainSaleDetails.discountAppliedInCents > 0 && ( <li className="flex justify-between text-red-600 border-t border-dashed border-red-200/50 pt-1 mt-1"><span>Desconto ({mainSaleDetails.couponCodeUsed})</span><span>-{formatCurrency(mainSaleDetails.discountAppliedInCents)}</span></li> )} <li className="flex justify-between font-bold border-t pt-1 mt-1" style={{borderColor: cardBorderColor, color: strongTextColor}}><span>Total:</span><span>{formatCurrency(mainSaleDetails.totalAmountInCents)}</span></li> </ul>
           </div>
-          <div className="space-y-3 mt-6"> 
-            <h3 className="font-semibold text-center mb-3" style={{color: strongTextColor}}>Acesse seus produtos:</h3> 
-            <div className="flex flex-col space-y-3 sm:space-y-0 sm:grid sm:grid-cols-1 sm:gap-3">
-            {purchasedProducts.length > 0 ? ( purchasedProducts.map(product => { const saleItem = mainSaleDetails.products.find(p => p.productId === product.id); let productNameDisplay = product.name; if (saleItem?.isOrderBump) productNameDisplay += " (Oferta Adicional)"; if (saleItem?.isUpsell) productNameDisplay += " (Oferta Pós-Compra)"; return product.deliveryUrl ? ( <a key={product.id} href={product.deliveryUrl} target="_blank" rel="noopener noreferrer"><Button style={{ backgroundColor: primaryColorForPage, color: ctaTextColorForPage }} className={`${buttonThemeClass} primary w-full text-lg py-3 mb-2 sm:mb-0`}>Acessar: {productNameDisplay}</Button></a> ) : ( <div key={product.id} className="text-center p-3 rounded-md border" style={{backgroundColor: mainBgColor, borderColor: cardBorderColor}}><p className="font-semibold" style={{color: strongTextColor}}>{productNameDisplay}</p><p className="text-xs" style={{color: mutedTextColor}}>O acesso a este produto será enviado por e-mail.</p></div> ) }) ) : ( <p className="text-sm text-center" style={{color: mutedTextColor}}>Processando links de acesso...</p> )} 
+          <div className="space-y-3 mt-6">
+            <h3 className="font-semibold text-center mb-3" style={{color: strongTextColor}}>Acesse seus produtos:</h3>
+            <div className="flex flex-col space-y-3">
+              {mainSaleDetails.products.map((item, index) => {
+                const productNameDisplay = item.isOrderBump ? `${item.name} (Oferta Adicional)` : item.isUpsell ? `${item.name} (Oferta Pós-Compra)` : item.name;
+                if (item.deliveryUrl) {
+                  return (
+                    <a key={`${item.productId}-${index}-link`} href={item.deliveryUrl} target="_blank" rel="noopener noreferrer"
+                      className={cn(
+                        "block w-full text-center px-4 py-2.5 rounded-lg transition-colors duration-200 ease-in-out font-medium group",
+                        "border hover:shadow-md",
+                        currentTheme === 'dark'
+                          ? 'border-[var(--reimagined-input-border)] text-[var(--reimagined-text-default)] hover:border-[var(--reimagined-accent-cta)] hover:text-[var(--reimagined-accent-cta)] hover:bg-[rgba(253,224,71,0.05)]'
+                          : 'border-[var(--checkout-color-border-subtle)] text-[var(--checkout-color-text-default)] hover:border-[var(--checkout-color-primary-DEFAULT)] hover:text-[var(--checkout-color-primary-DEFAULT)] hover:bg-[rgba(13,148,136,0.03)]'
+                      )}
+                      style={currentTheme === 'light' ? { borderColor: primaryColorForPage, color: primaryColorForPage } : {}}
+                    >
+                      Acessar: {productNameDisplay}
+                      <ExternalLinkIconHero className="inline-block h-4 w-4 ml-1.5 opacity-70 group-hover:opacity-100 transition-opacity" />
+                    </a>
+                  );
+                }
+                return (
+                  <div key={`${item.productId}-${index}-no-link`} className="text-center p-3 rounded-md border" style={{backgroundColor: mainBgColor, borderColor: cardBorderColor}}>
+                    <p className="font-medium" style={{color: defaultTextColor}}>{productNameDisplay}</p>
+                    <p className="text-xs" style={{color: mutedTextColor}}>O acesso será enviado por e-mail.</p>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
       </Card>
-      
-      {upsellOffer && upsellProductPrice !== null && (
+
+      {upsellOffer && upsellProductPrice !== null && upsellProductDetails && (
         <Modal isOpen={showUpsellModal && isUpsellModalReadyToShow} onClose={handleDeclineUpsell} title="Uma Oferta Especial Para Você!" size="lg" theme={currentTheme === 'dark' ? 'dark-app' : 'light'}>
             {upsellPixData && upsellPaymentStatus === AppPaymentStatus.WAITING_PAYMENT ? (
                 <div className="space-y-3 text-center">
                      <h3 className="text-xl font-semibold" style={{color: primaryColorForPage}}>Pague com PIX para adicionar!</h3>
                      <img src={`data:image/png;base64,${upsellPixData.qr_code_base64}`} alt="PIX QR Code para Upsell" className="mx-auto w-48 h-48 rounded-md border-2 p-1 bg-white" style={{borderColor: primaryColorForPage}}/>
                       <p className="text-sm mb-1 text-center" style={{color: mutedTextColor}}>Escaneie o QR Code ou clique no botão abaixo para copiar o código.</p>
-                       <Input name="upsellPixCode" readOnly value={upsellPixData.qr_code} className={`${inputThemeClass} text-xs text-center mb-3`} style={{color: strongTextColor}}/>
-                      <Button type="button" onClick={copyUpsellPixCode} className={`w-full mb-2 ${copySuccessUpsell ? 'bg-status-success text-white' : `${buttonThemeClass} primary`}`} style={!copySuccessUpsell ? { backgroundColor: primaryColorForPage, color: ctaTextColorForPage } : {}} disabled={isProcessingUpsell || isPollingUpsellPayment}> {copySuccessUpsell ? ( <><CheckIcon className="h-5 w-5 mr-2"/> Copiado!</> ) : ( <><DocumentDuplicateIcon className="h-5 w-5 mr-2"/> Copiar Código PIX</> )} </Button>
+                       <Input name="upsellPixCode" readOnly value={upsellPixData.qr_code} className={cn(inputThemeClass, "text-xs text-center mb-3")} style={{color: strongTextColor}}/>
+                      <Button type="button" onClick={copyUpsellPixCode} className={cn("w-full mb-2", copySuccessUpsell ? 'bg-status-success text-white' : cn(buttonThemeClass, "primary"))} style={!copySuccessUpsell ? { backgroundColor: primaryColorForPage, color: ctaTextColorForPage } : {}} disabled={isProcessingUpsell || isPollingUpsellPayment}> {copySuccessUpsell ? ( <><CheckIcon className="h-5 w-5 mr-2"/> Copiado!</> ) : ( <><DocumentDuplicateIcon className="h-5 w-5 mr-2"/> Copiar Código PIX</> )} </Button>
                       {isPollingUpsellPayment && ( <div className="mt-3 flex items-center justify-center text-base" style={{color: mutedTextColor}}><LoadingSpinner size="sm" className="mr-2"/>Verificando pagamento...</div> )}
-                      <Button onClick={handleManualCheckUpsell} isLoading={isManualCheckingUpsell} disabled={!canManuallyCheckUpsell || isManualCheckingUpsell || isPollingUpsellPayment} variant="outline" size="sm" className={`${buttonThemeClass} outline w-full mt-2`}> {isManualCheckingUpsell ? 'Verificando...' : (canManuallyCheckUpsell ? 'Verificar Manualmente' : 'Aguarde para verificar')} </Button>
+                      <Button onClick={handleManualCheckUpsell} isLoading={isManualCheckingUpsell} disabled={!canManuallyCheckUpsell || isManualCheckingUpsell || isPollingUpsellPayment} variant="outline" size="sm" className={cn(buttonThemeClass, "outline w-full mt-2")}> {isManualCheckingUpsell ? 'Verificando...' : (canManuallyCheckUpsell ? 'Verificar Manualmente' : 'Aguarde para verificar')} </Button>
                       {upsellErrorMessage && <p className="text-sm text-status-error p-2 bg-status-error/10 border border-status-error/30 rounded-md mt-2">{upsellErrorMessage}</p>}
-                      <Button variant="ghost" onClick={handleDeclineUpsell} className={`${buttonThemeClass} outline w-full mt-3 py-3 text-md`} disabled={isProcessingUpsell || isPollingUpsellPayment}>Não, obrigado (Fechar)</Button>
+                      <Button variant="ghost" onClick={handleDeclineUpsell} className={cn(buttonThemeClass, "outline w-full mt-3 py-3 text-md")} disabled={isProcessingUpsell || isPollingUpsellPayment}>Não, obrigado (Fechar)</Button>
                 </div>
             ) : upsellPaymentStatus === AppPaymentStatus.PAID ? (
-                <div className="text-center space-y-4 py-5"> <CheckIcon className="h-12 w-12 text-status-success mx-auto mb-2"/> <h3 className="text-xl font-semibold text-status-success">Oferta Adicionada!</h3> <p style={{color: defaultTextColor}}>Sua oferta adicional foi confirmada. O acesso será enviado junto com os demais produtos.</p> <Button onClick={handleDeclineUpsell} className={`${buttonThemeClass} primary w-full mt-3 py-3`}>Fechar</Button> </div>
+                <div className="text-center space-y-4 py-5"> <CheckIcon className="h-12 w-12 text-status-success mx-auto mb-2"/> <h3 className="text-xl font-semibold text-status-success">Oferta Adicionada!</h3> <p style={{color: defaultTextColor}}>Sua oferta adicional foi confirmada. O acesso será enviado junto com os demais produtos.</p> 
+                <Button onClick={handleDeclineUpsell} variant="outline" className={cn(buttonThemeClass, "outline w-full mt-3 py-3")}>Fechar</Button> 
+                </div>
             ) : (
                 <>
-                    <div className="text-center"> {upsellOffer.imageUrl && <img src={upsellOffer.imageUrl} alt={upsellOffer.name} className="max-h-48 mx-auto mb-3 rounded-md shadow-md" />} <h3 className="text-xl font-semibold mb-1" style={{color: strongTextColor}}>{upsellOffer.name}</h3> <p className="mb-3" style={{color: defaultTextColor}}>{upsellOffer.description}</p> <p className="text-2xl font-bold mb-4" style={{color: primaryColorForPage}}>Por apenas: {formatCurrency(upsellProductPrice)}</p> </div>
+                    <div className="text-center"> {upsellOffer.imageUrl && <img src={upsellOffer.imageUrl} alt={upsellOffer.name} className="max-h-48 mx-auto mb-3 rounded-md shadow-md" />} <h3 className="text-xl font-semibold mb-1" style={{color: strongTextColor}}>{upsellProductDetails.name}</h3> <p className="mb-3" style={{color: defaultTextColor}}>{upsellProductDetails.description}</p> <p className="text-2xl font-bold mb-4" style={{color: primaryColorForPage}}>Por apenas: {formatCurrency(upsellProductPrice)}</p> </div>
                     {upsellErrorMessage && <p className="text-sm text-status-error p-2 bg-status-error/10 border border-status-error/30 rounded-md my-2">{upsellErrorMessage}</p>}
-                    <div className="flex flex-col sm:flex-row justify-center gap-3 mt-4"> <Button onClick={handleAcceptUpsell} disabled={isProcessingUpsell} style={{ backgroundColor: primaryColorForPage, color: ctaTextColorForPage }} className={`${buttonThemeClass} primary flex-1 py-3 text-md animate-pulse-subtle`}> {isProcessingUpsell ? "Processando..." : "Sim, quero esta oferta!"} </Button> <Button variant="ghost" onClick={handleDeclineUpsell} disabled={isProcessingUpsell} className={`${buttonThemeClass} outline flex-1 py-3 text-md`}>Não, obrigado</Button> </div>
+                    <div className="flex flex-col sm:flex-row justify-center gap-3 mt-4"> <Button onClick={handleAcceptUpsell} disabled={isProcessingUpsell} style={{ backgroundColor: primaryColorForPage, color: ctaTextColorForPage }} className={cn(buttonThemeClass, "primary flex-1 py-3 text-md animate-pulse-subtle")}> {isProcessingUpsell ? "Processando..." : "Sim, quero esta oferta!"} </Button> <Button variant="ghost" onClick={handleDeclineUpsell} disabled={isProcessingUpsell} className={cn(buttonThemeClass, "outline flex-1 py-3 text-md")}>Não, obrigado</Button> </div>
                 </>
             )}
         </Modal>

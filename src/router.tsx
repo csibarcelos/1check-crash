@@ -12,7 +12,7 @@ const RouteLoadingFallback = () => ( <div className="flex justify-center items-c
 const HomePage = React.lazy(() => import('@/pages/HomePage'));
 const AuthPage = React.lazy(() => import('@/pages/AuthPage'));
 const DashboardPage = React.lazy(() => import('@/pages/DashboardPage'));
-const LiveViewPage = React.lazy(() => import('@/pages/LiveViewPage')); // Nova página
+// const LiveViewPage = React.lazy(() => import('@/pages/LiveViewPage')); // TEMPORARILY HIDDEN
 const ProductsPage = React.lazy(() => import('@/pages/ProductsPage'));
 const ProductCreatePage = React.lazy(() => import('@/pages/ProductCreatePage'));
 const ProductEditPage = React.lazy(() => import('@/pages/ProductEditPage'));
@@ -46,7 +46,7 @@ export const router = createBrowserRouter([
       { path: "/thank-you/:orderId", element: <ThankYouPage /> },
       
       { path: "/dashboard", element: <ProtectedRoute><MainLayout><DashboardPage /></MainLayout></ProtectedRoute> },
-      { path: "/live-view", element: <ProtectedRoute><MainLayout><LiveViewPage /></MainLayout></ProtectedRoute> }, // Nova rota
+      // { path: "/live-view", element: <ProtectedRoute><MainLayout><LiveViewPage /></MainLayout></ProtectedRoute> }, // TEMPORARILY HIDDEN
       { path: "/produtos", element: <ProtectedRoute><MainLayout><ProductsPage /></MainLayout></ProtectedRoute> },
       { path: "/produtos/novo", element: <ProtectedRoute><MainLayout><ProductCreatePage /></MainLayout></ProtectedRoute> },
       { path: "/produtos/editar/:productId", element: <ProtectedRoute><MainLayout><ProductEditPage /></MainLayout></ProtectedRoute> },

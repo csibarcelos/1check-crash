@@ -3,10 +3,11 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/supabaseClient';
 import { Card } from '@/components/ui/Card';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { LiveViewIcon, ShoppingCartIcon, CurrencyDollarIcon, UserGroupIcon } from '../constants';
+import { LiveViewIcon, ShoppingCartIcon, CurrencyDollarIcon, UserGroupIcon } from '../constants.tsx';
 import { motion, AnimatePresence, Variants } from 'framer-motion'; // Added Variants
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { LIVE_VIEW_CHANNEL_NAME, LIVE_STATS_EXPIRATION_MS, LIVE_STATS_UPDATE_INTERVAL_MS, LiveViewEvent, LIVE_PIX_AWAITING_TIMEOUT_MS } from '../constants';
+import { LIVE_VIEW_CHANNEL_NAME, LIVE_STATS_EXPIRATION_MS, LIVE_STATS_UPDATE_INTERVAL_MS, LIVE_PIX_AWAITING_TIMEOUT_MS } from '../constants';
+import type { LiveViewEvent } from '../types';
 
 
 interface LiveStatItem {

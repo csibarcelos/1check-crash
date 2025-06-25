@@ -180,7 +180,7 @@ export const WhatsAppIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => 
 // Navigation Items
 export const NAV_ITEMS: NavItemConfig[] = [
   { name: 'Dashboard', href: '/dashboard', icon: PresentationChartLineIcon },
-  { name: 'Live View', href: '/live-view', icon: LiveViewIcon }, // Novo item
+  // { name: 'Live View', href: '/live-view', icon: LiveViewIcon }, // TEMPORARILY HIDDEN
   { name: 'Produtos', href: '/produtos', icon: CubeIcon },
   { name: 'Vendas', href: '/vendas', icon: ShoppingCartIcon, soon: false },
   { name: 'Clientes', href: '/clientes', icon: UserGroupIcon, soon: false }, 
@@ -241,16 +241,19 @@ export const generateWhatsAppLink = (rawPhoneNumber: string, message: string): s
 };
 
 export const cn = (...classes: (string | undefined | null | false)[]): string => classes.filter(Boolean).join(' ');
-export const LIVE_VIEW_CHANNEL_NAME = 'live_view_channel'; // Novo
+
+// Live View Constants
+export const LIVE_VIEW_CHANNEL_NAME = 'live_view_channel'; 
 export const LIVE_STATS_EXPIRATION_MS = 5 * 60 * 1000; // 5 minutos para contadores de "agora"
 export const LIVE_STATS_UPDATE_INTERVAL_MS = 5000; // Atualizar a remoção de itens expirados a cada 5s
 export const LIVE_PIX_AWAITING_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutos para um PIX pendente ser considerado "expirado" na Live View
 
-export interface LiveViewEvent {
-  type: 'checkout_enter' | 'checkout_leave' | 'pix_pending_enter' | 'pix_pending_leave' | 'sale_confirmed_recent';
-  payload?: {
-    timestamp?: number;
-    userId?: string; // Para identificação, se necessário para contagem única de PIX
-    checkoutSessionId?: string; // Para identificar uma sessão de checkout específica
-  };
-}
+// LiveViewEvent definition moved to src/types.ts and will be commented out there
+// export interface LiveViewEvent {
+//   type: 'checkout_enter' | 'checkout_leave' | 'pix_pending_enter' | 'pix_pending_leave' | 'sale_confirmed_recent';
+//   payload?: {
+//     timestamp?: number;
+//     userId?: string; 
+//     checkoutSessionId?: string; 
+//   };
+// }

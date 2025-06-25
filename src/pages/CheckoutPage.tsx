@@ -1,21 +1,26 @@
 
 import React, { useEffect, useState, useCallback, useRef, useMemo, startTransition } from 'react';
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { Product, PaymentStatus, Coupon, PushInPayPixResponseData, AppSettings, SaleProductItem, AbandonedCartStatus, PushInPayPixRequest, LiveViewEvent, PaymentMethod, Sale, PlatformSettings } from '@/types'; // Added PlatformSettings
+import { Product, PaymentStatus, Coupon, PushInPayPixResponseData, AppSettings, PushInPayPixRequest, PaymentMethod } from '@/types'; // Removed SaleProductItem, AbandonedCartStatus, PlatformSettings
 import { productService } from '@/services/productService';
-import { salesService } from '@/services/salesService'; 
+import { salesService, CreateSaleRecordPayload } from '@/services/salesService'; 
 import { abandonedCartService, CreateAbandonedCartPayload } from '@/services/abandonedCartService';
 import { Button } from '@/components/ui/Button';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
-import { CheckIcon, PHONE_COUNTRY_CODES, DocumentDuplicateIcon, TagIcon, MOCK_WEBHOOK_URL, PLATFORM_NAME, AppLogoIcon, cn, LIVE_VIEW_CHANNEL_NAME } from '../constants.tsx';
+import { CheckIcon, PHONE_COUNTRY_CODES, DocumentDuplicateIcon, MOCK_WEBHOOK_URL, AppLogoIcon, cn } from '../constants.tsx'; // Removed TagIcon, PLATFORM_NAME
+// import { LIVE_VIEW_CHANNEL_NAME, LiveViewEvent } from '../constants.tsx'; // TEMPORARILY HIDDEN
 import { settingsService } from '@/services/settingsService';
 import { supabase } from '@/supabaseClient';
+// import { Database } from '@/types/supabase'; // Removed Database import
 import { useAuth } from '@/contexts/AuthContext';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Select } from '@/components/ui/Select';
 import { v4 as uuidv4 } from 'uuid';
+// @ts-ignore
+import { default as debounce } from 'https://esm.sh/lodash@4.17.21/debounce';
+
 
 const LockClosedIconSolid: React.FC<React.SVGProps<SVGSVGElement>> = React.memo((props) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" {...props}>
@@ -42,12 +47,14 @@ const getContrastingTextColorForCta = (hexColor?: string, theme?: 'light' | 'dar
     } catch (e) { return theme === 'dark' ? defaultDarkThemeCtaText : defaultLightThemeCtaText; }
 };
 
-const LOCALSTORAGE_CHECKOUT_KEY = 'checkoutFormData_v3';
+const LOCALSTORAGE_CHECKOUT_FORM_KEY = 'checkoutFormData_v3';
+const LOCALSTORAGE_CHECKOUT_SESSION_KEY = 'checkout_session_id_v2';
 const POLLING_INITIAL_INTERVAL = 3000;
 const POLLING_MAX_INTERVAL = 15000;
 const POLLING_TIMEOUT_DURATION = 5 * 60 * 1000;
 const ABANDONED_CART_DEBOUNCE_MS = 5000;
-const MANUAL_CHECK_COOLDOWN_MS = 10000; // 10 segundos
+const BUYER_DETAILS_DEBOUNCE_MS = 1500;
+const MANUAL_CHECK_COOLDOWN_MS = 10000; 
 
 const productDataCache = new Map<string, { data: Product; timestamp: number }>();
 const PRODUCT_CACHE_TTL = 2 * 60 * 1000;
@@ -99,21 +106,15 @@ interface CheckoutPageUIProps {
   handleProceedToThankYou: () => void; 
 }
 
-// Interface para a resposta esperada da Edge Function 'gerar-pix'
-interface GerarPixFunctionResponse {
+// Interface for the response from the 'gerar-pix' Edge Function
+interface GerarPixEdgeFunctionResponse {
   success: boolean;
-  data?: PushInPayPixResponseData; // Dados do PIX da PushInPay
-  saleId?: string;                 // ID da venda criada pela Edge Function
+  data?: PushInPayPixResponseData; // This is the PIX data from PushInPay
+  saleId?: string; // This should be the same saleId passed to the EF
   message?: string;
 }
 
-// Interface para a resposta da Edge Function 'verificar-status-pix'
-interface VerifyStatusFunctionResponse {
-    success: boolean;
-    data?: PushInPayPixResponseData; // PushInPay status data
-    saleUpdated?: boolean;           // Indicates if DB sale record was updated
-    message?: string;
-}
+// Removed unused VerifyStatusFunctionResponse interface
 
 
 const SkeletonCard: React.FC<{ className?: string }> = React.memo(({ className }) => (
@@ -298,123 +299,102 @@ const CheckoutPageUI: React.FC<CheckoutPageUIProps> = React.memo(({
                            className={cn("relative rounded-xl overflow-hidden cursor-pointer group", inputThemeClass)}>
                         <div className={cn("h-20 p-4 text-xs whitespace-pre-wrap break-all overflow-hidden select-all", defaultTextColorClass)}>{pixData.qr_code}</div>
                         <div className={cn("absolute inset-0 flex flex-col items-center justify-center p-2 transition-all duration-300 ease-in-out", copySuccess ? "bg-status-success/90 text-white backdrop-blur-sm" : "bg-black/50 group-hover:bg-black/60 text-white backdrop-blur-xs")}>
-                          {copySuccess ? (<><CheckIcon className="h-6 w-6 mb-1" /><span className="text-sm font-medium">Copiado!</span></>) : (<><DocumentDuplicateIcon className="h-5 w-5 mb-1 opacity-80" /><span className="text-xs">Clique para copiar</span></>)}
+                          {copySuccess ? (<><CheckIcon className="h-6 w-6 mb-1" /><span className="text-sm font-medium">Copiado!</span></>) : (<><DocumentDuplicateIcon className="h-6 w-6 mb-1" /><span className="text-sm font-medium">Copiar Código</span></>)}
                         </div>
                       </div>
-                      {isPollingPayment && (
-                        <div className="mt-4 space-y-2">
-                            <div className={`flex items-center justify-center text-base ${mutedTextColorClass}`}>
-                                <LoadingSpinner size="sm" className="mr-2.5"/>Verificando pagamento...
-                            </div>
-                            <Button
-                                onClick={handleManualCheck}
-                                isLoading={isManualChecking}
-                                disabled={!canManuallyCheck || isManualChecking}
-                                variant="outline"
-                                size="sm"
-                                className={`${buttonThemeClass} outline w-full`}
-                            >
-                                {isManualChecking ? 'Verificando...' : (canManuallyCheck ? 'Verificar Pagamento Manualmente' : 'Aguarde para verificar novamente')}
-                            </Button>
-                        </div>
-                      )}
-                       {error && <p className="text-sm text-status-error p-3.5 bg-status-error/10 rounded-2xl border border-status-error/30 mt-4">{error}</p>}
+                      {isPollingPayment && ( <div className="mt-4 flex items-center justify-center text-base" style={{color: mutedTextColorClass}}><LoadingSpinner size="sm" className="mr-2"/>Aguardando confirmação do pagamento...</div> )}
+                      <Button onClick={handleManualCheck} isLoading={isManualChecking} disabled={!canManuallyCheck || isManualChecking || isPollingPayment} variant="outline" size="sm" className={cn(buttonThemeClass, "outline w-full mt-3")}> {isManualChecking ? 'Verificando...' : (canManuallyCheck ? 'Já paguei, verificar status' : 'Aguarde para verificar novamente')} </Button>
                     </>
                   )}
                   {paymentStatus === PaymentStatus.PAID && (
-                    <div className="p-5 bg-status-success/10 rounded-2xl border border-status-success/30">
-                      <CheckIcon className="h-16 w-16 text-status-success mx-auto mb-3" />
-                      <p className="text-xl font-semibold text-status-success font-display">Pagamento Confirmado!</p>
-                      {isReadyToRedirect ? (
-                         <Button onClick={handleProceedToThankYou} style={{ backgroundColor: primaryColorStyle, color: ctaTextColorStyle }} className={`${buttonThemeClass} primary w-full py-3 text-lg mt-4`}>
-                            Ir para Detalhes do Pedido
-                        </Button>
-                      ) : (
-                        <p className={`text-base ${defaultTextColorClass}`}>Seu pagamento foi confirmado!</p>
-                      )}
-                      {error && <p className="text-sm text-status-error p-3.5 bg-status-error/10 rounded-2xl border border-status-error/30 mt-4">{error}</p>}
+                    <div className="p-6 bg-status-success/10 text-status-success rounded-2xl border border-status-success/30 text-center">
+                      <CheckIcon className="h-12 w-12 mx-auto mb-3"/>
+                      <h3 className="text-xl font-semibold mb-1">Pagamento Confirmado!</h3>
+                      <p className="text-sm mb-4">Seu pedido foi processado. Você será redirecionado em breve.</p>
+                      <Button onClick={handleProceedToThankYou} className={cn(buttonThemeClass, "primary w-full")} style={{backgroundColor: primaryColorStyle, color: ctaTextColorStyle }} isLoading={isReadyToRedirect}>
+                         {isReadyToRedirect ? 'Redirecionando...' : 'Ir para Obrigado'}
+                      </Button>
                     </div>
                   )}
-                   {(paymentStatus === PaymentStatus.FAILED || paymentStatus === PaymentStatus.EXPIRED || paymentStatus === PaymentStatus.CANCELLED) && !isPollingPayment && (
-                     <div className="mt-5 text-center">
-                       <p className="text-status-error mb-4 text-base">{error || `O pagamento PIX ${paymentStatus === PaymentStatus.EXPIRED ? 'expirou' : 'falhou/foi cancelado'}.`}</p>
-                       <Button onClick={handlePayWithPix} isLoading={isSubmitting} disabled={isSubmitting} style={{ backgroundColor: primaryColorStyle, color: ctaTextColorStyle }} className={`${buttonThemeClass} primary w-full py-3.5 text-lg`}>Tentar Novamente com PIX</Button>
-                     </div>
-                   )}
+                  {(paymentStatus && [PaymentStatus.CANCELLED, PaymentStatus.EXPIRED, PaymentStatus.FAILED].includes(paymentStatus)) && (
+                    <div className="p-5 bg-status-error/10 text-status-error rounded-2xl border border-status-error/30 text-center">
+                      <h3 className="text-lg font-semibold mb-2">Pagamento Falhou</h3>
+                      <p className="text-sm mb-3">Ocorreu um problema com seu pagamento (status: {paymentStatus}). Por favor, tente novamente.</p>
+                      <Button onClick={handlePayWithPix} isLoading={isSubmitting} className={cn(buttonThemeClass, "primary w-full")} style={{backgroundColor: primaryColorStyle, color: ctaTextColorStyle }}>
+                        Tentar Novamente com PIX
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <form onSubmit={(e) => { e.preventDefault(); handlePayWithPix(); }} className="space-y-6 pt-4" aria-labelledby="form-title">
-                  <h2 id="form-title" className="sr-only">Informações de Pagamento</h2>
-                  <div><Input label="Nome Completo" name="customerName" type="text" value={formState.customerName} onChange={(e) => handleFormChange('customerName', e.target.value)} required disabled={isSubmitting} className={inputThemeClass} labelClassName={labelTextColorClass} autoComplete="name" /></div>
-                  <div><Input label="E-mail Principal" name="customerEmail" type="email" value={formState.customerEmail} onChange={(e) => handleFormChange('customerEmail', e.target.value)} required disabled={isSubmitting} className={inputThemeClass} labelClassName={labelTextColorClass} autoComplete="email" /></div>
+                <form onSubmit={(e) => { e.preventDefault(); handlePayWithPix(); }} className="space-y-6">
                   <div>
-                    <label htmlFor="customerWhatsapp" className={`block text-sm font-medium ${labelTextColorClass} mb-1.5`}>WhatsApp</label>
-                    <div className="flex items-center">
-                      <Select name="customerWhatsappCountryCode" value={formState.customerWhatsappCountryCode} onValueChange={(val) => handleFormChange('customerWhatsappCountryCode', val)} options={phoneCountryOptions} disabled={isSubmitting} triggerClassName={cn(selectTriggerThemeClass, "w-20 flex-[0_0_auto] rounded-r-none border-r-0")} contentClassName={selectContentThemeClass}/>
-                      <Input name="customerWhatsapp" type="tel" value={formState.rawWhatsappNumber} onChange={(e) => handleFormChange('rawWhatsappNumber', e.target.value.replace(/\D/g, '').slice(0,11))} placeholder="(XX) XXXXX-XXXX" required autoComplete="tel" disabled={isSubmitting} className={cn(inputThemeClass, "rounded-l-none h-11")} wrapperClassName="flex-1 min-w-0"/>
+                    <label htmlFor="customerName" className={labelTextColorClass}>Nome Completo</label>
+                    <Input id="customerName" type="text" value={formState.customerName} onChange={e => handleFormChange('customerName', e.target.value)} required className={inputThemeClass} placeholder="Seu nome completo" />
+                  </div>
+                  <div>
+                    <label htmlFor="customerEmail" className={labelTextColorClass}>Email</label>
+                    <Input id="customerEmail" type="email" value={formState.customerEmail} onChange={e => handleFormChange('customerEmail', e.target.value)} required className={inputThemeClass} placeholder="seu.email@dominio.com" />
+                  </div>
+                  <div>
+                    <label htmlFor="rawWhatsappNumber" className={labelTextColorClass}>WhatsApp</label>
+                    <div className="flex">
+                        <Select
+                            name="customerWhatsappCountryCode"
+                            value={formState.customerWhatsappCountryCode}
+                            onValueChange={(value) => handleFormChange('customerWhatsappCountryCode', value)}
+                            options={phoneCountryOptions}
+                            className="w-28" // Ajuste a largura conforme necessário
+                            triggerClassName={selectTriggerThemeClass}
+                            contentClassName={selectContentThemeClass}
+                            aria-label="Código do país do WhatsApp"
+                        />
+                        <Input id="rawWhatsappNumber" type="tel" value={formState.rawWhatsappNumber} onChange={e => handleFormChange('rawWhatsappNumber', e.target.value)} required className={`${inputThemeClass} rounded-l-none flex-1`} placeholder="Seu número com DDD" />
                     </div>
                   </div>
-                  {!appliedCoupon && product.coupons && product.coupons.length > 0 && (
-                    <div className="pt-3">
-                        <label htmlFor="couponCode" className={`block text-sm font-medium ${labelTextColorClass} mb-1.5`}>Cupom de Desconto</label>
-                        <div className="flex items-center gap-3">
-                            <Input name="couponCode" type="text" value={formState.couponCodeInput} onChange={(e) => handleFormChange('couponCodeInput', e.target.value.toUpperCase())} placeholder="Seu cupom aqui" disabled={isSubmitting} icon={<TagIcon className={`h-5 w-5 ${mutedTextColorClass}`}/>} className={cn(inputThemeClass, "flex-grow h-11")} wrapperClassName="flex-grow" labelClassName={labelTextColorClass} />
-                            <Button type="button" onClick={handleApplyCoupon} variant="outline" size="md" disabled={isSubmitting || !formState.couponCodeInput.trim()} className={cn(buttonThemeClass, "outline flex-shrink-0 py-3 h-11")}>Aplicar</Button>
-                        </div>
-                        {couponError && <p className="text-xs text-status-error mt-2">{couponError}</p>}
-                    </div>
-                  )}
-                   {appliedCoupon && ( <div className="p-3.5 bg-status-success/10 border border-status-success/30 rounded-2xl text-base"> <p className="text-status-success font-medium">Cupom "{appliedCoupon.code}" aplicado! <button type="button" onClick={clearAppliedCoupon} className="ml-1.5 text-status-error text-xs hover:underline">(Remover)</button></p> </div> )}
-                  {error && <p className="text-sm text-status-error p-3.5 bg-status-error/10 rounded-2xl border border-status-error/30">{error}</p>}
-                  <Button type="submit" size="lg" isLoading={isSubmitting} disabled={isSubmitting} style={{ backgroundColor: primaryColorStyle, color: ctaTextColorStyle }} className={cn(buttonThemeClass, "primary w-full text-lg py-4 mt-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-[1.02]")} leftIcon={<LockClosedIconSolid className="h-6 w-6" />}> {`Pagar com PIX ${formatCurrency(prices.finalPrice)}`} </Button>
+                  
+                  <div className="space-y-2 pt-3">
+                      <label htmlFor="couponCodeInput" className={labelTextColorClass}>Cupom de Desconto (Opcional)</label>
+                      <div className="flex items-stretch gap-2">
+                          <Input id="couponCodeInput" type="text" value={formState.couponCodeInput} onChange={e => handleFormChange('couponCodeInput', e.target.value.toUpperCase())} className={`${inputThemeClass} flex-grow`} placeholder="Seu cupom aqui" disabled={!!appliedCoupon} />
+                          {appliedCoupon ? (
+                              <Button type="button" onClick={clearAppliedCoupon} variant="ghost" className={cn("border border-status-error/50 text-status-error hover:bg-status-error/10", buttonThemeClass, "outline")} >Remover</Button>
+                          ) : (
+                              <Button type="button" onClick={handleApplyCoupon} variant="outline" className={cn(buttonThemeClass, "outline")} style={{borderColor: primaryColorStyle, color: primaryColorStyle}}>Aplicar</Button>
+                          )}
+                      </div>
+                      {couponError && <p className="text-xs text-status-error mt-1">{couponError}</p>}
+                      {appliedCoupon && <p className="text-xs text-status-success mt-1">Cupom "{appliedCoupon.code}" aplicado!</p>}
+                  </div>
+
+                  {error && <p className="text-sm text-status-error p-3 bg-status-error/10 rounded-xl border border-status-error/30">{error}</p>}
+                  
+                  <Button type="submit" isLoading={isSubmitting} className={cn("w-full py-4 text-lg font-semibold shadow-xl", buttonThemeClass, "primary")} style={{backgroundColor: primaryColorStyle, color: ctaTextColorStyle }}>
+                    <LockClosedIconSolid className="h-5 w-5 mr-2"/> {isSubmitting ? "Processando..." : "Pagar com PIX"}
+                  </Button>
                 </form>
               )}
-               <p className={`text-sm ${mutedTextColorClass} mt-8 text-center flex items-center justify-center`}>
-                <LockClosedIconSolid className="h-4 w-4 mr-1.5"/> Ambiente 100% seguro. Seus dados estão protegidos.
-               </p>
+               <p className={`text-xs mt-8 text-center ${mutedTextColorClass}`}>
+                Ambiente seguro. Seus dados estão protegidos.
+              </p>
             </Card>
+            
             {product.checkoutCustomization?.guaranteeBadges && product.checkoutCustomization.guaranteeBadges.length > 0 && (
-              <div className={`grid grid-cols-2 sm:grid-cols-3 gap-5 mt-8`}>
-                {product.checkoutCustomization.guaranteeBadges.map((badge: { id: string; imageUrl: string; altText: string; }) => (
-                  <div key={badge.id} className={`${cardThemeClass} p-4 rounded-2xl shadow-lg flex items-center justify-center h-24 transition-all hover:shadow-xl hover:scale-105`}>
-                    <img src={badge.imageUrl} alt={badge.altText} className="max-h-16 object-contain" />
-                  </div>
-                ))}
+              <div className="mt-8">
+                <div className="flex flex-wrap justify-center items-center gap-4">
+                  {product.checkoutCustomization.guaranteeBadges.map((badge) => (
+                    <img key={badge.id} src={badge.imageUrl} alt={badge.altText} className="h-12 md:h-14 object-contain" />
+                  ))}
+                </div>
               </div>
             )}
           </div>
         </div>
-        <footer className={`mt-16 md:mt-20 pt-10 border-t ${currentTheme === 'dark' ? 'border-[var(--reimagined-card-border)]' : 'border-[var(--checkout-color-border-subtle)]'} text-center`}>
-            <p className={`text-sm ${mutedTextColorClass}`}>&copy; ${new Date().getFullYear()} {product.name}. Todos os direitos reservados.</p>
-            <p className={`text-sm ${mutedTextColorClass} mt-1.5`}>Processado por ${PLATFORM_NAME} via 1Checkout.</p>
-        </footer>
       </div>
     </div>
   );
 });
-CheckoutPageUI.displayName = "CheckoutPageUI";
-
-const calculatePriceWithCoupon = (basePriceInCents: number, coupon: Coupon | null): { price: number; discount: number } => {
-  if (!coupon || !coupon.isActive) {
-    return { price: basePriceInCents, discount: 0 };
-  }
-
-  let discountAmount = 0;
-  if (coupon.discountType === 'percentage') {
-    discountAmount = Math.round(basePriceInCents * (coupon.discountValue / 100));
-  } else if (coupon.discountType === 'fixed') {
-    discountAmount = coupon.discountValue; 
-  }
-
-  discountAmount = Math.min(discountAmount, basePriceInCents);
-  if (coupon.minPurchaseValueInCents && basePriceInCents < coupon.minPurchaseValueInCents) {
-    return { price: basePriceInCents, discount: 0 }; 
-  }
-
-  const finalPrice = basePriceInCents - discountAmount;
-  return { price: finalPrice, discount: discountAmount };
-};
-
+CheckoutPageUI.displayName = 'CheckoutPageUI';
 
 const CheckoutPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -423,402 +403,383 @@ const CheckoutPage: React.FC = () => {
 
   const [product, setProduct] = useState<Product | null>(null);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
-  const [formState, setFormState] = useState<CheckoutFormState>({ customerName: '', customerEmail: '', rawWhatsappNumber: '', customerWhatsappCountryCode: '+55', couponCodeInput: '' });
+  const [formState, setFormState] = useState<CheckoutFormState>({ customerName: '', customerEmail: '', rawWhatsappNumber: '', customerWhatsappCountryCode: PHONE_COUNTRY_CODES[0].value, couponCodeInput: '' });
   const [prices, setPrices] = useState<CheckoutPrices>({ finalPrice: 0, originalPriceBeforeDiscount: 0, discountApplied: 0 });
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
   const [includeOrderBump, setIncludeOrderBump] = useState(false);
-  const [isPageLoading, setIsPageLoading] = useState(true);
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pixData, setPixData] = useState<PushInPayPixResponseData | null>(null);
-  const [copySuccess, setCopySuccess] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | null>(null);
-  const paymentStatusRef = useRef<PaymentStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [couponError, setCouponError] = useState<string | null>(null); 
-  const [isPollingPayment, setIsPollingPayment] = useState(false);
-  const [currentTheme, setCurrentTheme] = useState<'light' | 'dark'>('light'); 
-  const [countdownTimerText, setCountdownTimerText] = useState<string | null>(null);
-  const [isReadyToRedirect, setIsReadyToRedirect] = useState(false);
+  const paymentStatusRef = useRef<PaymentStatus | null>(null); 
   
+  const [error, setError] = useState<string | null>(null);
+  const [copySuccess, setCopySuccess] = useState(false);
+  const [currentTheme, setCurrentTheme] = useState<'light' | 'dark'>('light');
+  const [isPageLoading, setIsPageLoading] = useState(true);
+
+  const [isPollingPayment, setIsPollingPayment] = useState(false);
   const pollingIntervalTimerIdRef = useRef<number | null>(null);
   const pollingAttemptRef = useRef<number>(0);
   const pollingStartTimeRef = useRef<number>(0);
-
-  const [isManualChecking, setIsManualChecking] = useState(false);
   const [canManuallyCheck, setCanManuallyCheck] = useState(true);
+  const [isManualChecking, setIsManualChecking] = useState(false);
   const manualCheckTimeoutRef = useRef<number | null>(null);
-  const createdSaleIdRef = useRef<string | null>(null);
+  const [isReadyToRedirect, setIsReadyToRedirect] = useState(false);
 
-
-  const { accessToken, user } = useAuth();
-  const checkoutSessionIdRef = useRef<string>(uuidv4());
-  const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
-  const trackingParamsFromUrl = useMemo(() => {
-    const params: Record<string, string> = {};
-    queryParams.forEach((value, key) => { if (key.toLowerCase().startsWith('utm_') || ['src', 'ref', 'gclid', 'fbclid'].includes(key.toLowerCase())) params[key.toLowerCase()] = value; });
-    return params;
-  }, [queryParams]);
-
-  const abandonedCartIdRef = useRef<string | null>(null);
+  const [checkoutSessionId, setCheckoutSessionId] = useState<string>('');
+  const hasSentEnterEventRef = useRef(false);
   
+  const [countdownTimerText, setCountdownTimerText] = useState<string | null>(null);
+  const countdownIntervalRef = useRef<number | null>(null);
+
+  const { user } = useAuth(); // Get current authenticated user, if any
+
+  const debouncedSaveAbandonedCart = useRef(
+    debounce(async (currentFormState: CheckoutFormState, currentProduct: Product | null) => {
+      if (!currentProduct || !currentFormState.customerEmail.trim()) return;
+      
+      const payload: CreateAbandonedCartPayload = {
+        platformUserId: currentProduct.platformUserId,
+        productId: currentProduct.id,
+        productName: currentProduct.name,
+        potentialValueInCents: prices.finalPrice,
+        customerName: currentFormState.customerName.trim(),
+        customerEmail: currentFormState.customerEmail.trim(),
+        customerWhatsapp: `${currentFormState.customerWhatsappCountryCode}${currentFormState.rawWhatsappNumber.replace(/\D/g, '')}`,
+        trackingParameters: extractUtmParamsFromUrl(),
+      };
+
+      try {
+        // Check if abandoned cart exists for this session/email
+        const existingCartId = localStorage.getItem(`abandonedCartId_${currentProduct.id}_${currentFormState.customerEmail}`);
+        if (existingCartId) {
+            await abandonedCartService.updateAbandonedCartAttempt(existingCartId, payload);
+            console.log("[CheckoutPage] Abandoned cart attempt updated:", existingCartId);
+        } else {
+            const newCart = await abandonedCartService.createAbandonedCartAttempt(payload);
+            localStorage.setItem(`abandonedCartId_${currentProduct.id}_${currentFormState.customerEmail}`, newCart.id);
+            console.log("[CheckoutPage] Abandoned cart attempt created:", newCart.id);
+        }
+      } catch (err) {
+        console.warn("[CheckoutPage] Failed to save/update abandoned cart:", err);
+      }
+    }, ABANDONED_CART_DEBOUNCE_MS)
+  ).current;
+  
+  const debouncedSaveBuyerDetails = useRef(
+    debounce(async (currentFormState: CheckoutFormState) => {
+      localStorage.setItem(LOCALSTORAGE_CHECKOUT_FORM_KEY, JSON.stringify(currentFormState));
+    }, BUYER_DETAILS_DEBOUNCE_MS)
+  ).current;
+  
+  // const sendLiveViewEvent = useCallback((event: LiveViewEvent) => { // TEMPORARILY HIDDEN
+  //   const channel = supabase.channel(LIVE_VIEW_CHANNEL_NAME); // TEMPORARILY HIDDEN
+  //   channel.send({ type: 'broadcast', event: 'live_view_event', payload: event }).catch(err => console.error("[CheckoutPage] Error sending broadcast message:", err)); // TEMPORARILY HIDDEN
+  // }, []); // TEMPORARILY HIDDEN
+
   useEffect(() => {
     paymentStatusRef.current = paymentStatus;
   }, [paymentStatus]);
 
-  const sendLiveViewEvent = useCallback((event: LiveViewEvent) => {
-    const channel = supabase.channel(LIVE_VIEW_CHANNEL_NAME);
-    channel.send({ type: 'broadcast', event: 'live_view_event', payload: event }).catch(err => console.error("[CheckoutPage] Error sending broadcast for LiveView:", err));
-  }, []);
-
-  useEffect(() => { sendLiveViewEvent({ type: 'checkout_enter', payload: { userId: user?.id, checkoutSessionId: checkoutSessionIdRef.current, timestamp: Date.now() } }); }, [sendLiveViewEvent, user?.id]);
-
-  const loadInitialData = useCallback(async () => {
-    if (!slug) { setError("Slug do produto não encontrado."); setIsPageLoading(false); return; }
-    console.log("[CheckoutPage.loadInitialData] Starting to load data for slug:", slug);
-    try {
-      const cachedProduct = productDataCache.get(slug);
-      let fetchedProductData: Product | null = null;
-
-      if (cachedProduct && (Date.now() - cachedProduct.timestamp < PRODUCT_CACHE_TTL)) {
-        fetchedProductData = cachedProduct.data;
-        console.log("[CheckoutPage.loadInitialData] Product loaded from cache for slug:", slug);
-      } else {
-        fetchedProductData = await productService.getProductBySlug(slug, accessToken);
-        if (fetchedProductData) {
-          productDataCache.set(slug, { data: fetchedProductData, timestamp: Date.now() });
-          console.log("[CheckoutPage.loadInitialData] Product fetched and cached for slug:", slug);
-        }
-      }
-
-      if (!fetchedProductData) { setError("Produto não encontrado ou indisponível."); setIsPageLoading(false); return; }
-      
-      setProduct(fetchedProductData);
-      document.title = `Checkout - ${fetchedProductData.name}`;
-      setCurrentTheme(fetchedProductData.checkoutCustomization?.theme || 'light');
-
-      let ownerSettings: AppSettings | null = null;
-      if (fetchedProductData.platformUserId) {
-        ownerSettings = await settingsService.getAppSettingsByUserId(fetchedProductData.platformUserId, accessToken); //_token aqui não é usado por getAppSettingsByUserId, é apenas para consistência
-        setAppSettings(ownerSettings);
-        console.log("[CheckoutPage.loadInitialData] Owner settings loaded for user:", fetchedProductData.platformUserId);
-      }
-
-      const storedDataRaw = localStorage.getItem(LOCALSTORAGE_CHECKOUT_KEY);
-      if (storedDataRaw) {
-        try {
-          const parsed = JSON.parse(storedDataRaw);
-          setFormState(prev => ({ ...prev, ...parsed, couponCodeInput: prev.couponCodeInput }));
-          console.log("[CheckoutPage.loadInitialData] Form state loaded from localStorage.");
-        } catch (e) { console.error("Error parsing stored checkout form data", e); localStorage.removeItem(LOCALSTORAGE_CHECKOUT_KEY); }
-      }
-      
-      if (fetchedProductData.coupons?.find(c => c.isAutomatic && c.isActive)) {
-        setAppliedCoupon(fetchedProductData.coupons.find(c => c.isAutomatic && c.isActive)!);
-        console.log("[CheckoutPage.loadInitialData] Automatic coupon applied.");
-      }
-
-    } catch (err: any) { setError(err.message || 'Falha ao carregar dados do checkout.'); console.error("[CheckoutPage.loadInitialData] Error:", err);
-    } finally { setIsPageLoading(false); console.log("[CheckoutPage.loadInitialData] Finished loading data.");}
-  }, [slug, accessToken]);
-
-  useEffect(() => { loadInitialData(); }, [loadInitialData]);
-
   useEffect(() => {
-    const handler = setTimeout(() => {
-      if (!isPageLoading) {
-        localStorage.setItem(LOCALSTORAGE_CHECKOUT_KEY, JSON.stringify({
-          customerName: formState.customerName, customerEmail: formState.customerEmail,
-          rawWhatsappNumber: formState.rawWhatsappNumber, customerWhatsappCountryCode: formState.customerWhatsappCountryCode,
-        }));
-      }
-    }, 500);
-    return () => clearTimeout(handler);
-  }, [formState.customerName, formState.customerEmail, formState.rawWhatsappNumber, formState.customerWhatsappCountryCode, isPageLoading]);
+    const storedSessionId = localStorage.getItem(LOCALSTORAGE_CHECKOUT_SESSION_KEY) || uuidv4();
+    localStorage.setItem(LOCALSTORAGE_CHECKOUT_SESSION_KEY, storedSessionId);
+    setCheckoutSessionId(storedSessionId);
 
-  const calculateFinalPrice = useCallback(() => {
-    if (!product) return;
-    let currentBasePrice = product.priceInCents;
-    if (includeOrderBump && product.orderBump?.customPriceInCents !== undefined) {
-      currentBasePrice += product.orderBump.customPriceInCents;
+    const storedFormData = localStorage.getItem(LOCALSTORAGE_CHECKOUT_FORM_KEY);
+    if (storedFormData) {
+      try {
+        const parsedData = JSON.parse(storedFormData);
+        setFormState(prev => ({ ...prev, ...parsedData }));
+      } catch (e) { console.warn("Failed to parse stored form data"); }
     }
-    const { price: priceAfterCoupon, discount } = calculatePriceWithCoupon(currentBasePrice, appliedCoupon);
-    startTransition(() => { setPrices({ finalPrice: priceAfterCoupon, originalPriceBeforeDiscount: currentBasePrice, discountApplied: discount }); });
-    if (appliedCoupon && currentBasePrice < (appliedCoupon.minPurchaseValueInCents || 0)) { setCouponError(`Valor mínimo de ${formatCurrency(appliedCoupon.minPurchaseValueInCents || 0)} não atingido.`); } 
-    else if (appliedCoupon) { setCouponError(null); }
+    
+    if (!hasSentEnterEventRef.current && storedSessionId) {
+      // sendLiveViewEvent({ type: 'checkout_enter', payload: { userId: user?.id, checkoutSessionId: storedSessionId, timestamp: Date.now() } }); // TEMPORARILY HIDDEN
+      hasSentEnterEventRef.current = true;
+    }
+    
+    const handleBeforeUnload = () => {
+      // sendLiveViewEvent({ type: 'checkout_leave', payload: { userId: user?.id, checkoutSessionId: storedSessionId, timestamp: Date.now() } }); // TEMPORARILY HIDDEN
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      debouncedSaveAbandonedCart.cancel();
+      debouncedSaveBuyerDetails.cancel();
+      if (pollingIntervalTimerIdRef.current) clearTimeout(pollingIntervalTimerIdRef.current);
+      if (manualCheckTimeoutRef.current) clearTimeout(manualCheckTimeoutRef.current);
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+      document.body.className = ''; // Reset body classes
+    };
+  // }, [sendLiveViewEvent, user?.id, debouncedSaveAbandonedCart, debouncedSaveBuyerDetails]); // TEMPORARILY HIDDEN (removed sendLiveViewEvent)
+  }, [user?.id, debouncedSaveAbandonedCart, debouncedSaveBuyerDetails]);
+
+
+  const extractUtmParamsFromUrl = (): Record<string, string> => {
+    const params = new URLSearchParams(location.search);
+    const utmKeys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'src', 'sck', 'ref', 'gclid'];
+    const utms: Record<string, string> = {};
+    utmKeys.forEach(key => { if (params.has(key)) utms[key] = params.get(key)!; });
+    return utms;
+  };
+
+  const calculatePrices = useCallback(() => {
+    if (!product) return;
+    let currentPrice = product.priceInCents;
+    let discount = 0;
+
+    if (appliedCoupon) {
+      if (appliedCoupon.discountType === 'percentage') {
+        discount = Math.round(currentPrice * (appliedCoupon.discountValue / 100));
+      } else { // fixed
+        discount = Math.min(currentPrice, appliedCoupon.discountValue); // Ensure discount isn't more than price
+      }
+    }
+    const priceAfterCoupon = currentPrice - discount;
+    let finalPrice = priceAfterCoupon;
+    let originalPriceBeforeAnyDiscount = product.priceInCents; 
+    
+    if (includeOrderBump && product.orderBump?.customPriceInCents !== undefined) {
+      finalPrice += product.orderBump.customPriceInCents;
+      originalPriceBeforeAnyDiscount += product.orderBump.customPriceInCents; // Also add bump to original if coupon applies to total
+    }
+
+    setPrices({
+      finalPrice: Math.max(0, finalPrice), // Ensure price isn't negative
+      originalPriceBeforeDiscount: originalPriceBeforeAnyDiscount,
+      discountApplied: discount,
+    });
   }, [product, appliedCoupon, includeOrderBump]);
 
-  useEffect(() => { calculateFinalPrice(); }, [calculateFinalPrice]);
-
-  const saveOrUpdateAbandonedCart = useCallback(async () => {
-    if (!product || !formState.customerEmail.trim() || !product.platformUserId || pixData || isPageLoading) return;
-    const cartPayload: CreateAbandonedCartPayload = {
-      productId: product.id, productName: product.name, potentialValueInCents: prices.finalPrice,
-      customerName: formState.customerName.trim() || formState.customerEmail.split('@')[0],
-      customerEmail: formState.customerEmail.trim(),
-      customerWhatsapp: `${formState.customerWhatsappCountryCode}${formState.rawWhatsappNumber.replace(/\D/g, '')}`,
-      platformUserId: product.platformUserId, trackingParameters: trackingParamsFromUrl, status: AbandonedCartStatus.NOT_CONTACTED,
-    };
-    try {
-      if (!abandonedCartIdRef.current) { 
-        const newCart = await abandonedCartService.createAbandonedCartAttempt(cartPayload); 
-        if (newCart?.id) abandonedCartIdRef.current = newCart.id; 
-      } else { 
-        await abandonedCartService.updateAbandonedCartAttempt(abandonedCartIdRef.current, cartPayload); 
-      }
-    } catch (cartError) { console.warn("Falha ao salvar/atualizar carrinho abandonado:", cartError); }
-  }, [product, formState, prices.finalPrice, trackingParamsFromUrl, pixData, isPageLoading]);
-
-  useEffect(() => {
-    if (isPageLoading || pixData) return;
-    if (abandonedCartTimeoutRef.current) clearTimeout(abandonedCartTimeoutRef.current);
-    abandonedCartTimeoutRef.current = window.setTimeout(saveOrUpdateAbandonedCart, ABANDONED_CART_DEBOUNCE_MS);
-    return () => { if (abandonedCartTimeoutRef.current) clearTimeout(abandonedCartTimeoutRef.current); };
-  }, [formState.customerName, formState.customerEmail, formState.rawWhatsappNumber, pixData, saveOrUpdateAbandonedCart, isPageLoading]);
-
-  const handleFormChange = useCallback(<K extends keyof CheckoutFormState>(field: K, value: CheckoutFormState[K]) => {
-    startTransition(() => {
-      setFormState(prev => ({ ...prev, [field]: value }));
-      if (field === 'couponCodeInput' && appliedCoupon && value.toUpperCase() !== appliedCoupon.code) { setAppliedCoupon(null); setCouponError(null); } 
-      else if (field === 'couponCodeInput') { setCouponError(null); }
-    });
-  }, [appliedCoupon]);
-  
-  const handleApplyCoupon = useCallback(() => {
-    if (!product || !formState.couponCodeInput) return;
-    const coupon = product.coupons?.find(c => c.code === formState.couponCodeInput.toUpperCase() && c.isActive);
-    if (coupon) {
-      let basePriceForMinCheck = product.priceInCents;
-      if (includeOrderBump && product.orderBump?.customPriceInCents !== undefined) { basePriceForMinCheck += product.orderBump.customPriceInCents; }
-      if (coupon.minPurchaseValueInCents && basePriceForMinCheck < coupon.minPurchaseValueInCents) { setCouponError(`Valor mínimo de ${formatCurrency(coupon.minPurchaseValueInCents)} não atingido.`); setAppliedCoupon(null); } 
-      else { setAppliedCoupon(coupon); setCouponError(null); }
-    } else { setCouponError('Cupom inválido ou expirado.'); setAppliedCoupon(null); }
-  }, [product, formState.couponCodeInput, includeOrderBump]);
-
-  const clearAppliedCoupon = useCallback(() => { startTransition(() => { setAppliedCoupon(null); setFormState(prev => ({...prev, couponCodeInput: ''})); setCouponError(null); }); }, []);
-  const removeOrderBump = useCallback(() => { startTransition(() => setIncludeOrderBump(false)); }, []);
-  const handleToggleOrderBump = useCallback((enabled: boolean) => { startTransition(() => setIncludeOrderBump(enabled)); }, []);
-
-  const handlePayWithPix = useCallback(async () => {
-    if (!product || prices.finalPrice === null || !formState.customerName.trim() || !formState.customerEmail.trim() || !formState.rawWhatsappNumber.trim() || !product.platformUserId) { setError("Por favor, preencha todos os campos obrigatórios."); return; }
-    setIsSubmitting(true); setError(null); setPixData(null); createdSaleIdRef.current = null;
-    setIsReadyToRedirect(false);
-    
-    const productsForSale: SaleProductItem[] = [{ productId: product.id, name: product.name, quantity: 1, priceInCents: product.priceInCents - (appliedCoupon && !includeOrderBump ? prices.discountApplied : 0), originalPriceInCents: product.priceInCents, deliveryUrl: product.deliveryUrl, slug: product.slug }];
-    if (includeOrderBump && product.orderBump?.customPriceInCents !== undefined) {
-        let bumpProductDeliveryUrl, bumpProductSlug; try { const bumpProdDetails = await productService.getProductById(product.orderBump.productId, accessToken); bumpProductDeliveryUrl = bumpProdDetails?.deliveryUrl; bumpProductSlug = bumpProdDetails?.slug; } catch { /* ignore */ }
-        productsForSale.push({ productId: product.orderBump.productId, name: product.orderBump.name, quantity: 1, priceInCents: product.orderBump.customPriceInCents - (appliedCoupon && includeOrderBump ? prices.discountApplied - (product.priceInCents - (appliedCoupon && !includeOrderBump ? prices.discountApplied : 0)) : 0) , originalPriceInCents: product.orderBump.customPriceInCents, isOrderBump: true, deliveryUrl: bumpProductDeliveryUrl, slug: bumpProductSlug });
-    }
-    
-    const pixPayloadForFunction: PushInPayPixRequest & { platformUserId: string; paymentMethod: PaymentMethod; ip?: string; } = { 
-        value: prices.finalPrice, originalValueBeforeDiscount: prices.originalPriceBeforeDiscount, 
-        webhook_url: MOCK_WEBHOOK_URL, 
-        customerName: formState.customerName, customerEmail: formState.customerEmail, 
-        customerWhatsapp: `${formState.customerWhatsappCountryCode}${formState.rawWhatsappNumber.replace(/\D/g, '')}`, 
-        products: productsForSale, 
-        trackingParameters: trackingParamsFromUrl, 
-        couponCodeUsed: appliedCoupon?.code, 
-        discountAppliedInCents: prices.discountApplied,
-        platformUserId: product.platformUserId, 
-        paymentMethod: PaymentMethod.PIX,    
-        ip: undefined, 
-    };
-        
-    try {
-        const { data: functionResponse, error: funcError } = await supabase.functions.invoke<GerarPixFunctionResponse>('gerar-pix', { 
-            body: { 
-                payload: pixPayloadForFunction, 
-                productOwnerUserId: product.platformUserId 
-            } 
-        });
-
-        if (funcError || !functionResponse || !functionResponse.success || !functionResponse.data || !functionResponse.saleId) {
-            throw new Error(functionResponse?.message || funcError?.message || "Falha ao gerar PIX ou registrar venda.");
-        }
-        
-        createdSaleIdRef.current = functionResponse.saleId;
-        console.log(`[CheckoutPage.handlePayWithPix] PIX gerado e Venda criada pela Edge Function com ID: ${createdSaleIdRef.current}`);
-        
-        startTransition(() => { setPixData(functionResponse.data); setPaymentStatus(PaymentStatus.WAITING_PAYMENT); });
-        sendLiveViewEvent({ type: 'pix_pending_enter', payload: { userId: user?.id, checkoutSessionId: checkoutSessionIdRef.current, timestamp: Date.now() } });
-        if (pollingIntervalTimerIdRef.current) clearTimeout(pollingIntervalTimerIdRef.current);
-        startPaymentPolling(functionResponse.data.id, functionResponse.saleId); // Passa saleId para o polling
-
-    } catch (paymentErr: any) { 
-        setError(paymentErr.message || "Erro ao processar PIX."); 
-        console.error("PIX Payment Error:", paymentErr);
-    } finally { 
-        setIsSubmitting(false); 
-    }
-  }, [product, prices, formState, appliedCoupon, includeOrderBump, trackingParamsFromUrl, accessToken, sendLiveViewEvent, user?.id]);
-
-  const copyPixCode = useCallback(() => { if (pixData?.qr_code) { navigator.clipboard.writeText(pixData.qr_code).then(() => { setCopySuccess(true); setTimeout(() => setCopySuccess(false), 2000); }); } }, [pixData]);
-
-  const checkPaymentStatus = useCallback(async (pushInPayTxId: string, dbSaleId: string) => {
-    if (!product?.platformUserId || !pushInPayTxId || !dbSaleId) {
-      console.warn(`[CheckoutPage.checkPaymentStatus] Dados insuficientes. PushInPay TX ID: ${pushInPayTxId}, DB Sale ID: ${dbSaleId}, Product Owner: ${product?.platformUserId}.`);
-      return;
-    }
-    console.log(`[CheckoutPage.checkPaymentStatus] Checking status for PushInPay TX ID: ${pushInPayTxId}, DB Sale ID: ${dbSaleId}`);
+  const checkPaymentStatus = useCallback(async (txId: string) => {
+    if (!product?.platformUserId || !pixData?.id) return;
     let mappedStatus: PaymentStatus | null = null;
-
     try {
-      const { data: funcResponse, error: funcError } = await supabase.functions.invoke<VerifyStatusFunctionResponse>('verificar-status-pix', { 
-          body: { 
-              transactionId: pushInPayTxId, 
-              productOwnerUserId: product.platformUserId,
-              saleId: dbSaleId // << ENVIANDO saleId
-          } 
+      const { data: statusRes, error: funcErr } = await supabase.functions.invoke('verificar-status-pix', { 
+        body: { transactionId: txId, productOwnerUserId: product.platformUserId, saleId: pixData.id } // Use pixData.id as saleId for now until proper sale record creation
       });
+      if (funcErr || !statusRes || !statusRes.success || !statusRes.data) throw new Error(statusRes?.message || funcErr?.message || "Falha ao verificar status do PIX.");
       
-      if (funcError || !funcResponse || !funcResponse.success || !funcResponse.data) {
-        console.warn(`[CheckoutPage.checkPaymentStatus] Erro ou resposta inválida de 'verificar-status-pix':`, funcError || funcResponse);
-        throw new Error(funcResponse?.message || funcError?.message || "Resposta inválida ao verificar status.");
-      }
-
-      const rawStatus = funcResponse.data.status.toLowerCase();
-      console.log(`[CheckoutPage.checkPaymentStatus] Raw status from backend: '${rawStatus}'`);
-      
+      const rawStatus = statusRes.data.status.toLowerCase();
       switch (rawStatus) {
         case 'paid': case 'approved': mappedStatus = PaymentStatus.PAID; break;
         case 'created': case 'waiting_payment': case 'pending': case 'processing': mappedStatus = PaymentStatus.WAITING_PAYMENT; break;
-        case 'cancelled': case 'canceled': mappedStatus = PaymentStatus.CANCELLED; break;
         case 'expired': mappedStatus = PaymentStatus.EXPIRED; break;
-        case 'failed': case 'error': case 'rejected': mappedStatus = PaymentStatus.FAILED; break;
-        default:
-          console.warn(`[CheckoutPage.checkPaymentStatus] Status desconhecido: ${rawStatus}. Tratando como WAITING_PAYMENT.`);
-          mappedStatus = PaymentStatus.WAITING_PAYMENT;
+        case 'cancelled': mappedStatus = PaymentStatus.CANCELLED; break;
+        default: mappedStatus = PaymentStatus.FAILED; 
       }
-      console.log(`[CheckoutPage.checkPaymentStatus] Status mapeado: '${mappedStatus}'. Edge function updated DB: ${funcResponse.saleUpdated}`);
-      startTransition(() => setPaymentStatus(mappedStatus)); 
-
+      setPaymentStatus(mappedStatus);
       if (mappedStatus === PaymentStatus.PAID) {
         if (pollingIntervalTimerIdRef.current) clearTimeout(pollingIntervalTimerIdRef.current);
         setIsPollingPayment(false);
-        sendLiveViewEvent({ type: 'pix_pending_leave', payload: { userId: user?.id, checkoutSessionId: checkoutSessionIdRef.current } });
-
-        if (!funcResponse.saleUpdated) {
-             console.error(`[CheckoutPage.checkPaymentStatus] CRÍTICO: Pagamento PIX ${pushInPayTxId} confirmado, mas Edge Function falhou ao atualizar saleId ${dbSaleId} no banco.`);
-             setError("Erro crítico ao finalizar o pedido após pagamento. O PIX foi pago, mas houve um problema ao registrar sua compra. Contate o suporte com o ID da transação PIX: " + pushInPayTxId);
-             return; // Não prosseguir se a atualização do DB pela EF falhou
-        }
-        
-        // Se a Edge Function atualizou o DB, podemos prosseguir.
-        setIsReadyToRedirect(true); 
-        if (abandonedCartIdRef.current && accessToken) {
-            console.log(`[CheckoutPage.checkPaymentStatus] PIX pago. Tentando deletar carrinho abandonado ID: ${abandonedCartIdRef.current}`);
-            await abandonedCartService.deleteAbandonedCart(abandonedCartIdRef.current, accessToken).catch(delErr => 
-            console.warn(`[CheckoutPage.checkPaymentStatus] Falha ao deletar carrinho abandonado (ID: ${abandonedCartIdRef.current}): ${delErr.message}. Prosseguindo...`)
-            );
-            abandonedCartIdRef.current = null;
-        }
-          
-      } else if (mappedStatus !== PaymentStatus.WAITING_PAYMENT) { 
+        setIsReadyToRedirect(true);
+        setTimeout(() => navigate(`/thank-you/${pixData.id}?origProdId=${product.id}&csid=${checkoutSessionId}`), 2000);
+        // sendLiveViewEvent({ type: 'pix_pending_leave', payload: { userId: user?.id, checkoutSessionId: checkoutSessionId, timestamp: Date.now() }}); // TEMPORARILY HIDDEN
+      } else if (mappedStatus !== PaymentStatus.WAITING_PAYMENT) {
         if (pollingIntervalTimerIdRef.current) clearTimeout(pollingIntervalTimerIdRef.current);
         setIsPollingPayment(false);
         setError(`Pagamento ${mappedStatus === PaymentStatus.EXPIRED ? 'expirou' : 'falhou/foi cancelado'}.`);
-        sendLiveViewEvent({ type: 'pix_pending_leave', payload: { userId: user?.id, checkoutSessionId: checkoutSessionIdRef.current } });
+        // sendLiveViewEvent({ type: 'pix_pending_leave', payload: { userId: user?.id, checkoutSessionId: checkoutSessionId, timestamp: Date.now() }}); // TEMPORARILY HIDDEN
       }
-    } catch (statusErr: any) {
-      console.error("[CheckoutPage.checkPaymentStatus] Erro ao verificar status:", statusErr.message);
-      if (paymentStatusRef.current !== PaymentStatus.PAID) { 
-          setError("Erro ao verificar status do pagamento. A verificação continuará em segundo plano.");
-      }
-    }
-  }, [product, sendLiveViewEvent, user?.id, accessToken]); 
+    } catch (statusErr: any) { console.error("[CheckoutPage.checkPaymentStatus] Erro:", statusErr.message); if (paymentStatusRef.current !== PaymentStatus.PAID) setError("Erro ao verificar status do pagamento."); }
+  // }, [product, pixData?.id, navigate, checkoutSessionId, user?.id, sendLiveViewEvent]); // TEMPORARILY HIDDEN (removed sendLiveViewEvent)
+  }, [product, pixData?.id, navigate, checkoutSessionId, user?.id ]);
 
-  const startPaymentPolling = useCallback((pushInPayTxId: string, dbSaleId: string) => {
-    console.log(`[CheckoutPage.startPaymentPolling] Starting polling for PushInPay TX ID: ${pushInPayTxId}, DB Sale ID: ${dbSaleId}`);
-    setIsPollingPayment(true);
-    pollingAttemptRef.current = 0;
-    pollingStartTimeRef.current = Date.now();
 
+  const startPaymentPolling = useCallback((txId: string) => {
+    setIsPollingPayment(true); pollingAttemptRef.current = 0; pollingStartTimeRef.current = Date.now();
     const poll = async () => {
-      console.log(`[CheckoutPage.startPaymentPolling] Poll attempt #${pollingAttemptRef.current + 1}`);
       if (Date.now() - pollingStartTimeRef.current > POLLING_TIMEOUT_DURATION) {
-        console.warn("[CheckoutPage.startPaymentPolling] Polling timeout reached.");
         setIsPollingPayment(false);
-        if (paymentStatusRef.current !== PaymentStatus.PAID) { setError("Tempo para verificar o PIX excedido. Se pagou, contate o suporte ou verifique manualmente."); sendLiveViewEvent({ type: 'pix_pending_leave', payload: { userId: user?.id, checkoutSessionId: checkoutSessionIdRef.current } }); }
+        if (paymentStatusRef.current !== PaymentStatus.PAID) {
+          setError("Tempo para verificar PIX excedido.");
+          // sendLiveViewEvent({ type: 'pix_pending_leave', payload: { userId: user?.id, checkoutSessionId: checkoutSessionId, timestamp: Date.now() }}); // TEMPORARILY HIDDEN
+        }
         return;
       }
-      await checkPaymentStatus(pushInPayTxId, dbSaleId); // Passa os dois IDs
+      await checkPaymentStatus(txId);
       if (paymentStatusRef.current === PaymentStatus.WAITING_PAYMENT || paymentStatusRef.current === null) {
         pollingAttemptRef.current++;
         const nextInterval = Math.min(POLLING_INITIAL_INTERVAL * Math.pow(1.5, pollingAttemptRef.current), POLLING_MAX_INTERVAL);
-        console.log(`[CheckoutPage.startPaymentPolling] Next poll in ${nextInterval}ms. Current status: ${paymentStatusRef.current}`);
         pollingIntervalTimerIdRef.current = window.setTimeout(poll, nextInterval);
-      } else {
-        console.log(`[CheckoutPage.startPaymentPolling] Polling stopped. Final status: ${paymentStatusRef.current}`);
-        setIsPollingPayment(false);
-      }
+      } else { setIsPollingPayment(false); }
     };
     poll();
-  }, [checkPaymentStatus, sendLiveViewEvent, user?.id]);
+  // }, [checkPaymentStatus, user?.id, checkoutSessionId, sendLiveViewEvent]); // TEMPORARILY HIDDEN (removed sendLiveViewEvent)
+  }, [checkPaymentStatus, user?.id, checkoutSessionId ]);
+
 
   const handleManualCheck = useCallback(async () => {
-    if (!pixData?.id || !createdSaleIdRef.current || !canManuallyCheck || isManualChecking) return;
-    console.log("[CheckoutPage.handleManualCheck] Manual check triggered for TX ID:", pixData.id, "Sale ID:", createdSaleIdRef.current);
-    setIsManualChecking(true);
-    setCanManuallyCheck(false);
-    await checkPaymentStatus(pixData.id, createdSaleIdRef.current); // Passa os dois IDs
+    if (!pixData?.id || !canManuallyCheck || isManualChecking) return;
+    setIsManualChecking(true); setCanManuallyCheck(false);
+    await checkPaymentStatus(pixData.id);
     setIsManualChecking(false);
     if (manualCheckTimeoutRef.current) clearTimeout(manualCheckTimeoutRef.current);
-    manualCheckTimeoutRef.current = window.setTimeout(() => { setCanManuallyCheck(true); console.log("[CheckoutPage.handleManualCheck] Cooldown finished, manual check re-enabled."); }, MANUAL_CHECK_COOLDOWN_MS);
-  }, [pixData, createdSaleIdRef, canManuallyCheck, isManualChecking, checkPaymentStatus]);
+    manualCheckTimeoutRef.current = window.setTimeout(() => setCanManuallyCheck(true), MANUAL_CHECK_COOLDOWN_MS);
+  }, [pixData, canManuallyCheck, isManualChecking, checkPaymentStatus]);
 
   const handleProceedToThankYou = useCallback(() => {
-    if (product && createdSaleIdRef.current ) {
-      navigate(`/thank-you/${createdSaleIdRef.current}?origProdId=${product.id}&csid=${checkoutSessionIdRef.current}`);
-    } else {
-      console.error("[CheckoutPage.handleProceedToThankYou] Cannot navigate: product or createdSaleIdRef is missing.");
-      setError("Erro ao carregar detalhes do pedido. Tente recarregar a página ou contate o suporte.");
+    if (pixData?.id && product?.id) {
+      navigate(`/thank-you/${pixData.id}?origProdId=${product.id}&csid=${checkoutSessionId}`);
     }
-  }, [product, navigate, checkoutSessionIdRef]);
-
+  }, [pixData, product, navigate, checkoutSessionId]);
 
   useEffect(() => {
-    if (!product?.checkoutCustomization?.countdownTimer?.enabled || !product.checkoutCustomization.countdownTimer.durationMinutes) { setCountdownTimerText(null); return; }
-    const { durationMinutes, messageBefore, messageAfter } = product.checkoutCustomization.countdownTimer;
-    const storageKey = `countdownEndTime_${product.id}_${checkoutSessionIdRef.current}`;
-    let endTime = localStorage.getItem(storageKey);
-    if (!endTime || parseInt(endTime) < Date.now()) { endTime = String(Date.now() + durationMinutes * 60 * 1000); localStorage.setItem(storageKey, endTime); }
-    const intervalId = setInterval(() => {
-      const remaining = parseInt(endTime!) - Date.now();
-      if (remaining <= 0) { clearInterval(intervalId); setCountdownTimerText(messageAfter || 'Oferta Expirada!'); return; }
-      const minutes = String(Math.floor((remaining / (1000 * 60)) % 60)).padStart(2, '0');
-      const seconds = String(Math.floor((remaining / 1000) % 60)).padStart(2, '0');
-      setCountdownTimerText(`${messageBefore || 'Oferta expira em:'} ${minutes}:${seconds}`);
-    }, 1000);
-    return () => clearInterval(intervalId);
-  }, [product]);
-  
-  const abandonedCartTimeoutRef = useRef<number | null>(null);
-  useEffect(() => {
-    return () => {
-      console.log("[CheckoutPage] Unmounting. Clearing polling timers.");
-      if (pollingIntervalTimerIdRef.current) clearTimeout(pollingIntervalTimerIdRef.current);
-      if (manualCheckTimeoutRef.current) clearTimeout(manualCheckTimeoutRef.current);
-      if (abandonedCartTimeoutRef.current) clearTimeout(abandonedCartTimeoutRef.current);
-      if (pixData && (paymentStatusRef.current === PaymentStatus.WAITING_PAYMENT || paymentStatusRef.current === null)) { sendLiveViewEvent({ type: 'pix_pending_leave', payload: { userId: user?.id, checkoutSessionId: checkoutSessionIdRef.current } }); }
+    if (!slug) { setError("Produto não especificado."); setIsPageLoading(false); return; }
+    
+    const fetchProductData = async () => {
+      setIsPageLoading(true); setError(null);
+      const cacheKey = `product_${slug}`;
+      const cached = productDataCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < PRODUCT_CACHE_TTL) {
+        setProduct(cached.data);
+        if (cached.data.platformUserId) setAppSettings(await settingsService.getAppSettingsByUserId(cached.data.platformUserId, null));
+        setCurrentTheme(cached.data.checkoutCustomization?.theme || 'light');
+        setIsPageLoading(false);
+        return;
+      }
+      try {
+        const fetchedProductData = await productService.getProductBySlug(slug, null);
+        setProduct(fetchedProductData || null); // Handle undefined case
+        if (!fetchedProductData) { setError("Produto não encontrado ou indisponível."); setIsPageLoading(false); return; }
+        productDataCache.set(cacheKey, { data: fetchedProductData, timestamp: Date.now() });
+        if (fetchedProductData.platformUserId) setAppSettings(await settingsService.getAppSettingsByUserId(fetchedProductData.platformUserId, null));
+        setCurrentTheme(fetchedProductData.checkoutCustomization?.theme || 'light');
+      } catch (err: any) { setError(err.message || "Erro ao carregar dados do produto."); } 
+      finally { setIsPageLoading(false); }
     };
-  }, [pixData, sendLiveViewEvent, user?.id]);
+    fetchProductData();
+  }, [slug]);
 
-  const primaryColorStyle = useMemo(() => product?.checkoutCustomization?.primaryColor || appSettings?.checkoutIdentity?.brandColor || (currentTheme === 'dark' ? 'var(--reimagined-accent-cta)' : 'var(--checkout-color-primary-DEFAULT)'), [product, appSettings, currentTheme]);
-  const ctaTextColorStyle = useMemo(() => getContrastingTextColorForCta(primaryColorStyle, currentTheme), [primaryColorStyle, currentTheme]);
-  const hasLeftContent = useMemo(() => product?.checkoutCustomization?.videoUrl || product?.imageUrl || (product?.checkoutCustomization?.salesCopy && product.checkoutCustomization.salesCopy.replace(/<[^>]*>?/gm, '').trim() !== '') || (product?.checkoutCustomization?.testimonials && product.checkoutCustomization.testimonials.length > 0), [product]);
+  useEffect(() => { calculatePrices(); }, [product, appliedCoupon, includeOrderBump, calculatePrices]);
+  useEffect(() => { document.title = product ? `Checkout - ${product.name}` : "Checkout"; }, [product]);
+  useEffect(() => { debouncedSaveAbandonedCart(formState, product); debouncedSaveBuyerDetails(formState); }, [formState, product, debouncedSaveAbandonedCart, debouncedSaveBuyerDetails]);
+
+  useEffect(() => {
+    if (!product?.checkoutCustomization?.countdownTimer?.enabled || !product.checkoutCustomization.countdownTimer.durationMinutes) {
+      setCountdownTimerText(null);
+      return;
+    }
+    const { durationMinutes, messageBefore = "Oferta expira em:", messageAfter = "Oferta expirada!" } = product.checkoutCustomization.countdownTimer;
+    const endTime = new Date(Date.now() + durationMinutes * 60000).getTime();
+
+    const updateTimer = () => {
+      const now = Date.now();
+      const timeLeft = endTime - now;
+      if (timeLeft <= 0) {
+        setCountdownTimerText(messageAfter);
+        if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+        return;
+      }
+      const minutes = Math.floor((timeLeft / (1000 * 60)) % 60);
+      const seconds = Math.floor((timeLeft / 1000) % 60);
+      setCountdownTimerText(`${messageBefore} ${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`);
+    };
+    updateTimer();
+    countdownIntervalRef.current = window.setInterval(updateTimer, 1000);
+    return () => { if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current); };
+  }, [product?.checkoutCustomization?.countdownTimer]);
+
+  const handleFormChange = <K extends keyof CheckoutFormState>(field: K, value: CheckoutFormState[K]) => {
+    startTransition(() => { setFormState(prev => ({ ...prev, [field]: value })); });
+  };
+
+  const handleApplyCoupon = useCallback(async () => {
+    if (!product || !formState.couponCodeInput.trim()) { setCouponError("Digite um código de cupom."); return; }
+    setCouponError(null);
+    const couponToTry = product.coupons?.find(c => c.code.toUpperCase() === formState.couponCodeInput.trim().toUpperCase());
+    if (!couponToTry || !couponToTry.isActive) { setCouponError("Cupom inválido ou inativo."); return; }
+    if (couponToTry.expiresAt && new Date(couponToTry.expiresAt) < new Date()) { setCouponError("Cupom expirado."); return; }
+    if (couponToTry.minPurchaseValueInCents && product.priceInCents < couponToTry.minPurchaseValueInCents) { setCouponError(`Valor mínimo de R$${(couponToTry.minPurchaseValueInCents / 100).toFixed(2)} para este cupom.`); return; }
+    
+    const { data: existingSaleWithCoupon, error: fetchError } = await supabase
+      .from('sales')
+      .select('id')
+      .eq('platform_user_id', product.platformUserId)
+      .eq('customer_email', formState.customerEmail)
+      .eq('coupon_code_used', couponToTry.code.toUpperCase())
+      .limit(1);
+
+    if (fetchError) console.warn("Error checking coupon usage:", fetchError);
+    if (existingSaleWithCoupon && existingSaleWithCoupon.length > 0) {
+      setCouponError(`Cupom "${couponToTry.code}" já utilizado por este e-mail.`);
+      return;
+    }
+    
+    setAppliedCoupon(couponToTry);
+    setFormState(prev => ({...prev, couponCodeInput: ''}));
+  }, [product, formState.couponCodeInput, formState.customerEmail]);
+
+  const clearAppliedCoupon = () => { setAppliedCoupon(null); setCouponError(null); };
+  const handleToggleOrderBump = (enabled: boolean) => { setIncludeOrderBump(enabled); };
+  const removeOrderBump = () => { setIncludeOrderBump(false); };
+  const copyPixCode = () => { if (pixData?.qr_code) { navigator.clipboard.writeText(pixData.qr_code).then(() => { setCopySuccess(true); setTimeout(() => setCopySuccess(false), 2000); }); } };
+
+  const handlePayWithPix = async () => {
+    if (!product) { setError("Produto não carregado."); return; }
+    setError(null); setIsSubmitting(true);
+    const utms = extractUtmParamsFromUrl();
+    try {
+      const buyerId = uuidv4(); 
+      const saleRecordPayload: CreateSaleRecordPayload = {
+        buyerId: buyerId, platformUserId: product.platformUserId,
+        products: [{ productId: product.id, name: product.name, quantity: 1, priceInCents: product.priceInCents, originalPriceInCents: product.priceInCents, slug: product.slug, deliveryUrl: product.deliveryUrl }],
+        customer: { name: formState.customerName.trim(), email: formState.customerEmail.trim(), whatsapp: `${formState.customerWhatsappCountryCode}${formState.rawWhatsappNumber.replace(/\D/g, '')}`, ip: 'CAPTURA_PENDENTE' },
+        paymentMethod: PaymentMethod.PIX, status: PaymentStatus.WAITING_PAYMENT,
+        totalAmountInCents: prices.finalPrice, originalAmountBeforeDiscountInCents: prices.originalPriceBeforeDiscount,
+        discountAppliedInCents: prices.discountApplied || undefined, couponCodeUsed: appliedCoupon?.code || undefined,
+        trackingParameters: utms,
+      };
+      if (includeOrderBump && product.orderBump && product.orderBump.customPriceInCents !== undefined) {
+        saleRecordPayload.products.push({ productId: product.orderBump.productId, name: product.orderBump.name, quantity: 1, priceInCents: product.orderBump.customPriceInCents, originalPriceInCents: product.orderBump.customPriceInCents, isOrderBump: true });
+      }
+      
+      const createdSale = await salesService.createSaleRecord(saleRecordPayload, null);
+      console.log("[CheckoutPage] Sale record created:", createdSale);
+
+      const pixRequestPayload: PushInPayPixRequest = {
+        value: prices.finalPrice, originalValueBeforeDiscount: prices.originalPriceBeforeDiscount, webhook_url: MOCK_WEBHOOK_URL, //TODO: Update webhook URL
+        customerName: formState.customerName.trim(), customerEmail: formState.customerEmail.trim(), customerWhatsapp: `${formState.customerWhatsappCountryCode}${formState.rawWhatsappNumber.replace(/\D/g, '')}`,
+        products: saleRecordPayload.products, trackingParameters: utms,
+        couponCodeUsed: appliedCoupon?.code, discountAppliedInCents: prices.discountApplied, buyerId: buyerId,
+      };
+
+      const { data: pixFuncRes, error: funcErr } = await supabase.functions.invoke<GerarPixEdgeFunctionResponse>('gerar-pix', { 
+        body: { payload: pixRequestPayload, productOwnerUserId: product.platformUserId, saleId: createdSale.id } 
+      });
+      
+      if (funcErr) { let msg = "Falha ao gerar PIX."; if (typeof funcErr.message === 'string') { try { const parsed = JSON.parse(funcErr.message); msg = parsed?.error || parsed?.message || funcErr.message; } catch (e) { msg = funcErr.message; } } throw new Error(msg); }
+      if (!pixFuncRes || !pixFuncRes.success || !pixFuncRes.data) { throw new Error(pixFuncRes?.message || "Resposta inválida do servidor PIX."); }
+      
+      startTransition(() => {
+        setPixData(pixFuncRes.data || null); // Ensure null if data is undefined
+        setPaymentStatus(PaymentStatus.WAITING_PAYMENT);
+      });
+      startPaymentPolling(pixFuncRes.data.id); // Safe due to check above
+      // sendLiveViewEvent({ type: 'pix_pending_enter', payload: { userId: user?.id, checkoutSessionId: checkoutSessionId, timestamp: Date.now() }}); // TEMPORARILY HIDDEN
+    } catch (paymentError: any) { setError(paymentError.message || "Erro desconhecido ao processar PIX."); console.error("[handlePayWithPix] Error:", paymentError);
+    } finally { setIsSubmitting(false); }
+  };
+  
+  const primaryColorStyle = product?.checkoutCustomization?.primaryColor || appSettings?.checkoutIdentity?.brandColor || (currentTheme === 'dark' ? 'var(--reimagined-accent-cta)' : 'var(--checkout-color-primary-DEFAULT)');
+  const ctaTextColorStyle = getContrastingTextColorForCta(primaryColorStyle, currentTheme);
+  const hasLeftContent = !!(product?.checkoutCustomization?.videoUrl || product?.imageUrl || (product?.checkoutCustomization?.salesCopy && product.checkoutCustomization.salesCopy.replace(/<[^>]*>?/gm, '').trim() !== '') || (product?.checkoutCustomization?.testimonials && product.checkoutCustomization.testimonials.length > 0));
 
   return (
     <CheckoutPageUI
-      product={product} formState={formState} prices={prices}
-      handleFormChange={handleFormChange} handleApplyCoupon={handleApplyCoupon}
-      couponError={couponError} appliedCoupon={appliedCoupon}
+      product={product} formState={formState} prices={prices} handleFormChange={handleFormChange}
+      handleApplyCoupon={handleApplyCoupon} couponError={couponError} appliedCoupon={appliedCoupon}
       includeOrderBump={includeOrderBump} handleToggleOrderBump={handleToggleOrderBump}
-      isSubmitting={isSubmitting} handlePayWithPix={handlePayWithPix}
-      pixData={pixData} copyPixCode={copyPixCode} copySuccess={copySuccess}
-      paymentStatus={paymentStatus} error={error} primaryColorStyle={primaryColorStyle}
-      ctaTextColorStyle={ctaTextColorStyle} isPollingPayment={isPollingPayment}
-      clearAppliedCoupon={clearAppliedCoupon} removeOrderBump={removeOrderBump}
-      currentTheme={currentTheme} isPageLoading={isPageLoading}
-      countdownTimerText={countdownTimerText} hasLeftContent={hasLeftContent}
+      isSubmitting={isSubmitting} handlePayWithPix={handlePayWithPix} pixData={pixData}
+      copyPixCode={copyPixCode} copySuccess={copySuccess} paymentStatus={paymentStatus}
+      error={error} primaryColorStyle={primaryColorStyle} ctaTextColorStyle={ctaTextColorStyle}
+      isPollingPayment={isPollingPayment} clearAppliedCoupon={clearAppliedCoupon} removeOrderBump={removeOrderBump}
+      currentTheme={currentTheme} isPageLoading={isPageLoading} countdownTimerText={countdownTimerText}
+      hasLeftContent={hasLeftContent}
       handleManualCheck={handleManualCheck} isManualChecking={isManualChecking} canManuallyCheck={canManuallyCheck}
       isReadyToRedirect={isReadyToRedirect} handleProceedToThankYou={handleProceedToThankYou}
     />

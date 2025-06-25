@@ -1,3 +1,4 @@
+
 // types/supabase.ts
 // This file should ideally be populated by `supabase gen types typescript`.
 // The structure below is based on the assumed database schema.
@@ -20,7 +21,7 @@ export interface Database {
           is_super_admin: boolean | null
           is_active: boolean | null
           created_at: string | null
-          updated_at: string | null // ADDED
+          updated_at: string | null 
         }
         Insert: {
           id: string
@@ -28,15 +29,14 @@ export interface Database {
           is_super_admin?: boolean | null
           is_active?: boolean | null
           created_at?: string | null
-          updated_at?: string | null // ADDED
+          updated_at?: string | null 
         }
         Update: {
           id?: string
           name?: string | null
           is_super_admin?: boolean | null
           is_active?: boolean | null
-          // created_at?: string | null // REMOVED
-          updated_at?: string | null // ADDED
+          updated_at?: string | null 
         }
         Relationships: [
           {
@@ -56,7 +56,7 @@ export interface Database {
           description: string
           price_in_cents: number
           image_url: string | null
-          checkout_customization: Json | null // Updated to allow null
+          checkout_customization: Json | null 
           delivery_url: string | null
           total_sales: number | null
           clicks: number | null
@@ -66,7 +66,7 @@ export interface Database {
           order_bump: Json | null
           upsell: Json | null
           coupons: Json | null
-          utm_params: Json | null // Updated to allow null
+          utm_params: Json | null 
           created_at: string
           updated_at: string
         }
@@ -78,7 +78,7 @@ export interface Database {
           description: string
           price_in_cents: number
           image_url?: string | null
-          checkout_customization?: Json | null // Updated to allow null
+          checkout_customization?: Json | null 
           delivery_url?: string | null
           total_sales?: number | null
           clicks?: number | null
@@ -88,7 +88,7 @@ export interface Database {
           order_bump?: Json | null
           upsell?: Json | null
           coupons?: Json | null
-          utm_params?: Json | null // Updated to allow null
+          utm_params?: Json | null 
           created_at?: string
           updated_at?: string
         }
@@ -100,7 +100,7 @@ export interface Database {
           description?: string
           price_in_cents?: number
           image_url?: string | null
-          checkout_customization?: Json | null // Updated to allow null
+          checkout_customization?: Json | null 
           delivery_url?: string | null
           total_sales?: number | null
           clicks?: number | null
@@ -110,7 +110,7 @@ export interface Database {
           order_bump?: Json | null
           upsell?: Json | null
           coupons?: Json | null
-          utm_params?: Json | null // Updated to allow null
+          utm_params?: Json | null 
           created_at?: string
           updated_at?: string
         }
@@ -123,9 +123,49 @@ export interface Database {
           }
         ]
       }
+      buyers: { // <<-- NEW TABLE
+        Row: {
+          id: string
+          session_id: string | null
+          auth_user_id: string | null
+          email: string | null
+          name: string | null
+          whatsapp: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          session_id?: string | null
+          auth_user_id?: string | null
+          email?: string | null
+          name?: string | null
+          whatsapp?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          session_id?: string | null
+          auth_user_id?: string | null
+          email?: string | null
+          name?: string | null
+          whatsapp?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "buyers_auth_user_id_fkey"
+            columns: ["auth_user_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       sales: {
         Row: {
           id: string
+          buyer_id: string | null // <<-- NEW COLUMN
           platform_user_id: string
           push_in_pay_transaction_id: string
           upsell_push_in_pay_transaction_id: string | null
@@ -155,8 +195,9 @@ export interface Database {
         }
         Insert: {
           id?: string
+          buyer_id?: string | null // <<-- NEW COLUMN
           platform_user_id: string
-          push_in_pay_transaction_id: string
+          push_in_pay_transaction_id?: string // Made optional
           upsell_push_in_pay_transaction_id?: string | null
           order_id_urmify?: string | null
           products: Json
@@ -184,6 +225,7 @@ export interface Database {
         }
         Update: {
           id?: string
+          buyer_id?: string | null // <<-- NEW COLUMN
           platform_user_id?: string
           push_in_pay_transaction_id?: string
           upsell_push_in_pay_transaction_id?: string | null
@@ -216,6 +258,12 @@ export interface Database {
             foreignKeyName: "sales_platform_user_id_fkey"
             columns: ["platform_user_id"]
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          { // <<-- NEW RELATIONSHIP
+            foreignKeyName: "sales_buyer_id_fkey"
+            columns: ["buyer_id"]
+            referencedRelation: "buyers"
             referencedColumns: ["id"]
           }
         ]
@@ -400,7 +448,7 @@ export interface Database {
           }
         ]
       }
-      audit_log_entries: { // Nova tabela
+      audit_log_entries: { 
         Row: {
           id: string
           timestamp: string 

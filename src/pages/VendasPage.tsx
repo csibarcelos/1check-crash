@@ -38,6 +38,17 @@ const formatCurrency = (valueInCents: number) => {
     return `R$ ${(valueInCents / 100).toFixed(2).replace('.', ',')}`;
 };
 
+const formatDateTime = (isoString: string): string => {
+  const date = new Date(isoString);
+  return date.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
 const InfoItem: React.FC<{ label: string; value: React.ReactNode; className?: string; isWhatsApp?: boolean; whatsAppUrl?: string }> = ({ label, value, className, isWhatsApp, whatsAppUrl }) => (
   <div className={`mb-2 ${className}`}>
     <span className="font-semibold text-text-muted">{label}: </span>
@@ -83,8 +94,6 @@ const VendasPage: React.FC = () => {
       const data = await salesService.getSales(accessToken);
       const sortedData = data.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setAllSales(sortedData);
-      console.log('[VendasPage Debug] allSales initial (first 5):', sortedData.slice(0, 5).map(s => ({id: s.id, status: s.status, total: s.totalAmountInCents}) ));
-      console.log('[VendasPage Debug] Total allSales fetched:', sortedData.length);
     } catch (err: any) {
       setError(err.message || 'Falha ao carregar vendas.');
       console.error(err);
@@ -98,9 +107,6 @@ const VendasPage: React.FC = () => {
   }, [fetchSales]);
 
   const filteredSales = useMemo(() => {
-    console.log(`[VendasPage Debug] Recalculating filteredSales. Current filterStatus: "${filterStatus}", searchTerm: "${searchTerm}", filterPaymentMethod: "${filterPaymentMethod}"`);
-    console.log('[VendasPage Debug] allSales before filtering (first 5):', allSales.slice(0,5).map(s => ({id: s.id, status: s.status})));
-
     let currentSales = [...allSales];
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
@@ -111,14 +117,12 @@ const VendasPage: React.FC = () => {
         (Array.isArray(sale.products) && sale.products.some(p => p.name?.toLowerCase().includes(term)))
       );
     }
-    if (filterStatus) { // This means filterStatus is not an empty string
+    if (filterStatus) { 
       currentSales = currentSales.filter(sale => sale.status === filterStatus);
     }
     if (filterPaymentMethod) {
       currentSales = currentSales.filter(sale => sale.paymentMethod === filterPaymentMethod);
     }
-    console.log('[VendasPage Debug] filteredSales after logic (first 5):', currentSales.slice(0,5).map(s => ({id: s.id, status: s.status})));
-    console.log('[VendasPage Debug] Total filteredSales:', currentSales.length);
     return currentSales;
   }, [searchTerm, filterStatus, filterPaymentMethod, allSales]);
   
@@ -159,6 +163,15 @@ const VendasPage: React.FC = () => {
     },
     { key: 'totalAmountInCents', label: 'Valor', renderCell: (sale) => <span className="text-accent-blue-neon font-semibold">{formatCurrency(sale.totalAmountInCents)}</span> },
     {
+      key: 'type',
+      label: 'Tipo',
+      renderCell: (sale) => (
+        <span className={`px-2 py-0.5 inline-flex text-xs leading-4 font-semibold rounded-full ${sale.upsellAmountInCents && sale.upsellAmountInCents > 0 && sale.upsellStatus === PaymentStatus.PAID ? 'bg-purple-500/20 text-purple-400' : 'bg-neutral-700 text-text-muted'}`}>
+          {sale.upsellAmountInCents && sale.upsellAmountInCents > 0 && sale.upsellStatus === PaymentStatus.PAID ? 'Principal + Upsell' : 'Principal'}
+        </span>
+      ),
+    },
+    {
       key: 'status',
       label: 'Status',
       renderCell: (sale) => (
@@ -168,7 +181,7 @@ const VendasPage: React.FC = () => {
       ),
     },
     { key: 'paymentMethod', label: 'Método', renderCell: (sale) => getPaymentMethodLabel(sale.paymentMethod as PaymentMethod) },
-    { key: 'createdAt', label: 'Data', renderCell: (sale) => new Date(sale.createdAt).toLocaleDateString() },
+    { key: 'createdAt', label: 'Data', renderCell: (sale) => formatDateTime(sale.createdAt) },
     {
       key: 'actions',
       label: 'Ações',
@@ -267,11 +280,14 @@ const VendasPage: React.FC = () => {
                     <h3 className="text-lg font-semibold text-accent-gold border-b border-border-subtle pb-2 mb-3">Informações Gerais</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
                         <InfoItem label="ID da Venda" value={selectedSale.id} />
-                        <InfoItem label="Data" value={new Date(selectedSale.createdAt).toLocaleString()} />
+                        <InfoItem label="Data" value={formatDateTime(selectedSale.createdAt)} />
                         <InfoItem label="Valor Total" value={<span className="font-bold text-accent-blue-neon text-lg">{formatCurrency(selectedSale.totalAmountInCents)}</span>} />
                         <InfoItem label="Método de Pagamento" value={getPaymentMethodLabel(selectedSale.paymentMethod as PaymentMethod)} />
                         <InfoItem label="Status" value={<span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusClass(selectedSale.status)}`}>{(selectedSale.status as string).replace(/_/g, ' ').toUpperCase()}</span>} />
-                        {selectedSale.paidAt && <InfoItem label="Pago em" value={new Date(selectedSale.paidAt).toLocaleString()} />}
+                        {selectedSale.upsellAmountInCents && selectedSale.upsellAmountInCents > 0 && selectedSale.upsellStatus === PaymentStatus.PAID && (
+                          <InfoItem label="Tipo" value={<span className="px-2 py-1 text-xs font-semibold rounded-full bg-purple-500/20 text-purple-400">Principal + Upsell</span>} />
+                        )}
+                        {selectedSale.paidAt && <InfoItem label="Pago em" value={formatDateTime(selectedSale.paidAt)} />}
                         {selectedSale.couponCodeUsed && <InfoItem label="Cupom Usado" value={selectedSale.couponCodeUsed} />}
                         {selectedSale.discountAppliedInCents && selectedSale.discountAppliedInCents > 0 && <InfoItem label="Desconto Aplicado" value={<span className="text-status-error">-{formatCurrency(selectedSale.discountAppliedInCents)}</span>} />}
                         {selectedSale.originalAmountBeforeDiscountInCents !== selectedSale.totalAmountInCents && <InfoItem label="Valor Original" value={formatCurrency(selectedSale.originalAmountBeforeDiscountInCents)} />}

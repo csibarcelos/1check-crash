@@ -5,83 +5,120 @@
 import { serve } from "https://deno.land/std@0.203.0/http/server.ts";
 // @ts-ignore
 import { createClient } from 'npm:@supabase/supabase-js@2' 
-import { corsHeaders } from '../_shared/cors.ts'
-import { Database, Json as DbJson } from '../_shared/db_types.ts' 
+import { corsHeaders } from '../_shared/cors.ts';
+import { Database } from '../_shared/db_types.ts' 
 
-// Declare Deno para o TypeScript, pois ele é global no ambiente Deno.
 declare const Deno: any;
 
-// Tipos para o payload recebido do frontend (CheckoutPage)
-interface SaleProductItemFromFrontend {
-  productId: string;
-  name: string;
-  quantity: number;
-  priceInCents: number; 
-  originalPriceInCents: number; 
-  isOrderBump?: boolean; 
-  isUpsell?: boolean; 
-  deliveryUrl?: string;
-  slug?: string; 
-}
+const PUSH_IN_PAY_FIXED_FEE_IN_CENTS = 30; 
 
-interface FrontendPixAndSalePayload {
-  value: number; // Valor total da transação em centavos (já com descontos, order bumps)
-  originalValueBeforeDiscount: number; // Valor original antes de descontos, mas com order bumps
-  webhook_url: string; // Para PushInPay
+// Interface para o payload DENTRO do corpo da requisição da Edge Function
+interface PixGenerationRequestPayload {
+  value: number; 
+  originalValueBeforeDiscount: number; 
+  webhook_url: string;
   customerName: string;
   customerEmail: string;
   customerWhatsapp: string;
-  products: SaleProductItemFromFrontend[]; 
-  trackingParameters?: Record<string, string>;
+  products: Array<{ 
+    productId: string;
+    name: string;
+    quantity: number;
+    priceInCents: number;
+    originalPriceInCents: number;
+    isUpsell?: boolean; 
+    deliveryUrl?: string | null; 
+    slug?: string | null; 
+  }>;
+  trackingParameters?: Record<string, string | null>; // Allow null for UTM params
   couponCodeUsed?: string;
-  discountAppliedInCents?: number; // Valor do desconto total aplicado
-  // --- Campos adicionais para criar o registro de Sale ---
-  platformUserId: string; // ID do dono do produto/venda
-  paymentMethod: "pix"; // Fixo para esta função
-  ip?: string; // Opcional, IP do cliente
-  // isUpsellTransaction e originalSaleId são para o fluxo de upsell, não tratados aqui primariamente mas podem vir no payload.
+  discountAppliedInCents?: number;
   isUpsellTransaction?: boolean; 
-  originalSaleId?: string;  
+  originalSaleId?: string;       
+  buyerId?: string; 
 }
 
-interface RequestBody {
-  payload: FrontendPixAndSalePayload;
-  productOwnerUserId: string; // Redundante se já estiver em payload.platformUserId, mas mantemos por consistência com o request atual
+interface EdgeFunctionRequestBody {
+  payload: PixGenerationRequestPayload;
+  productOwnerUserId: string;
+  saleId: string; 
 }
 
-// --- Tipos para a PushInPay ---
 interface PushInPaySplitRule {
   account_id: string;
-  value: number; // em centavos
+  value: number; 
 }
 interface PushInPayApiRequestBody {
-  value: number; // em centavos
+  value: number; 
   webhook_url: string;
   split_rules?: PushInPaySplitRule[];
 }
 interface PushInPayEssentialPixData {
-    id: string; // ID da transação PIX
+    id: string; 
     qr_code: string;
     qr_code_base64: string;
-    status: string; // Status inicial da PushInPay
-    value: number;  // Valor do PIX gerado
+    status: string; 
+    value: number;  
 }
-interface PushInPayFullApiResponse { // Resposta completa da PushInPay
+interface PushInPayFullApiResponse { 
     data?: PushInPayEssentialPixData; 
     id?: string; qr_code?: string; qr_code_base64?: string; status?: string; value?: number;
     success?: boolean; message?: string; errors?: any;
 }
 
-// --- Tipos para a resposta da Edge Function ---
-interface GerarPixFunctionResponse {
+interface GerarPixEdgeFunctionResponse {
   success: boolean;
-  data?: PushInPayEssentialPixData; // Dados do PIX
-  saleId?: string;                   // ID da venda criada no DB
+  data?: PushInPayEssentialPixData; 
+  saleId?: string;                   
   message?: string;
 }
 
-// Helper para obter a constante de moeda padrão
-const DEFAULT_CURRENCY_CONST = "BRL";
+interface UtmifyOrderPayloadForWaitingPayment {
+    orderId: string;
+    platform: string;
+    paymentMethod: "pix" | "credit_card" | "boleto";
+    status: "waiting_payment" | "paid" | "refused" | "refunded" | "chargedback";
+    createdAt: string;
+    approvedDate: string | null;
+    customer: {
+        name: string;
+        email: string;
+        whatsapp: string;
+        phone: string | null;
+        document: string | null;
+        ip?: string | null; 
+    };
+    products: Array<{
+        id: string;
+        name: string;
+        quantity: number;
+        priceInCents: number;
+        planId: string; 
+        planName: string;
+    }>;
+    trackingParameters: {
+        src: string | null;
+        sck: string | null;
+        utm_campaign: string | null;
+        utm_content: string | null;
+        utm_medium: string | null;
+        utm_source: string | null;
+        utm_term: string | null;
+    };
+    commission?: {
+        totalPriceInCents: number;
+        gatewayFeeInCents: number;
+        userCommissionInCents: number;
+        currency: string;
+    };
+    isTest?: boolean;
+    couponCodeUsed?: string | null;
+    discountAppliedInCents?: number | null;
+    originalAmountBeforeDiscountInCents?: number;
+    isUpsellTransaction?: boolean; 
+    originalSaleId?: string;      
+}
+
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -89,59 +126,91 @@ serve(async (req: Request) => {
   }
 
   let productOwnerUserIdForLogging: string | undefined;
+  let saleIdForLogging: string | undefined;
 
   try {
-    const requestBody: RequestBody = await req.json();
-    const { payload: frontendPayload, productOwnerUserId } = requestBody;
-    // Se productOwnerUserId não vier no corpo, usar o de payload.platformUserId
-    productOwnerUserIdForLogging = productOwnerUserId || frontendPayload.platformUserId;
+    const requestBody: EdgeFunctionRequestBody = await req.json();
+    const { payload, productOwnerUserId, saleId } = requestBody;
+    const { value: amountForPixFromPayload, isUpsellTransaction = false } = payload; // Ensure default for isUpsellTransaction
+    
+    productOwnerUserIdForLogging = productOwnerUserId;
+    saleIdForLogging = saleId; 
 
-    console.log(`[gerar-pix] Iniciando para productOwnerUserId: ${productOwnerUserIdForLogging}`);
-    console.log("[gerar-pix] Payload recebido do frontend:", JSON.stringify(frontendPayload, null, 2));
-
-    if (!productOwnerUserIdForLogging) {
-      throw new Error("ID do vendedor (productOwnerUserId ou payload.platformUserId) é obrigatório.");
-    }
-    if (!frontendPayload || typeof frontendPayload.value !== 'number' || frontendPayload.value <= 0) {
-      throw new Error("Payload da requisição inválido ou valor do PIX (payload.value) ausente/inválido.");
-    }
+    console.log(`[gerar-pix EF] Iniciando. Sale ID (Principal): ${saleId}, Owner: ${productOwnerUserId}, Amount (Payload): ${amountForPixFromPayload}, IsUpsell: ${isUpsellTransaction}`);
+    
+    if (!saleId) throw new Error("ID da Venda (saleId) é obrigatório.");
+    if (!productOwnerUserId) throw new Error("ID do vendedor (productOwnerUserId) é obrigatório.");
+    if (typeof amountForPixFromPayload !== 'number' || amountForPixFromPayload <= 0) throw new Error("Valor do PIX (payload.value) ausente/inválido.");
+    if (!payload.customerName || !payload.customerEmail || !payload.customerWhatsapp) throw new Error("Detalhes do cliente obrigatórios.");
+    if (!payload.webhook_url) throw new Error("Webhook URL é obrigatória.");
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     if (!supabaseUrl || !serviceRoleKey) throw new Error("Variáveis de ambiente SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não configuradas.");
     const adminClient = createClient<Database>(supabaseUrl, serviceRoleKey);
 
-    // 1. Buscar configurações do vendedor e da plataforma (paralelamente)
+    const { data: saleRecord, error: saleFetchError } = await adminClient
+      .from('sales')
+      .select('id, total_amount_in_cents, status, platform_user_id, upsell_status, upsell_push_in_pay_transaction_id, created_at, customer_name, customer_email, customer_whatsapp, customer_ip, tracking_parameters, products, original_amount_before_discount_in_cents, discount_applied_in_cents, coupon_code_used, platform_commission_in_cents')
+      .eq('id', saleId)
+      .eq('platform_user_id', productOwnerUserId)
+      .single();
+
+    if (saleFetchError) throw new Error(`Erro ao buscar registro de venda ${saleId}: ${saleFetchError.message}`);
+    if (!saleRecord) throw new Error(`Venda com ID ${saleId} não encontrada para o vendedor ${productOwnerUserId}.`);
+
+    let finalAmountForPix: number;
+    let transactionIdFieldToUpdateDb: 'push_in_pay_transaction_id' | 'upsell_push_in_pay_transaction_id';
+    let statusFieldToUpdateDb: 'status' | 'upsell_status';
+    let amountFieldToStoreInDb: 'total_amount_in_cents' | 'upsell_amount_in_cents' | null = null;
+
+    if (isUpsellTransaction) {
+        console.log(`[gerar-pix EF] É uma transação de UPSELL para a venda original ${saleId}.`);
+        if (saleRecord.status !== 'paid') throw new Error(`Venda original ${saleId} não está paga (status: ${saleRecord.status}). Não é possível gerar PIX de upsell.`);
+        if (saleRecord.upsell_status && !['waiting_payment', 'failed', 'expired', 'cancelled'].includes(saleRecord.upsell_status)) {
+            if (saleRecord.upsell_status === 'paid' && saleRecord.upsell_push_in_pay_transaction_id) {
+                 console.warn(`[gerar-pix EF] Upsell para a venda ${saleId} já foi pago (TX ID: ${saleRecord.upsell_push_in_pay_transaction_id}). Nova tentativa de PIX bloqueada.`);
+                 throw new Error(`Um upsell para esta venda já foi pago.`);
+            }
+        }
+        finalAmountForPix = amountForPixFromPayload;
+        transactionIdFieldToUpdateDb = 'upsell_push_in_pay_transaction_id';
+        statusFieldToUpdateDb = 'upsell_status';
+        amountFieldToStoreInDb = 'upsell_amount_in_cents';
+    } else {
+        console.log(`[gerar-pix EF] É uma transação de VENDA PRINCIPAL.`);
+        if (saleRecord.status !== 'waiting_payment') throw new Error(`Venda ${saleId} não está aguardando pagamento (status: ${saleRecord.status}). Não é possível gerar novo PIX.`);
+        finalAmountForPix = saleRecord.total_amount_in_cents;
+        if (finalAmountForPix !== amountForPixFromPayload) console.warn(`[gerar-pix EF] Divergência de valor para venda principal ${saleId}. No DB: ${finalAmountForPix}, Recebido: ${amountForPixFromPayload}. Usando valor do DB.`);
+        transactionIdFieldToUpdateDb = 'push_in_pay_transaction_id';
+        statusFieldToUpdateDb = 'status';
+    }
+
     const [sellerSettingsResult, platformSettingsResult] = await Promise.all([
-        adminClient.from('app_settings').select('api_tokens').eq('platform_user_id', productOwnerUserIdForLogging).single(),
+        adminClient.from('app_settings').select('api_tokens').eq('platform_user_id', productOwnerUserId).single(),
         adminClient.from('platform_settings').select('platform_commission_percentage, platform_fixed_fee_in_cents, platform_account_id_push_in_pay').eq('id', 'global').single()
     ]);
 
-    if (sellerSettingsResult.error) throw new Error(`Erro ao buscar config. do vendedor: ${sellerSettingsResult.error.message}`);
-    if (!sellerSettingsResult.data) throw new Error(`Config. de API não encontradas para vendedor ${productOwnerUserIdForLogging}.`);
+    if (sellerSettingsResult.error || !sellerSettingsResult.data) throw new Error(`Erro/Config. do vendedor não encontradas: ${sellerSettingsResult.error?.message}`);
     const sellerApiTokens = sellerSettingsResult.data.api_tokens as any;
-    const pushinPayToken = sellerApiTokens?.pushinPay;
-    if (!(sellerApiTokens?.pushinPayEnabled)) throw new Error('Pagamento PIX (PushInPay) não habilitado para este vendedor.');
-    if (!pushinPayToken) throw new Error('Token PushInPay não configurado para este vendedor.');
+    if (!sellerApiTokens?.pushinPayEnabled || !sellerApiTokens?.pushinPay) throw new Error('PushInPay não habilitado ou token não configurado para o vendedor.');
 
-    if (platformSettingsResult.error) throw new Error(`Erro ao buscar config. da plataforma: ${platformSettingsResult.error.message}`);
-    if (!platformSettingsResult.data) throw new Error('Config. globais da plataforma não encontradas.');
+    if (platformSettingsResult.error || !platformSettingsResult.data) throw new Error(`Erro/Config. da plataforma não encontradas: ${platformSettingsResult.error?.message}`);
     const platformSettingsData = platformSettingsResult.data;
 
-    // 2. Preparar e chamar API da PushInPay para gerar PIX
-    const pushInPayApiRequestBody: PushInPayApiRequestBody = { value: frontendPayload.value, webhook_url: frontendPayload.webhook_url };
-    if (platformSettingsData.platform_account_id_push_in_pay) {
-      const totalAmount = frontendPayload.value;
-      let platformCommission = Math.round(totalAmount * (platformSettingsData.platform_commission_percentage ?? 0)) + (platformSettingsData.platform_fixed_fee_in_cents ?? 0);
-      platformCommission = Math.min(platformCommission, totalAmount);
-      platformCommission = Math.max(0, platformCommission);
-      if (platformCommission > 0) {
-        pushInPayApiRequestBody.split_rules = [{ account_id: platformSettingsData.platform_account_id_push_in_pay, value: platformCommission }];
-      }
+    const pushInPayApiRequestBody: PushInPayApiRequestBody = { value: finalAmountForPix, webhook_url: payload.webhook_url };
+    
+    const basePlatformCommission = Math.round(finalAmountForPix * (platformSettingsData.platform_commission_percentage ?? 0)) + (platformSettingsData.platform_fixed_fee_in_cents ?? 0);
+    let totalPlatformShareForPushInPay = basePlatformCommission + PUSH_IN_PAY_FIXED_FEE_IN_CENTS;
+    totalPlatformShareForPushInPay = Math.max(0, Math.min(totalPlatformShareForPushInPay, finalAmountForPix)); 
+
+    if (platformSettingsData.platform_account_id_push_in_pay && totalPlatformShareForPushInPay > 0) {
+        pushInPayApiRequestBody.split_rules = [{ account_id: platformSettingsData.platform_account_id_push_in_pay, value: totalPlatformShareForPushInPay }];
+        console.log(`[gerar-pix EF] Split configurado para PushInPay: ${totalPlatformShareForPushInPay} centavos para conta ${platformSettingsData.platform_account_id_push_in_pay}`);
     }
     
     const pushinPayResponse = await fetch('https://api.pushinpay.com.br/api/pix/cashIn', {
-        method: 'POST', headers: { 'Authorization': `Bearer ${pushinPayToken}`, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        method: 'POST', headers: { 'Authorization': `Bearer ${sellerApiTokens.pushinPay}`, 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify(pushInPayApiRequestBody)
     });
     const pushinPayParsedResponse: PushInPayFullApiResponse = await pushinPayResponse.json();
@@ -150,84 +219,98 @@ serve(async (req: Request) => {
     let extractedPixData: PushInPayEssentialPixData | null = null;
     if (pushinPayParsedResponse.data?.id) extractedPixData = pushinPayParsedResponse.data;
     else if (pushinPayParsedResponse.id) extractedPixData = { id: pushinPayParsedResponse.id, qr_code: pushinPayParsedResponse.qr_code!, qr_code_base64: pushinPayParsedResponse.qr_code_base64!, status: pushinPayParsedResponse.status!, value: pushinPayParsedResponse.value! };
-    if (!extractedPixData) throw new Error('Resposta inválida do gateway ao gerar PIX (dados essenciais ausentes).');
+    if (!extractedPixData) throw new Error('Resposta inválida do gateway ao gerar PIX.');
     
     let rawBase64String = extractedPixData.qr_code_base64;
     const dataUriPrefix = "data:image/png;base64,";
     if (rawBase64String.startsWith(dataUriPrefix)) rawBase64String = rawBase64String.substring(dataUriPrefix.length);
 
-    // 3. Calcular comissão e preparar dados da venda para inserção
-    const gatewayFeeInCents = 0; // Assumindo que não há taxa de gateway separada da PushInPay para este cálculo
-    const platformCommissionBase = frontendPayload.value - gatewayFeeInCents;
-    const platformCommissionCalculated = Math.round(platformCommissionBase * (platformSettingsData.platform_commission_percentage ?? 0)) + (platformSettingsData.platform_fixed_fee_in_cents ?? 0);
-    const userNetRevenue = platformCommissionBase - platformCommissionCalculated;
-
-    const saleToInsert: Database['public']['Tables']['sales']['Insert'] = {
-      platform_user_id: productOwnerUserIdForLogging,
-      push_in_pay_transaction_id: extractedPixData.id,
-      // upsell_push_in_pay_transaction_id: Não aplicável aqui, seria em outra chamada
-      // order_id_urmify: Será preenchido após envio para UTMify, se aplicável
-      products: frontendPayload.products as unknown as DbJson, // Cast necessário
-      customer_name: frontendPayload.customerName,
-      customer_email: frontendPayload.customerEmail,
-      customer_ip: frontendPayload.ip,
-      customer_whatsapp: frontendPayload.customerWhatsapp,
-      payment_method: frontendPayload.paymentMethod,
-      status: "waiting_payment", // Status inicial
-      // upsell_status: Não aplicável aqui
-      total_amount_in_cents: frontendPayload.value,
-      // upsell_amount_in_cents: Não aplicável aqui
-      original_amount_before_discount_in_cents: frontendPayload.originalValueBeforeDiscount,
-      discount_applied_in_cents: frontendPayload.discountAppliedInCents,
-      coupon_code_used: frontendPayload.couponCodeUsed,
-      tracking_parameters: frontendPayload.trackingParameters as unknown as DbJson,
-      platform_commission_in_cents: platformCommissionCalculated,
-      commission_total_price_in_cents: platformCommissionBase,
-      commission_gateway_fee_in_cents: gatewayFeeInCents,
-      commission_user_commission_in_cents: userNetRevenue,
-      commission_currency: DEFAULT_CURRENCY_CONST,
-      created_at: new Date().toISOString(),
+    const saleUpdatePayload: Partial<Database['public']['Tables']['sales']['Update']> = { 
+      [transactionIdFieldToUpdateDb]: extractedPixData.id,
+      [statusFieldToUpdateDb]: "waiting_payment",
       updated_at: new Date().toISOString(),
     };
-
-    console.log("[gerar-pix] Dados para inserção na tabela 'sales':", JSON.stringify(saleToInsert, null, 2));
-
-    const { data: createdSaleRecord, error: saleInsertError } = await adminClient
-      .from('sales')
-      .insert(saleToInsert)
-      .select('id') // Seleciona apenas o ID da venda criada
-      .single();
-
-    if (saleInsertError) {
-      console.error("[gerar-pix] Erro ao inserir venda no banco de dados:", saleInsertError);
-      // Considerar lógica de compensação se PIX foi gerado mas venda falhou (ex: cancelar PIX?)
-      throw new Error(`Falha ao registrar a venda no sistema: ${saleInsertError.message}`);
+    if (amountFieldToStoreInDb && isUpsellTransaction) { 
+        saleUpdatePayload[amountFieldToStoreInDb] = finalAmountForPix;
     }
-    if (!createdSaleRecord || !createdSaleRecord.id) {
-      throw new Error("Falha ao registrar a venda: ID da venda não retornado após inserção.");
-    }
-    console.log(`[gerar-pix] Venda registrada com sucesso. ID da Venda: ${createdSaleRecord.id}`);
     
-    // 4. Retornar dados do PIX e ID da venda para o frontend
-    const finalFrontendResponse: GerarPixFunctionResponse = {
-        success: true,
-        data: { ...extractedPixData, qr_code_base64: rawBase64String },
-        saleId: createdSaleRecord.id,
-        message: "PIX gerado e venda registrada com sucesso."
-    };
-    console.log("[gerar-pix] Resposta final para o frontend:", JSON.stringify(finalFrontendResponse, null, 2));
+    if (!isUpsellTransaction) { // Only store full platform commission for main sale
+        saleUpdatePayload.platform_commission_in_cents = totalPlatformShareForPushInPay;
+    }
+    
+    console.log(`[gerar-pix EF] Atualizando venda ${saleId} com:`, saleUpdatePayload);
+    const { error: saleUpdateError } = await adminClient
+      .from('sales')
+      .update(saleUpdatePayload as Database['public']['Tables']['sales']['Update']) 
+      .eq('id', saleId);
 
-    return new Response(JSON.stringify(finalFrontendResponse), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
-    });
+    if (saleUpdateError) {
+      console.error(`[gerar-pix EF] Erro ao atualizar venda ${saleId}:`, saleUpdateError);
+      throw new Error(`Falha ao atualizar a venda com informações do PIX: ${saleUpdateError.message}`);
+    }
+    console.log(`[gerar-pix EF] Venda ${saleId} atualizada com sucesso.`);
+
+    console.log(`[gerar-pix EF] Preparando evento 'waiting_payment' para UTMify (venda ${saleId}, upsell: ${isUpsellTransaction}).`);
+    const productsForUtmify = (isUpsellTransaction ? payload.products : (saleRecord.products as unknown as PixGenerationRequestPayload['products'])).map(p => ({
+        id: p.productId, name: p.name, quantity: p.quantity, priceInCents: p.priceInCents,
+        planId: p.productId, planName: p.name,    
+    }));
+
+    const trackingParamsFromDb = saleRecord.tracking_parameters as any;
+
+    const utmifyPayloadForWaitingPayment: UtmifyOrderPayloadForWaitingPayment = {
+        orderId: isUpsellTransaction ? `${saleRecord.id}-upsell-${Date.now()}` : saleRecord.id,
+        platform: "1Checkout", paymentMethod: "pix", status: "waiting_payment",
+        createdAt: saleRecord.created_at, approvedDate: null,
+        customer: {
+            name: saleRecord.customer_name, email: saleRecord.customer_email,
+            whatsapp: saleRecord.customer_whatsapp, phone: saleRecord.customer_whatsapp || null,
+            document: null, ip: saleRecord.customer_ip || null, 
+        },
+        products: productsForUtmify,
+        trackingParameters: {
+            src: payload.trackingParameters?.src || trackingParamsFromDb?.src || null,
+            sck: payload.trackingParameters?.sck || trackingParamsFromDb?.sck || null,
+            utm_source: payload.trackingParameters?.utm_source || trackingParamsFromDb?.utm_source || null,
+            utm_medium: payload.trackingParameters?.utm_medium || trackingParamsFromDb?.utm_medium || null,
+            utm_campaign: payload.trackingParameters?.utm_campaign || trackingParamsFromDb?.utm_campaign || null,
+            utm_term: payload.trackingParameters?.utm_term || trackingParamsFromDb?.utm_term || null,
+            utm_content: payload.trackingParameters?.utm_content || trackingParamsFromDb?.utm_content || null,
+        },
+        commission: {
+            totalPriceInCents: finalAmountForPix, 
+            gatewayFeeInCents: totalPlatformShareForPushInPay, // This now includes the 30-cent fee for both main and upsell
+            userCommissionInCents: finalAmountForPix - totalPlatformShareForPushInPay,
+            currency: "BRL",
+        },
+        isTest: false,
+        couponCodeUsed: isUpsellTransaction ? null : saleRecord.coupon_code_used || null, 
+        discountAppliedInCents: isUpsellTransaction ? null : saleRecord.discount_applied_in_cents || null, 
+        originalAmountBeforeDiscountInCents: isUpsellTransaction ? finalAmountForPix : saleRecord.original_amount_before_discount_in_cents,
+        isUpsellTransaction: isUpsellTransaction,
+        originalSaleId: isUpsellTransaction ? saleRecord.id : undefined,
+    };
+
+    console.log(`[gerar-pix EF] Invocando 'send-utmify-event' para venda ${saleRecord.id} (upsell: ${isUpsellTransaction})...`);
+    const { error: utmifyWaitingError } = await adminClient.functions.invoke(
+        'send-utmify-event',
+        { body: { payload: utmifyPayloadForWaitingPayment, productOwnerUserId: saleRecord.platform_user_id } }
+    );
+    if (utmifyWaitingError) console.warn(`[gerar-pix EF] Falha ao enviar evento 'waiting_payment' para UTMify (venda ${saleRecord.id}, upsell: ${isUpsellTransaction}):`, utmifyWaitingError.message);
+    else console.log(`[gerar-pix EF] Evento 'waiting_payment' para UTMify enviado com sucesso (venda ${saleRecord.id}, upsell: ${isUpsellTransaction}).`);
+    
+    const finalFrontendResponse: GerarPixEdgeFunctionResponse = {
+        success: true, data: { ...extractedPixData, qr_code_base64: rawBase64String },
+        saleId: saleId, message: "PIX gerado e venda atualizada com sucesso."
+    };
+    return new Response(JSON.stringify(finalFrontendResponse), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
 
   } catch (err: any) {
-    console.error(`[gerar-pix] Erro CAPTURADO na Edge Function para vendedor ${productOwnerUserIdForLogging || 'desconhecido'}:`, err.message, err.stack);
-    const clientErrorMessage = err.message || "Ocorreu um erro interno ao tentar gerar o PIX.";
+    console.error(`[gerar-pix EF] ERRO CAPTURADO (Owner: ${productOwnerUserIdForLogging || 'N/A'}, Sale: ${saleIdForLogging || 'N/A'}):`, err.message, err.stack);
+    const clientErrorMessage = err.message || "Ocorreu um erro interno.";
     return new Response(JSON.stringify({ success: false, message: clientErrorMessage }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: err.message.startsWith("Gateway de Pagamento:") ? 402 : (err.message.includes("não encontrado") ? 404 : 400) 
+        status: err.message.startsWith("Gateway de Pagamento:") ? 402 : (err.message.includes("não encontrado") || err.message.includes("obrigatório")) ? 400 : 500 
     });
   }
 })

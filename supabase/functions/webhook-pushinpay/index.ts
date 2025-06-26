@@ -25,19 +25,13 @@ serve(async (req: Request) => {
   let webhookTxIdForLogging: string | undefined;
 
   try {
-    // MUDANÇA CRÍTICA: Trocando req.json() por req.formData() para ler dados de formulário
-    const formData = await req.formData();
-    
-    // Convertendo formData para um objeto para facilitar o log
-    const formDataObject: { [key: string]: any } = {};
-    for (const [key, value] of formData.entries()) {
-      formDataObject[key] = value;
-    }
-    console.log("[webhook-pushinpay] Received webhook form data:", JSON.stringify(formDataObject, null, 2));
+    // A maioria dos webhooks modernos usa JSON. Revertendo para req.json() para maior compatibilidade.
+    const webhookBody = await req.json();
+    console.log("[webhook-pushinpay] Received webhook body:", JSON.stringify(webhookBody, null, 2));
 
-    // Agora pegamos os dados do formulário, não de um objeto JSON complexo
-    // Verifique na documentação do PushInPay os nomes exatos dos campos. Ex: 'transaction_id' ou 'id'.
-    const transactionId = formData.get('transaction_id') as string || formData.get('id') as string;
+    // O corpo do webhook da PushInPay pode ter formatos diferentes.
+    // Vamos tentar extrair o transaction_id de forma robusta.
+    const transactionId = webhookBody?.transaction_id || webhookBody?.id || webhookBody?.data?.id;
     
     webhookTxIdForLogging = transactionId;
 

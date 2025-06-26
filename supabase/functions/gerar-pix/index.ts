@@ -1,4 +1,3 @@
-
 // Caminho: supabase/functions/gerar-pix/index.ts
 
 // @ts-ignore
@@ -151,7 +150,7 @@ serve(async (req: Request) => {
     const initialSaleRecord: Database['public']['Tables']['sales']['Insert'] = {
       buyer_id: payload.buyerId,
       platform_user_id: productOwnerUserId,
-      push_in_pay_transaction_id: 'PENDING_GENERATION', // Placeholder
+      push_in_pay_transaction_id: `PENDING_${crypto.randomUUID()}`, // Placeholder ÚNICO para evitar colisões
       products: payload.products as unknown as Json,
       customer_name: payload.customerName,
       customer_email: payload.customerEmail,

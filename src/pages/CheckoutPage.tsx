@@ -514,6 +514,7 @@ const CheckoutPage: React.FC = () => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pixData, setPixData] = useState<PushInPayPixResponseData | null>(null);
+  const [currentSaleId, setCurrentSaleId] = useState<string | null>(null); // State to hold the sale ID
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | null>(null);
   const paymentStatusRef = useRef<PaymentStatus | null>(null); 
   
@@ -582,7 +583,7 @@ useEffect(() => {
       setOrderBumpContentTextColor(getOptimalTextColor(finalResolvedHex, { lightColor: '#FFFFFF', darkColor: '#E0E0E0' }));
       const darkModalBg = '#1A1A1E'; 
       setUpsellModalTitleColor(getOptimalTextColor(darkModalBg, { lightColor: '#FFFFFF', darkColor: '#E0E0E0' }));
-      setUpsellModalDescColor(getOptimalTextColor(darkModalBg, { lightColor: '#E0E0E0', darkColor: '#A0A0B0' }));
+      setUpsellModalDescColor(getOptimalTextColor(darkModalBg, { lightColor: '#E0E0E0', darkColor: '#A0A0A0' }));
     }
   }, [primaryColorStyle, currentTheme]);
 
@@ -653,21 +654,22 @@ useEffect(() => {
   }, [product, appliedCoupon, selectedTraditionalOrderBumps, postClickOfferDecision]);
 
   const checkPaymentStatus = useCallback(async (txId: string) => {
-    if (!product?.platformUserId || !pixData?.id) return; let mappedStatus: PaymentStatus | null = null;
+    if (!product?.platformUserId || !currentSaleId) return;
+    let mappedStatus: PaymentStatus | null = null;
     try {
-      const { data: statusRes, error: funcErr } = await supabase.functions.invoke('verificar-status-pix', { body: { transactionId: txId, productOwnerUserId: product.platformUserId, saleId: pixData.id } });
+      const { data: statusRes, error: funcErr } = await supabase.functions.invoke('verificar-status-pix', { body: { transactionId: txId, productOwnerUserId: product.platformUserId, saleId: currentSaleId } });
       if (funcErr || !statusRes || !statusRes.success || !statusRes.data) throw new Error(statusRes?.message || funcErr?.message || "Falha ao verificar status do PIX.");
       const rawStatus = statusRes.data.status.toLowerCase();
       switch (rawStatus) { case 'paid': case 'approved': mappedStatus = PaymentStatus.PAID; break; case 'created': case 'waiting_payment': case 'pending': case 'processing': mappedStatus = PaymentStatus.WAITING_PAYMENT; break; case 'expired': mappedStatus = PaymentStatus.EXPIRED; break; case 'cancelled': mappedStatus = PaymentStatus.CANCELLED; break; default: mappedStatus = PaymentStatus.FAILED; }
       setPaymentStatus(mappedStatus);
-      if (mappedStatus === PaymentStatus.PAID) { if (pollingIntervalTimerIdRef.current) clearTimeout(pollingIntervalTimerIdRef.current); setIsPollingPayment(false); setIsReadyToRedirect(true); setTimeout(() => navigate(`/thank-you/${pixData.id}?origProdId=${product.id}&csid=${checkoutSessionId}`), 2000); } 
+      if (mappedStatus === PaymentStatus.PAID) { if (pollingIntervalTimerIdRef.current) clearTimeout(pollingIntervalTimerIdRef.current); setIsPollingPayment(false); setIsReadyToRedirect(true); setTimeout(() => navigate(`/thank-you/${currentSaleId}?origProdId=${product.id}&csid=${checkoutSessionId}`), 2000); } 
       else if (mappedStatus !== PaymentStatus.WAITING_PAYMENT) { if (pollingIntervalTimerIdRef.current) clearTimeout(pollingIntervalTimerIdRef.current); setIsPollingPayment(false); setError(`Pagamento ${mappedStatus === PaymentStatus.EXPIRED ? 'expirou' : mappedStatus === PaymentStatus.CANCELLED ? 'foi cancelado' : 'falhou'}.`); }
     } catch (statusErr: any) { console.error("[CheckoutPage.checkPaymentStatus] Erro:", statusErr.message); if (paymentStatusRef.current !== PaymentStatus.PAID) setError("Erro ao verificar status do pagamento."); }
-  }, [product, pixData?.id, navigate, checkoutSessionId, user?.id ]);
+  }, [product, currentSaleId, navigate, checkoutSessionId, user?.id ]);
 
   const startPaymentPolling = useCallback((txId: string) => { setIsPollingPayment(true); pollingAttemptRef.current = 0; pollingStartTimeRef.current = Date.now(); const poll = async () => { if (Date.now() - pollingStartTimeRef.current > POLLING_TIMEOUT_DURATION) { setIsPollingPayment(false); if (paymentStatusRef.current !== PaymentStatus.PAID) { setError("Tempo para verificar PIX excedido."); } return; } await checkPaymentStatus(txId); if (paymentStatusRef.current === PaymentStatus.WAITING_PAYMENT || paymentStatusRef.current === null) { pollingAttemptRef.current++; const nextInterval = Math.min(POLLING_INITIAL_INTERVAL * Math.pow(1.5, pollingAttemptRef.current), POLLING_MAX_INTERVAL); pollingIntervalTimerIdRef.current = window.setTimeout(poll, nextInterval); } else { setIsPollingPayment(false); } }; poll(); }, [checkPaymentStatus, user?.id, checkoutSessionId ]);
   const handleManualCheck = useCallback(async () => { if (!pixData?.id || !canManuallyCheck || isManualChecking) return; setIsManualChecking(true); setCanManuallyCheck(false); await checkPaymentStatus(pixData.id); setIsManualChecking(false); if (manualCheckTimeoutRef.current) clearTimeout(manualCheckTimeoutRef.current); manualCheckTimeoutRef.current = window.setTimeout(() => setCanManuallyCheck(true), MANUAL_CHECK_COOLDOWN_MS); }, [pixData, canManuallyCheck, isManualChecking, checkPaymentStatus]);
-  const handleProceedToThankYou = useCallback(() => { if (pixData?.id && product?.id) { navigate(`/thank-you/${pixData.id}?origProdId=${product.id}&csid=${checkoutSessionId}`); } }, [pixData, product, navigate, checkoutSessionId]);
+  const handleProceedToThankYou = useCallback(() => { if (currentSaleId && product?.id) { navigate(`/thank-you/${currentSaleId}?origProdId=${product.id}&csid=${checkoutSessionId}`); } }, [currentSaleId, product, navigate, checkoutSessionId]);
 
   useEffect(() => { if (!slug) { setError("Produto não especificado."); setIsPageLoading(false); return; } const fetchProductData = async () => { setIsPageLoading(true); setError(null); const cacheKey = `product_${slug}`; const cached = productDataCache.get(cacheKey); if (cached && Date.now() - cached.timestamp < PRODUCT_CACHE_TTL) { setProduct(cached.data); if (cached.data.platformUserId) setAppSettings(await settingsService.getAppSettingsByUserId(cached.data.platformUserId, null)); setCurrentTheme(cached.data.checkoutCustomization?.theme || 'light'); setIsPageLoading(false); return; } try { const fetchedProductData = await productService.getProductBySlug(slug, null); setProduct(fetchedProductData || null); if (!fetchedProductData) { setError("Produto não encontrado ou indisponível."); setIsPageLoading(false); return; } productDataCache.set(cacheKey, { data: fetchedProductData, timestamp: Date.now() }); if (fetchedProductData.platformUserId) setAppSettings(await settingsService.getAppSettingsByUserId(fetchedProductData.platformUserId, null)); setCurrentTheme(fetchedProductData.checkoutCustomization?.theme || 'light'); } catch (err: any) { setError(err.message || "Erro ao carregar dados do produto."); }  finally { setIsPageLoading(false); } }; fetchProductData(); }, [slug]);
   
@@ -751,7 +753,11 @@ useEffect(() => {
       const { data: pixFuncRes, error: funcErr } = await supabase.functions.invoke<GerarPixEdgeFunctionResponse>('gerar-pix', { body: { payload: pixRequestPayload, productOwnerUserId: product.platformUserId, saleId: createdSale.id } });
       if (funcErr) { let msg = "Falha ao gerar PIX."; if (typeof funcErr.message === 'string') { try { const parsed = JSON.parse(funcErr.message); msg = parsed?.error || parsed?.message || funcErr.message; } catch (e) { msg = funcErr.message; } } throw new Error(msg); }
       if (!pixFuncRes || !pixFuncRes.success || !pixFuncRes.data) { throw new Error(pixFuncRes?.message || "Resposta inválida do servidor PIX."); }
-      startTransition(() => { setPixData(pixFuncRes.data || null); setPaymentStatus(PaymentStatus.WAITING_PAYMENT); });
+      startTransition(() => { 
+        setPixData(pixFuncRes.data || null); 
+        setCurrentSaleId(pixFuncRes.saleId || null);
+        setPaymentStatus(PaymentStatus.WAITING_PAYMENT); 
+      });
       startPaymentPolling(pixFuncRes.data.id);
     } catch (paymentError: any) { setError(paymentError.message || "Erro desconhecido ao processar PIX."); console.error("[proceedToPixGeneration] Error:", paymentError);
     } finally { 
@@ -764,22 +770,16 @@ useEffect(() => {
   const handleInitiatePayment = async () => {
     if (!product) return;
     setError(null);
-    // Não resetar setPostClickOfferDecision aqui, pois queremos que ele persista se o PCO foi aceito/rejeitado
-    // e o usuário precise tentar o pagamento novamente. A decisão só deve ser resetada
-    // antes de mostrar o modal do PCO.
-
     if (product.postClickOffer && product.postClickOffer.productId && postClickOfferDecision === null) {
-        // Se tem PCO e ainda não foi decidido, mostra o modal.
         setShowPostClickOfferModal(true);
         return; 
     }
-    // Se não tem PCO, ou se já foi decidido (accepted/rejected), prossegue direto para o PIX.
     setIsSubmitting(true); 
-    await proceedToPixGeneration(postClickOfferDecision); // Passa a decisão atual
+    await proceedToPixGeneration(postClickOfferDecision);
   };
 
   const handleAcceptPostClickOffer = async () => {
-    setPostClickOfferDecision('accepted'); // Definir decisão ANTES de prosseguir
+    setPostClickOfferDecision('accepted');
     setShowPostClickOfferModal(false);
     setIsProcessingPostClickOffer(true); 
     try {
@@ -790,7 +790,7 @@ useEffect(() => {
   };
   
   const handleDeclinePostClickOffer = async () => {
-    setPostClickOfferDecision('rejected'); // Definir decisão ANTES de prosseguir
+    setPostClickOfferDecision('rejected');
     setShowPostClickOfferModal(false);
     setIsProcessingPostClickOffer(true);
     try {

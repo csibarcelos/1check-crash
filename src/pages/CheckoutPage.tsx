@@ -3,7 +3,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo, startTransiti
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Product, PaymentStatus, Coupon, PushInPayPixResponseData, AppSettings, PaymentMethod, SaleProductItem } from '@/types';
 import { productService } from '@/services/productService';
-import { salesService, CreateSaleRecordPayload } from '@/services/salesService'; 
+import { salesService } from '@/services/salesService'; 
 import { buyerService } from '@/services/buyerService';
 import { abandonedCartService, CreateAbandonedCartPayload } from '@/services/abandonedCartService';
 import { Button } from '@/components/ui/Button';
@@ -702,10 +702,6 @@ useEffect(() => {
     const utms = extractUtmParamsFromUrl();
     const buyerId = uuidv4();
 
-    try {
-      await buyerService.createBuyer({ id: buyerId, sessionId: checkoutSessionId, authUserId: user?.id, email: formState.customerEmail.trim(), name: formState.customerName.trim(), whatsapp: `${formState.customerWhatsappCountryCode}${formState.rawWhatsappNumber.replace(/\D/g, '')}`, });
-    } catch (buyerError: any) { setError(`Erro ao registrar comprador: ${buyerError.message}`); setIsSubmitting(false); setIsProcessingPostClickOffer(false); return; }
-
     const saleProducts: SaleProductItem[] = [{ productId: product.id, name: product.name, quantity: 1, priceInCents: product.priceInCents, originalPriceInCents: product.priceInCents, slug: product.slug, deliveryUrl: product.deliveryUrl }];
     
     product.orderBumps?.forEach(ob => {
@@ -747,12 +743,26 @@ useEffect(() => {
     const finalPriceForPix = Math.max(0, priceForPixCalculation - discountForPixCalculation);
 
     try {
-      const saleRecordPayload: CreateSaleRecordPayload = { buyerId, platformUserId: product.platformUserId, products: saleProducts, customer: { name: formState.customerName.trim(), email: formState.customerEmail.trim(), whatsapp: `${formState.customerWhatsappCountryCode}${formState.rawWhatsappNumber.replace(/\D/g, '')}`, ip: 'CAPTURA_PENDENTE' }, paymentMethod: PaymentMethod.PIX, status: PaymentStatus.WAITING_PAYMENT, totalAmountInCents: finalPriceForPix, originalAmountBeforeDiscountInCents: originalPriceForPixCalculation, discountAppliedInCents: discountForPixCalculation || undefined, couponCodeUsed: appliedCoupon?.code || undefined, trackingParameters: utms, };
-      const createdSale = await salesService.createSaleRecord(saleRecordPayload, null);
-      const pixRequestPayload = { value: finalPriceForPix, originalValueBeforeDiscount: originalPriceForPixCalculation, webhook_url: MOCK_WEBHOOK_URL, customerName: formState.customerName.trim(), customerEmail: formState.customerEmail.trim(), customerWhatsapp: `${formState.customerWhatsappCountryCode}${formState.rawWhatsappNumber.replace(/\D/g, '')}`, products: saleProducts, trackingParameters: utms, couponCodeUsed: appliedCoupon?.code, discountAppliedInCents: discountForPixCalculation, buyerId, };
-      const { data: pixFuncRes, error: funcErr } = await supabase.functions.invoke<GerarPixEdgeFunctionResponse>('gerar-pix', { body: { payload: pixRequestPayload, productOwnerUserId: product.platformUserId, saleId: createdSale.id } });
+      await buyerService.createBuyer({ id: buyerId, sessionId: checkoutSessionId, authUserId: user?.id, email: formState.customerEmail.trim(), name: formState.customerName.trim(), whatsapp: `${formState.customerWhatsappCountryCode}${formState.rawWhatsappNumber.replace(/\D/g, '')}`, });
+
+      const pixRequestPayload = { 
+        value: finalPriceForPix, 
+        originalValueBeforeDiscount: originalPriceForPixCalculation, 
+        customerName: formState.customerName.trim(), 
+        customerEmail: formState.customerEmail.trim(), 
+        customerWhatsapp: `${formState.customerWhatsappCountryCode}${formState.rawWhatsappNumber.replace(/\D/g, '')}`, 
+        products: saleProducts, 
+        trackingParameters: utms, 
+        couponCodeUsed: appliedCoupon?.code, 
+        discountAppliedInCents: discountForPixCalculation, 
+        buyerId,
+      };
+
+      const { data: pixFuncRes, error: funcErr } = await supabase.functions.invoke<GerarPixEdgeFunctionResponse>('gerar-pix', { body: { payload: pixRequestPayload, productOwnerUserId: product.platformUserId } });
+
       if (funcErr) { let msg = "Falha ao gerar PIX."; if (typeof funcErr.message === 'string') { try { const parsed = JSON.parse(funcErr.message); msg = parsed?.error || parsed?.message || funcErr.message; } catch (e) { msg = funcErr.message; } } throw new Error(msg); }
       if (!pixFuncRes || !pixFuncRes.success || !pixFuncRes.data) { throw new Error(pixFuncRes?.message || "Resposta inválida do servidor PIX."); }
+      
       startTransition(() => { 
         setPixData(pixFuncRes.data || null); 
         setCurrentSaleId(pixFuncRes.saleId || null);

@@ -4,8 +4,8 @@ import { supabase } from '@/supabaseClient';
 import { Card } from '@/components/ui/Card';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { LiveViewIcon, ShoppingCartIcon, CurrencyDollarIcon, UserGroupIcon } from '../constants.tsx';
-import { motion, AnimatePresence, Variants } from 'framer-motion'; // Added Variants
-import { RealtimeChannel } from '@supabase/supabase-js';
+import { motion, AnimatePresence, Variants } from 'framer-motion'; 
+import type { RealtimeChannel } from '@supabase/supabase-js'; // Added type import
 import { LIVE_VIEW_CHANNEL_NAME, LIVE_STATS_EXPIRATION_MS, LIVE_STATS_UPDATE_INTERVAL_MS, LIVE_PIX_AWAITING_TIMEOUT_MS } from '../constants';
 import type { LiveViewEvent } from '../types';
 
@@ -20,15 +20,15 @@ interface PixPendingItem {
   timestamp: number;
 }
 
-const cardVariants: Variants = { // Explicitly typed
+const cardVariants: Variants = { 
   hidden: { opacity: 0, y: 20, scale: 0.95 },
-  visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.5, ease: "circOut" as const } }, // Added as const
+  visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.5, ease: "circOut" as const } }, 
 };
 
-const numberVariants: Variants = { // Explicitly typed
+const numberVariants: Variants = { 
   initial: { opacity: 0.5, y: 10 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.3, ease: "circOut" as const } }, // Added as const
-  exit: { opacity: 0.5, y: -10, transition: { duration: 0.2, ease: "circIn" as const } }, // Added as const
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3, ease: "circOut" as const } }, 
+  exit: { opacity: 0.5, y: -10, transition: { duration: 0.2, ease: "circIn" as const } }, 
 };
 
 const LiveViewPage: React.FC = () => {

@@ -1,5 +1,5 @@
 
-import { User, Sale, SaleProductItem, PaymentMethod, PaymentStatus, Product as AppProduct, AuditLogEntry, ProductCheckoutCustomization, OrderBumpOffer, UpsellOffer, Coupon, UtmParams } from '@/types';
+import { User, Sale, SaleProductItem, PaymentMethod, PaymentStatus, Product as AppProduct, AuditLogEntry, ProductCheckoutCustomization, PostClickOffer, UpsellOffer, Coupon, UtmParams, TraditionalOrderBumpOffer } from '@/types';
 import { adminSupabase } from '@/adminSupabase';
 // Removed: import { supabase } from '@/supabaseClient'; 
 // adminSupabase will be used for all super admin operations for consistency and RLS bypass.
@@ -118,7 +118,8 @@ const fromSupabaseProductRow = (row: ProductRow): AppProduct => {
     checkoutViews: row.checkout_views || 0,
     conversionRate: row.conversion_rate || 0,
     abandonmentRate: row.abandonment_rate || 0,
-    orderBump: parseJsonField<OrderBumpOffer | undefined>(row.order_bump, undefined),
+    postClickOffer: parseJsonField<PostClickOffer | undefined>(row.order_bump, undefined),
+    orderBumps: parseJsonField<TraditionalOrderBumpOffer[] | undefined>(row.order_bumps, undefined),
     upsell: parseJsonField<UpsellOffer | undefined>(row.upsell, undefined),
     coupons: parseJsonField<Coupon[]>(row.coupons, []),
     utmParams: parseJsonField<UtmParams | null>(row.utm_params, defaultUtmParamsForSuperAdmin),

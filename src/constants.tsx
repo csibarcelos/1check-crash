@@ -8,8 +8,8 @@ import {
   ShieldCheckIcon as HeroShieldCheckIcon, 
   TableCellsIcon as HeroTableCellsIcon, 
   BanknotesIcon as HeroBanknotesIcon, 
-  UserCircleIcon as HeroUserCircleIcon, // Single user icon
-  UserGroupIcon as HeroUserGroupIcon, // Group user icon
+  UserCircleIcon as HeroUserCircleIcon, 
+  UserGroupIcon as HeroUserGroupIcon, 
   PresentationChartLineIcon as HeroPresentationChartLineIcon, 
   CubeIcon as HeroCubeIcon, 
   ShoppingCartIcon as HeroShoppingCartIcon, 
@@ -39,8 +39,13 @@ import {
   ExclamationCircleIcon as HeroExclamationCircleIcon, 
   KeyIcon as HeroKeyIcon, 
   DocumentDuplicateIcon as HeroDocumentDuplicateIcon, 
-  ChartPieIcon as HeroChartPieIcon, // Added ChartPieIcon
-  SignalIcon as HeroSignalIcon, // Adicionado para Live View
+  ChartPieIcon as HeroChartPieIcon, 
+  SignalIcon as HeroSignalIcon, 
+  PaintBrushIcon as HeroPaintBrushIcon,
+  ShoppingBagIcon as HeroShoppingBagIcon,
+  GiftIcon as HeroGiftIcon,
+  SparklesIcon as HeroSparklesIcon,
+  FaceSmileIcon as HeroFaceSmileIcon, // Adicionado FaceSmileIcon
 } from '@heroicons/react/24/outline';
 
 // Re-export Heroicons with consistent naming and explicit React.FC typing
@@ -66,7 +71,7 @@ export const PencilIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroPencilIco
 export const TrashIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroTrashIcon;
 export const InformationCircleIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroInformationCircleIcon;
 export const EyeIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroEyeIcon;
-export const LiveViewIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroSignalIcon; // Renomeado e usando SignalIcon
+export const LiveViewIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroSignalIcon; 
 export const TagIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroTagIcon;
 export const LockClosedIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroLockClosedIcon;
 export const UploadIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroCloudArrowUpIcon;
@@ -80,8 +85,14 @@ export const ExternalLinkIconHero: React.FC<React.SVGProps<SVGSVGElement>> = Her
 export const ExclamationCircleIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroExclamationCircleIcon;
 export const KeyIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroKeyIcon;
 export const DocumentDuplicateIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroDocumentDuplicateIcon;
-export const ChartPieIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroChartPieIcon; // Added ChartPieIcon export
-export const CurrencyDollarIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroBanknotesIcon; // Ensure CurrencyDollarIcon is exported, aliasing to BanknotesIcon
+export const ChartPieIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroChartPieIcon; 
+export const CurrencyDollarIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroBanknotesIcon; 
+export const PaintBrushIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroPaintBrushIcon;
+export const ShoppingBagIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroShoppingBagIcon;
+export const GiftIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroGiftIcon;
+export const SparklesIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroSparklesIcon;
+export const FaceSmileIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroFaceSmileIcon;
+
 
 export const HomeIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
@@ -180,7 +191,7 @@ export const WhatsAppIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => 
 // Navigation Items
 export const NAV_ITEMS: NavItemConfig[] = [
   { name: 'Dashboard', href: '/dashboard', icon: PresentationChartLineIcon },
-  // { name: 'Live View', href: '/live-view', icon: LiveViewIcon }, // TEMPORARILY HIDDEN
+  // { name: 'Live View', href: '/live-view', icon: LiveViewIcon }, 
   { name: 'Produtos', href: '/produtos', icon: CubeIcon },
   { name: 'Vendas', href: '/vendas', icon: ShoppingCartIcon, soon: false },
   { name: 'Clientes', href: '/clientes', icon: UserGroupIcon, soon: false }, 
@@ -244,16 +255,56 @@ export const cn = (...classes: (string | undefined | null | false)[]): string =>
 
 // Live View Constants
 export const LIVE_VIEW_CHANNEL_NAME = 'live_view_channel'; 
-export const LIVE_STATS_EXPIRATION_MS = 5 * 60 * 1000; // 5 minutos para contadores de "agora"
-export const LIVE_STATS_UPDATE_INTERVAL_MS = 5000; // Atualizar a remoção de itens expirados a cada 5s
-export const LIVE_PIX_AWAITING_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutos para um PIX pendente ser considerado "expirado" na Live View
-
-// LiveViewEvent definition moved to src/types.ts and will be commented out there
-// export interface LiveViewEvent {
-//   type: 'checkout_enter' | 'checkout_leave' | 'pix_pending_enter' | 'pix_pending_leave' | 'sale_confirmed_recent';
-//   payload?: {
-//     timestamp?: number;
-//     userId?: string; 
-//     checkoutSessionId?: string; 
-//   };
-// }
+export const LIVE_STATS_EXPIRATION_MS = 5 * 60 * 1000; 
+export const LIVE_STATS_UPDATE_INTERVAL_MS = 5000; 
+export const LIVE_PIX_AWAITING_TIMEOUT_MS = 15 * 60 * 1000;
+// Lista de Emojis Comuns
+export const COMMON_EMOJIS = [
+  '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇',
+  '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚',
+  '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩',
+  '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣',
+  '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬',
+  '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗',
+  '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯',
+  '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐',
+  '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '😈',
+  '👿', '👹', '👺', '🤡', '💩', '👻', '💀', '☠️', '👽', '👾',
+  '🤖', '🎃', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿',
+  '😾', '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️',
+  '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️',
+  '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲',
+  '🤝', '🙏', '✍️', '💅', '🤳', '💪', '🦾', '🦵', '🦿', '🦶',
+  '👣', '👀', '👁️', '🧠', '🫀', '🫁', '🦴', '🦷', '👅', '👄',
+  '💋', '🩸', '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍',
+  '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝',
+  '💟', '☮️', '✝️', '☪️', '🕉️', '☸️', '✡️', '🔯', '🕎', '☯️',
+  '☦️', '🛐', '⛎', '♈️', '♉️', '♊️', '♋️', '♌️', '♍️', '♎️',
+  '♏️', '♐️', '♑️', '♒️', '♓️', '🆔', '⚛️', '🉑', '☢️', '☣️',
+  '📴', '📳', '🈶', '🈚️', '🈸', '🈺', '🈷️', '✴️', '🆚', '💮',
+  '🉐', '㊙️', '㊗️', '🈴', '🈵', '🈹', '🈲', '🅰️', '🅱️', '🆎',
+  '🆑', '🅾️', '🆘', '❌', '⭕️', '🛑', '⛔️', '📛', '🚫', '💯',
+  '💢', '♨️', '🚷', '🚯', '🚳', '🚱', '🔞', '📵', '🚭', '❗️',
+  '❕', '❓', '❔', '‼️', '⁉️', '🔅', '🔆', '〽️', '⚠️', '🚸',
+  '🔱', '⚜️', '🔰', '♻️', '✅', '🈯️', '💹', '❇️', '✳️', '❎',
+  '🌐', '💠', 'Ⓜ️', '🌀', '💤', '🏧', '🚾', '♿️', '🅿️', '🛗',
+  '🈳', '🈂️', '🛂', '🛃', '🛄', '🛅', '🚰', '🚹', '♂️', '🚺',
+  '♀️', '⚧', '🚼', '🚻', '🚮', '🎦', '📶', '🈁', '🔣', 'ℹ️',
+  '🔤', '🔡', '🔠', '🆖', '🆗', '🆙', '🆒', '🆕', '🆓', '0️⃣',
+  '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟',
+  '🔢', '#️⃣', '*️⃣', '⏏️', '▶️', '⏸️', '⏯️', '⏹️', '⏺️', '⏭️',
+  '⏮️', '⏩', '⏪', '⏫', '⏬', '◀️', '🔼', '🔽', '➡️', '⬅️', '⬆️', '⬇️', '↗️', '↘️', '↙️', '↖️', '↕️', '↔️', '↪️', '↩️', '⤴️', '⤵️',
+  '🔀', '🔁', '🔂', '🔄', '🔃', '🎵', '🎶', '➕', '➖', '➗',
+  '✖️', '♾️', '💲', '💱', '™️', ' ©️', '®️', '〰️', '➰', '➿',
+  '🔚', '🔙', '🔛', '🔝', '🔜', '✔️', '☑️', '🔘', '🔴', '🟠',
+  '🟡', '🟢', '🔵', '🟣', '⚫️', '⚪️', '🟤', '🔺', '🔻', '◼️',
+  '◻️', '◾️', '◽️', '▪️', '▫️', '🔶', '🔷', '🔸', '🔹', '🔳',
+  '🔲', '💭', '👁‍🗨', '💬', '🗯️', 'スピーカー', '📢', '📣', '📤', '📥',
+  '📦', '📧', '📨', '📩', '📪', '📫', '📮', '📭', '📬', '📯',
+  '📜', '📃', '📄', '📑', '🧾', '📊', '📈', '📉', '🗒️', '🗓️',
+  '📆', '📅', '🗑️', '📇', '🗃️', '🗳️', '🗄️', '📋', '📁', '📂',
+  '🗂️', '🗞️', '📰', '📓', '📔', '📒', '📕', '📗', '📘', '📙',
+  '📚', '📖', '🔖', '🧷', '🔗', '📎', '🖇️', '📐', '📏', '🧮',
+  '📌', '📍', '✂️', '🖊️', '🖋️', '✒️', '🖌️', '🖍️', '📝', '✏️',
+  '🔍', '🔎', '🔏', '🔐', '🔒', '🔓'
+];

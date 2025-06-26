@@ -7,7 +7,7 @@ const createActualSupabaseClient = (): SupabaseClient<Database> => {
   const env = (import.meta as any).env;
 
   // Log para verificar o objeto env completo
-  console.log("[SupabaseClient] import.meta.env:", env);
+  // REMOVED: console.log("[SupabaseClient] import.meta.env:", env);
 
   if (!env) {
     console.error("CRITICAL ERROR: import.meta.env is undefined inside createActualSupabaseClient(). This should not happen if Vite is working correctly.");
@@ -21,8 +21,8 @@ const createActualSupabaseClient = (): SupabaseClient<Database> => {
   const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY;
 
   // Logs específicos para as chaves
-  console.log("[SupabaseClient] VITE_SUPABASE_URL from env:", supabaseUrl);
-  console.log("[SupabaseClient] VITE_SUPABASE_ANON_KEY from env:", supabaseAnonKey);
+  // REMOVED: console.log("[SupabaseClient] VITE_SUPABASE_URL from env:", supabaseUrl);
+  // REMOVED: console.log("[SupabaseClient] VITE_SUPABASE_ANON_KEY from env:", supabaseAnonKey);
 
 
   if (!supabaseUrl || !supabaseAnonKey) {
@@ -57,6 +57,6 @@ export const getSupabaseClient = (): SupabaseClient<Database> => {
 
 // Helper para obter o ID do usuário logado de forma segura, using the direct instance
 export const getSupabaseUserId = async (): Promise<string | null> => {
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.user?.id || null;
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.id || null;
 };

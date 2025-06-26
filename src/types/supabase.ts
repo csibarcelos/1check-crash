@@ -63,7 +63,8 @@ export interface Database {
           checkout_views: number | null
           conversion_rate: number | null
           abandonment_rate: number | null
-          order_bump: Json | null
+          order_bump: Json | null // For PostClickOffer
+          order_bumps: Json | null // For TraditionalOrderBumpOffer[]
           upsell: Json | null
           coupons: Json | null
           utm_params: Json | null 
@@ -86,6 +87,7 @@ export interface Database {
           conversion_rate?: number | null
           abandonment_rate?: number | null
           order_bump?: Json | null
+          order_bumps?: Json | null
           upsell?: Json | null
           coupons?: Json | null
           utm_params?: Json | null 
@@ -108,6 +110,7 @@ export interface Database {
           conversion_rate?: number | null
           abandonment_rate?: number | null
           order_bump?: Json | null
+          order_bumps?: Json | null
           upsell?: Json | null
           coupons?: Json | null
           utm_params?: Json | null 

@@ -6,14 +6,14 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { salesService } from '@/services/salesService';
 import { productService } from '@/services/productService';
-import { Sale, SaleProductItem, Product, UpsellOffer, PushInPayPixResponseData, AppSettings, PaymentStatus as AppPaymentStatus } from '@/types'; // LiveViewEvent commented out
-// import { LIVE_VIEW_CHANNEL_NAME, LiveViewEvent } from '../constants.tsx'; // TEMPORARILY HIDDEN
-import { CheckIcon, DocumentDuplicateIcon, MOCK_WEBHOOK_URL, cn, ExternalLinkIconHero } from '../constants.tsx'; // Removed PLATFORM_NAME (unused), LIVE_VIEW_CHANNEL_NAME
+import { Sale, SaleProductItem, Product, UpsellOffer, PushInPayPixResponseData, AppSettings, PaymentStatus as AppPaymentStatus } from '@/types'; 
+import { CheckIcon, DocumentDuplicateIcon, MOCK_WEBHOOK_URL, cn, ExternalLinkIconHero } from '../constants.tsx'; 
 import { supabase } from '@/supabaseClient';
 import { Input } from '@/components/ui/Input';
 import { settingsService } from '@/services/settingsService';
 import { useAuth } from '@/contexts/AuthContext';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { getOptimalTextColor } from '@/utils/colorUtils.ts'; // IMPORT THE NEW UTILITY
 
 const POLLING_INITIAL_INTERVAL = 3000;
 const POLLING_MAX_INTERVAL = 15000;
@@ -23,20 +23,7 @@ const UPSELL_MODAL_DELAY_MS = 3000;
 
 
 const formatCurrency = (valueInCents: number): string => {
-    return `R$ ${(valueInCents / 100).toFixed(2).replace('.', ',')}`;
-};
-
-const getContrastingTextColorForDynamicTheme = (hexColor?: string, theme?: 'light' | 'dark'): string => {
-    const defaultDarkThemeCtaText = 'var(--reimagined-cta-text)';
-    const defaultLightThemeCtaText = 'var(--checkout-color-primary-cta-text)';
-    if (!hexColor) return theme === 'dark' ? defaultDarkThemeCtaText : defaultLightThemeCtaText;
-    try {
-      const r = parseInt(hexColor.slice(1, 3), 16);
-      const g = parseInt(hexColor.slice(3, 5), 16);
-      const b = parseInt(hexColor.slice(5, 7), 16);
-      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-      return luminance > 0.5 ? (theme === 'dark' ? defaultDarkThemeCtaText : '#1F2937') : (theme === 'dark' ? defaultDarkThemeCtaText : '#FFFFFF');
-    } catch (e) { return theme === 'dark' ? defaultDarkThemeCtaText : defaultLightThemeCtaText; }
+    return `R\$ ${(valueInCents / 100).toFixed(2).replace('.', ',')}`;
 };
 
 const ThankYouPage: React.FC = () => {
@@ -47,7 +34,7 @@ const ThankYouPage: React.FC = () => {
   const originalProductIdFromUrl = queryParams.get('origProdId');
   const checkoutSessionIdFromUrl = queryParams.get('csid');
 
-  const { user } = useAuth(); // Removed accessToken as it was unused
+  const { user } = useAuth(); 
 
   const [mainSaleDetails, setMainSaleDetails] = useState<Sale | null>(null);
   const [originalProductDetails, setOriginalProductDetails] = useState<Product | null>(null);
@@ -78,10 +65,13 @@ const ThankYouPage: React.FC = () => {
   const upsellManualCheckTimeoutRef = useRef<number | null>(null);
   const upsellModalDelayTimerRef = useRef<number | null>(null);
 
-  // const sendLiveViewEvent = useCallback((event: LiveViewEvent) => { // TEMPORARILY HIDDEN
-  //   const channel = supabase.channel(LIVE_VIEW_CHANNEL_NAME); // TEMPORARILY HIDDEN
-  //   channel.send({ type: 'broadcast', event: 'live_view_event', payload: event }).catch(err => console.error("[ThankYouPage] Error sending broadcast message:", err)); // TEMPORARILY HIDDEN
-  // }, []); // TEMPORARILY HIDDEN
+  // Dynamic styling state
+  const [resolvedPrimaryHex, setResolvedPrimaryHex] = useState<string>(
+    currentTheme === 'dark' ? '#FDE047' : '#0D9488'
+  );
+  const [ctaButtonTextColor, setCtaButtonTextColor] = useState<string>(
+    currentTheme === 'dark' ? '#1F2937' : '#FFFFFF'
+  );
 
   useEffect(() => {
     upsellPaymentStatusRef.current = upsellPaymentStatus;
@@ -91,12 +81,10 @@ const ThankYouPage: React.FC = () => {
     document.title = "Obrigado pela sua Compra!";
     const themeToApply = currentTheme === 'dark' ? 'checkout-reimagined-theme' : 'checkout-light-theme';
     document.body.classList.add(themeToApply);
-    // sendLiveViewEvent({ type: 'sale_confirmed_recent', payload: { userId: user?.id, checkoutSessionId: checkoutSessionIdFromUrl || undefined, timestamp: Date.now() } }); // TEMPORARILY HIDDEN
     return () => {
         document.body.classList.remove(themeToApply);
         if (upsellModalDelayTimerRef.current) clearTimeout(upsellModalDelayTimerRef.current);
     };
-  // }, [currentTheme, sendLiveViewEvent, user?.id, checkoutSessionIdFromUrl]); // TEMPORARILY HIDDEN (removed sendLiveViewEvent)
   }, [currentTheme, user?.id, checkoutSessionIdFromUrl]);
 
 
@@ -114,7 +102,9 @@ const ThankYouPage: React.FC = () => {
       if (originalProductIdFromUrl) {
         const origProduct = await productService.getProductById(originalProductIdFromUrl, null);
         setOriginalProductDetails(origProduct || null);
-        setCurrentTheme(origProduct?.checkoutCustomization?.theme || 'light');
+        const newTheme = origProduct?.checkoutCustomization?.theme || 'light';
+        setCurrentTheme(newTheme);
+
         if (origProduct?.upsell && !fetchedSale.upsellPushInPayTransactionId && fetchedSale.status === AppPaymentStatus.PAID) {
           setUpsellOffer(origProduct.upsell);
           const fullUpsellProd = await productService.getProductById(origProduct.upsell.productId, null);
@@ -133,6 +123,33 @@ const ThankYouPage: React.FC = () => {
   }, [mainSaleTransactionId, originalProductIdFromUrl]);
 
   useEffect(() => { fetchInitialData(); }, [fetchInitialData]);
+
+  // Effect to calculate resolvedPrimaryHex and ctaButtonTextColor
+  useEffect(() => {
+    const determinedPrimaryColor = originalProductDetails?.checkoutCustomization?.primaryColor || 
+                                   appSettings?.checkoutIdentity?.brandColor || 
+                                   (currentTheme === 'dark' ? 'var(--reimagined-accent-cta)' : 'var(--checkout-color-primary-DEFAULT)');
+    
+    let actualHex = determinedPrimaryColor;
+    const colorVarMap: Record<string, string> = {
+      'var(--reimagined-accent-cta)': '#FDE047',
+      'var(--checkout-color-primary-DEFAULT)': '#0D9488',
+    };
+
+    if (colorVarMap[actualHex]) {
+      actualHex = colorVarMap[actualHex];
+    }
+
+    if (/^#([0-9A-F]{3,4}|[0-9A-F]{6}|[0-9A-F]{8})$/i.test(actualHex.trim())) {
+      setResolvedPrimaryHex(actualHex.trim());
+      setCtaButtonTextColor(getOptimalTextColor(actualHex.trim(), { lightColor: '#FFFFFF', darkColor: '#1F2937' }));
+    } else {
+      const fallbackHex = currentTheme === 'dark' ? '#FDE047' : '#0D9488';
+      setResolvedPrimaryHex(fallbackHex);
+      setCtaButtonTextColor(getOptimalTextColor(fallbackHex, { lightColor: '#FFFFFF', darkColor: '#1F2937' }));
+    }
+  }, [originalProductDetails, appSettings, currentTheme]);
+
 
   const checkUpsellPaymentStatus = useCallback(async (upsellTxId: string) => {
     if (!mainSaleDetails?.platformUserId || !upsellOffer || upsellProductPrice === null || !upsellProductDetails) {
@@ -155,8 +172,8 @@ const ThankYouPage: React.FC = () => {
       switch (rawStatus) {
         case 'paid': case 'approved': mappedStatus = AppPaymentStatus.PAID; break;
         case 'created': case 'waiting_payment': case 'pending': case 'processing': mappedStatus = AppPaymentStatus.WAITING_PAYMENT; break;
-        case 'expired': mappedStatus = AppPaymentStatus.EXPIRED; break; // New mapping
-        case 'cancelled': mappedStatus = AppPaymentStatus.CANCELLED; break; // New mapping
+        case 'expired': mappedStatus = AppPaymentStatus.EXPIRED; break; 
+        case 'cancelled': mappedStatus = AppPaymentStatus.CANCELLED; break; 
         default: mappedStatus = AppPaymentStatus.FAILED;
       }
       setUpsellPaymentStatus(mappedStatus);
@@ -167,10 +184,10 @@ const ThankYouPage: React.FC = () => {
         
         const newUpsellProductItem: SaleProductItem = { 
             productId: upsellOffer.productId, 
-            name: upsellProductDetails.name, // Usar o nome do upsellProductDetails
+            name: upsellProductDetails.name, 
             quantity: 1, 
             priceInCents: upsellProductPrice, 
-            originalPriceInCents: upsellProductPrice, // Assumindo que o preço do upsell é o preço original para o item de upsell
+            originalPriceInCents: upsellProductPrice, 
             isUpsell: true, 
             deliveryUrl: upsellProductDetails.deliveryUrl, 
             slug: upsellProductDetails.slug 
@@ -204,7 +221,6 @@ const ThankYouPage: React.FC = () => {
         if (trackError) console.warn('[ThankYouPage] AVISO: Falha ao registrar o evento de tracking do upsell.', trackError);
         else console.log('[ThankYouPage] Evento de tracking do upsell enviado com sucesso!');
         
-        // sendLiveViewEvent({ type: 'sale_confirmed_recent', payload: { userId: user?.id, checkoutSessionId: checkoutSessionIdFromUrl || undefined, timestamp: Date.now() }}); // TEMPORARILY HIDDEN
       } else if (mappedStatus !== AppPaymentStatus.WAITING_PAYMENT) {
         if (upsellPollingIntervalTimerIdRef.current) clearTimeout(upsellPollingIntervalTimerIdRef.current);
         setIsPollingUpsellPayment(false);
@@ -214,7 +230,6 @@ const ThankYouPage: React.FC = () => {
       console.error("[ThankYouPage.checkUpsellPaymentStatus] Erro:", statusErr.message);
       if (upsellPaymentStatusRef.current !== AppPaymentStatus.PAID) setUpsellErrorMessage("Erro ao verificar status do pagamento do upsell.");
     }
-  // }, [mainSaleDetails, upsellOffer, upsellProductDetails, upsellProductPrice, user?.id, checkoutSessionIdFromUrl, sendLiveViewEvent]); // TEMPORARILY HIDDEN (removed sendLiveViewEvent)
   }, [mainSaleDetails, upsellOffer, upsellProductDetails, upsellProductPrice, user?.id, checkoutSessionIdFromUrl]);
 
 
@@ -282,8 +297,6 @@ const ThankYouPage: React.FC = () => {
   const handleDeclineUpsell = () => { setShowUpsellModal(false); setUpsellPixData(null); if (upsellPollingIntervalTimerIdRef.current) clearTimeout(upsellPollingIntervalTimerIdRef.current); setIsPollingUpsellPayment(false); };
   const copyUpsellPixCode = () => { if (upsellPixData?.qr_code) { navigator.clipboard.writeText(upsellPixData.qr_code).then(() => { setCopySuccessUpsell(true); setTimeout(() => setCopySuccessUpsell(false), 2000); }); } };
 
-  const primaryColorForPage = originalProductDetails?.checkoutCustomization?.primaryColor || appSettings?.checkoutIdentity?.brandColor || (currentTheme === 'dark' ? 'var(--reimagined-accent-cta)' : 'var(--checkout-color-primary-DEFAULT)');
-  const ctaTextColorForPage = getContrastingTextColorForDynamicTheme(primaryColorForPage, currentTheme);
   const themeContainerClass = currentTheme === 'dark' ? 'checkout-reimagined-theme' : 'checkout-light-theme';
   const cardThemeClass = currentTheme === 'dark' ? 'card-checkout-reimagined' : 'card-checkout-specific';
   const buttonThemeClass = currentTheme === 'dark' ? 'button-checkout-reimagined' : 'button-checkout-specific';
@@ -295,7 +308,7 @@ const ThankYouPage: React.FC = () => {
   const mainBgColor = currentTheme === 'dark' ? 'var(--reimagined-bg-main)' : 'var(--checkout-color-bg-main)';
 
   if (isLoading) { return <div className={cn(themeContainerClass, "flex justify-center items-center h-screen")} style={{color: defaultTextColor, backgroundColor: mainBgColor}}><LoadingSpinner size="lg" /><p className="ml-3">Carregando...</p></div>; }
-  if (error || !mainSaleDetails) { return ( <div className={cn(themeContainerClass, "flex flex-col items-center justify-center min-h-screen p-6 text-center")} style={{color: defaultTextColor, backgroundColor: mainBgColor}}> <Card className={cn(cardThemeClass, "max-w-md w-full shadow-xl")}> <h1 className="text-2xl font-bold text-red-500 mb-3">Erro no Pedido</h1> <p className="mb-6">{error || "Pedido não encontrado."}</p> <Button onClick={() => navigate('/')} className={cn(buttonThemeClass, "primary")}>Voltar para Home</Button> </Card> </div> ); }
+  if (error || !mainSaleDetails) { return ( <div className={cn(themeContainerClass, "flex flex-col items-center justify-center min-h-screen p-6 text-center")} style={{color: defaultTextColor, backgroundColor: mainBgColor}}> <Card className={cn(cardThemeClass, "max-w-md w-full shadow-xl")}> <h1 className="text-2xl font-bold text-red-500 mb-3">Erro no Pedido</h1> <p className="mb-6">{error || "Pedido não encontrado."}</p> <Button onClick={() => navigate('/')} className={cn(buttonThemeClass, "primary")} style={{backgroundColor: resolvedPrimaryHex, color: ctaButtonTextColor}}>Voltar para Home</Button> </Card> </div> ); }
 
   return (
     <div className={cn(themeContainerClass, "min-h-screen flex flex-col items-center justify-center p-4 md:p-6")} style={{color: defaultTextColor, backgroundColor: mainBgColor}}>
@@ -303,17 +316,17 @@ const ThankYouPage: React.FC = () => {
         <div className="text-center">
           <CheckIcon className="h-16 w-16 text-green-500 mx-auto mb-4" />
           <h1 className="text-3xl font-bold mb-3" style={{color: strongTextColor}}>Obrigado pela sua compra!</h1>
-          <p className="mb-2" style={{color: defaultTextColor}}>Seu pedido <span className="font-semibold" style={{color: primaryColorForPage}}>#{(mainSaleDetails.id || 'INVÁLIDO').substring(0, 12)}...</span> foi confirmado.</p>
+          <p className="mb-2" style={{color: defaultTextColor}}>Seu pedido <span className="font-semibold" style={{color: resolvedPrimaryHex}}>#{(mainSaleDetails.id || 'INVÁLIDO').substring(0, 12)}...</span> foi confirmado.</p>
           <p className="mb-6" style={{color: mutedTextColor}}>Enviamos um e-mail para <span className="font-semibold" style={{color: defaultTextColor}}>{mainSaleDetails.customer.email}</span> com os detalhes do seu pedido e instruções de acesso.</p>
           <div className="p-4 rounded-md border mb-6" style={{backgroundColor: mainBgColor, borderColor: cardBorderColor}}>
             <h3 className="font-semibold mb-2" style={{color: strongTextColor}}>Resumo da Compra:</h3>
-            <ul className="text-sm space-y-1" style={{color: mutedTextColor}}> {mainSaleDetails.products.map((item, index) => ( <li key={`${item.productId}-${index}`} className="flex justify-between"><span style={{color: defaultTextColor}}>{item.name} (x{item.quantity}) {item.isOrderBump ? <span className="text-xs text-green-600">(Oferta Adicional)</span> : item.isUpsell ? <span className="text-xs text-green-600">(Oferta Pós-Compra)</span>: ""}</span><span style={{color: defaultTextColor}}>{formatCurrency(item.priceInCents)}</span></li> ))} {mainSaleDetails.discountAppliedInCents && mainSaleDetails.discountAppliedInCents > 0 && ( <li className="flex justify-between text-red-600 border-t border-dashed border-red-200/50 pt-1 mt-1"><span>Desconto ({mainSaleDetails.couponCodeUsed})</span><span>-{formatCurrency(mainSaleDetails.discountAppliedInCents)}</span></li> )} <li className="flex justify-between font-bold border-t pt-1 mt-1" style={{borderColor: cardBorderColor, color: strongTextColor}}><span>Total:</span><span>{formatCurrency(mainSaleDetails.totalAmountInCents)}</span></li> </ul>
+            <ul className="text-sm space-y-1" style={{color: mutedTextColor}}> {mainSaleDetails.products.map((item, index) => ( <li key={`${item.productId}-${index}`} className="flex justify-between"><span style={{color: defaultTextColor}}>{item.name} (x{item.quantity}) {item.isTraditionalOrderBump ? <span className="text-xs text-green-600">(Oferta Adicional)</span> : item.isUpsell ? <span className="text-xs text-green-600">(Oferta Pós-Compra)</span>: ""}</span><span style={{color: defaultTextColor}}>{formatCurrency(item.priceInCents)}</span></li> ))} {mainSaleDetails.discountAppliedInCents && mainSaleDetails.discountAppliedInCents > 0 && ( <li className="flex justify-between text-red-600 border-t border-dashed border-red-200/50 pt-1 mt-1"><span>Desconto ({mainSaleDetails.couponCodeUsed})</span><span>-{formatCurrency(mainSaleDetails.discountAppliedInCents)}</span></li> )} <li className="flex justify-between font-bold border-t pt-1 mt-1" style={{borderColor: cardBorderColor, color: strongTextColor}}><span>Total:</span><span>{formatCurrency(mainSaleDetails.totalAmountInCents)}</span></li> </ul>
           </div>
           <div className="space-y-3 mt-6">
             <h3 className="font-semibold text-center mb-3" style={{color: strongTextColor}}>Acesse seus produtos:</h3>
             <div className="flex flex-col space-y-3">
               {mainSaleDetails.products.map((item, index) => {
-                const productNameDisplay = item.isOrderBump ? `${item.name} (Oferta Adicional)` : item.isUpsell ? `${item.name} (Oferta Pós-Compra)` : item.name;
+                const productNameDisplay = item.isTraditionalOrderBump ? `${item.name} (Oferta Adicional)` : item.isUpsell ? `${item.name} (Oferta Pós-Compra)` : item.name;
                 if (item.deliveryUrl) {
                   return (
                     <a key={`${item.productId}-${index}-link`} href={item.deliveryUrl} target="_blank" rel="noopener noreferrer"
@@ -324,7 +337,7 @@ const ThankYouPage: React.FC = () => {
                           ? 'border-[var(--reimagined-input-border)] text-[var(--reimagined-text-default)] hover:border-[var(--reimagined-accent-cta)] hover:text-[var(--reimagined-accent-cta)] hover:bg-[rgba(253,224,71,0.05)]'
                           : 'border-[var(--checkout-color-border-subtle)] text-[var(--checkout-color-text-default)] hover:border-[var(--checkout-color-primary-DEFAULT)] hover:text-[var(--checkout-color-primary-DEFAULT)] hover:bg-[rgba(13,148,136,0.03)]'
                       )}
-                      style={currentTheme === 'light' ? { borderColor: primaryColorForPage, color: primaryColorForPage } : {}}
+                      style={currentTheme === 'light' ? { borderColor: resolvedPrimaryHex, color: resolvedPrimaryHex } : {}}
                     >
                       Acessar: {productNameDisplay}
                       <ExternalLinkIconHero className="inline-block h-4 w-4 ml-1.5 opacity-70 group-hover:opacity-100 transition-opacity" />
@@ -347,11 +360,11 @@ const ThankYouPage: React.FC = () => {
         <Modal isOpen={showUpsellModal && isUpsellModalReadyToShow} onClose={handleDeclineUpsell} title="Uma Oferta Especial Para Você!" size="lg" theme={currentTheme === 'dark' ? 'dark-app' : 'light'}>
             {upsellPixData && upsellPaymentStatus === AppPaymentStatus.WAITING_PAYMENT ? (
                 <div className="space-y-3 text-center">
-                     <h3 className="text-xl font-semibold" style={{color: primaryColorForPage}}>Pague com PIX para adicionar!</h3>
-                     <img src={`data:image/png;base64,${upsellPixData.qr_code_base64}`} alt="PIX QR Code para Upsell" className="mx-auto w-48 h-48 rounded-md border-2 p-1 bg-white" style={{borderColor: primaryColorForPage}}/>
+                     <h3 className="text-xl font-semibold" style={{color: resolvedPrimaryHex}}>Pague com PIX para adicionar!</h3>
+                     <img src={`data:image/png;base64,${upsellPixData.qr_code_base64}`} alt="PIX QR Code para Upsell" className="mx-auto w-48 h-48 rounded-md border-2 p-1 bg-white" style={{borderColor: resolvedPrimaryHex}}/>
                       <p className="text-sm mb-1 text-center" style={{color: mutedTextColor}}>Escaneie o QR Code ou clique no botão abaixo para copiar o código.</p>
                        <Input name="upsellPixCode" readOnly value={upsellPixData.qr_code} className={cn(inputThemeClass, "text-xs text-center mb-3")} style={{color: strongTextColor}}/>
-                      <Button type="button" onClick={copyUpsellPixCode} className={cn("w-full mb-2", copySuccessUpsell ? 'bg-status-success text-white' : cn(buttonThemeClass, "primary"))} style={!copySuccessUpsell ? { backgroundColor: primaryColorForPage, color: ctaTextColorForPage } : {}} disabled={isProcessingUpsell || isPollingUpsellPayment}> {copySuccessUpsell ? ( <><CheckIcon className="h-5 w-5 mr-2"/> Copiado!</> ) : ( <><DocumentDuplicateIcon className="h-5 w-5 mr-2"/> Copiar Código PIX</> )} </Button>
+                      <Button type="button" onClick={copyUpsellPixCode} className={cn("w-full mb-2", copySuccessUpsell ? 'bg-status-success text-white' : cn(buttonThemeClass, "primary"))} style={!copySuccessUpsell ? { backgroundColor: resolvedPrimaryHex, color: ctaButtonTextColor } : {}} disabled={isProcessingUpsell || isPollingUpsellPayment}> {copySuccessUpsell ? ( <><CheckIcon className="h-5 w-5 mr-2"/> Copiado!</> ) : ( <><DocumentDuplicateIcon className="h-5 w-5 mr-2"/> Copiar Código PIX</> )} </Button>
                       {isPollingUpsellPayment && ( <div className="mt-3 flex items-center justify-center text-base" style={{color: mutedTextColor}}><LoadingSpinner size="sm" className="mr-2"/>Verificando pagamento...</div> )}
                       <Button onClick={handleManualCheckUpsell} isLoading={isManualCheckingUpsell} disabled={!canManuallyCheckUpsell || isManualCheckingUpsell || isPollingUpsellPayment} variant="outline" size="sm" className={cn(buttonThemeClass, "outline w-full mt-2")}> {isManualCheckingUpsell ? 'Verificando...' : (canManuallyCheckUpsell ? 'Verificar Manualmente' : 'Aguarde para verificar')} </Button>
                       {upsellErrorMessage && <p className="text-sm text-status-error p-2 bg-status-error/10 border border-status-error/30 rounded-md mt-2">{upsellErrorMessage}</p>}
@@ -363,9 +376,9 @@ const ThankYouPage: React.FC = () => {
                 </div>
             ) : (
                 <>
-                    <div className="text-center"> {upsellOffer.imageUrl && <img src={upsellOffer.imageUrl} alt={upsellOffer.name} className="max-h-48 mx-auto mb-3 rounded-md shadow-md" />} <h3 className="text-xl font-semibold mb-1" style={{color: strongTextColor}}>{upsellProductDetails.name}</h3> <p className="mb-3" style={{color: defaultTextColor}}>{upsellProductDetails.description}</p> <p className="text-2xl font-bold mb-4" style={{color: primaryColorForPage}}>Por apenas: {formatCurrency(upsellProductPrice)}</p> </div>
+                    <div className="text-center"> {upsellOffer.imageUrl && <img src={upsellOffer.imageUrl} alt={upsellOffer.name} className="max-h-48 mx-auto mb-3 rounded-md shadow-md" />} <h3 className="text-xl font-semibold mb-1" style={{color: strongTextColor}}>{upsellProductDetails.name}</h3> <p className="mb-3" style={{color: defaultTextColor}}>{upsellProductDetails.description}</p> <p className="text-2xl font-bold mb-4" style={{color: resolvedPrimaryHex}}>Por apenas: {formatCurrency(upsellProductPrice)}</p> </div>
                     {upsellErrorMessage && <p className="text-sm text-status-error p-2 bg-status-error/10 border border-status-error/30 rounded-md my-2">{upsellErrorMessage}</p>}
-                    <div className="flex flex-col sm:flex-row justify-center gap-3 mt-4"> <Button onClick={handleAcceptUpsell} disabled={isProcessingUpsell} style={{ backgroundColor: primaryColorForPage, color: ctaTextColorForPage }} className={cn(buttonThemeClass, "primary flex-1 py-3 text-md animate-pulse-subtle")}> {isProcessingUpsell ? "Processando..." : "Sim, quero esta oferta!"} </Button> <Button variant="ghost" onClick={handleDeclineUpsell} disabled={isProcessingUpsell} className={cn(buttonThemeClass, "outline flex-1 py-3 text-md")}>Não, obrigado</Button> </div>
+                    <div className="flex flex-col sm:flex-row justify-center gap-3 mt-4"> <Button onClick={handleAcceptUpsell} disabled={isProcessingUpsell} style={{ backgroundColor: resolvedPrimaryHex, color: ctaButtonTextColor }} className={cn(buttonThemeClass, "primary flex-1 py-3 text-md animate-pulse-subtle")}> {isProcessingUpsell ? "Processando..." : "Sim, quero esta oferta!"} </Button> <Button variant="ghost" onClick={handleDeclineUpsell} disabled={isProcessingUpsell} className={cn(buttonThemeClass, "outline flex-1 py-3 text-md")}>Não, obrigado</Button> </div>
                 </>
             )}
         </Modal>

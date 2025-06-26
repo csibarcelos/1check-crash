@@ -1,5 +1,5 @@
 
-import { Product, Coupon, OrderBumpOffer, UpsellOffer, ProductCheckoutCustomization, UtmParams } from '@/types'; 
+import { Product, Coupon, TraditionalOrderBumpOffer, PostClickOffer, UpsellOffer, ProductCheckoutCustomization, UtmParams } from '@/types'; 
 import { supabase, getSupabaseUserId } from '@/supabaseClient';  
 import { Database, Json } from '@/types/supabase'; 
 
@@ -48,6 +48,7 @@ const defaultCheckoutCustomization: ProductCheckoutCustomization = {
   },
   theme: 'light',
   showProductName: true,
+  animateTraditionalOrderBumps: true, // Default para animação
 };
 
 const defaultUtmParams: UtmParams = {
@@ -56,6 +57,7 @@ const defaultUtmParams: UtmParams = {
 
 
 const fromSupabaseRow = (row: ProductRow): Product => {
+  const checkoutCustomizationData = parseJsonField<ProductCheckoutCustomization | null>(row.checkout_customization, defaultCheckoutCustomization);
   return {
     id: row.id,
     platformUserId: row.platform_user_id,
@@ -64,14 +66,22 @@ const fromSupabaseRow = (row: ProductRow): Product => {
     description: row.description,
     priceInCents: row.price_in_cents,
     imageUrl: row.image_url || undefined,
-    checkoutCustomization: parseJsonField<ProductCheckoutCustomization | null>(row.checkout_customization, defaultCheckoutCustomization),
+    checkoutCustomization: {
+        ...defaultCheckoutCustomization,
+        ...(checkoutCustomizationData || {}), // Garante que todos os campos padrão estejam presentes
+        // Assegura que animateTraditionalOrderBumps tenha um valor booleano
+        animateTraditionalOrderBumps: typeof checkoutCustomizationData?.animateTraditionalOrderBumps === 'boolean' 
+            ? checkoutCustomizationData.animateTraditionalOrderBumps 
+            : defaultCheckoutCustomization.animateTraditionalOrderBumps,
+    },
     deliveryUrl: row.delivery_url || undefined,
     totalSales: row.total_sales || 0,
     clicks: row.clicks || 0,
     checkoutViews: row.checkout_views || 0,
     conversionRate: row.conversion_rate || 0,
     abandonmentRate: row.abandonment_rate || 0,
-    orderBump: parseJsonField<OrderBumpOffer | undefined>(row.order_bump, undefined),
+    orderBumps: parseJsonField<TraditionalOrderBumpOffer[] | undefined>(row.order_bumps, undefined), 
+    postClickOffer: parseJsonField<PostClickOffer | undefined>(row.order_bump, undefined), 
     upsell: parseJsonField<UpsellOffer | undefined>(row.upsell, undefined),
     coupons: parseJsonField<Coupon[]>(row.coupons, []),
     utmParams: parseJsonField<UtmParams | null>(row.utm_params, defaultUtmParams), 
@@ -90,7 +100,7 @@ export const productService = {
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, upsell, coupons, utm_params, created_at, updated_at')
+        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, order_bumps, upsell, coupons, utm_params, created_at, updated_at')
         .eq('platform_user_id', userId); 
 
       if (error) throw error;
@@ -106,7 +116,7 @@ export const productService = {
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, upsell, coupons, utm_params, created_at, updated_at')
+        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, order_bumps, upsell, coupons, utm_params, created_at, updated_at')
         .eq('id', id)
         .single<ProductRow>();
 
@@ -132,26 +142,26 @@ export const productService = {
 
   getProductBySlug: async (slug: string, _token: string | null): Promise<Product | undefined> => {
     const logPrefix = `[productService.getProductBySlug(${slug})]`;
-    const currentUserId = await getSupabaseUserId(); // Log current auth state for context
+    const currentUserId = await getSupabaseUserId(); 
     console.log(`${logPrefix} Attempting to fetch. Current auth user ID (for context): ${currentUserId || 'Anonymous'}`);
 
     try {
       const { data, error, status } = await supabase
         .from('products')
-        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, upsell, coupons, utm_params, created_at, updated_at')
+        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, order_bumps, upsell, coupons, utm_params, created_at, updated_at')
         .eq('slug', slug)
-        .single<ProductRow>(); // .single() will error if more than one row, or if RLS prevents access to THE row.
+        .single<ProductRow>(); 
 
       if (error) {
         console.error(`${logPrefix} Supabase error (Status: ${status}, Code: ${error.code}):`, error.message, error.details, error.hint);
-        if (error.code === 'PGRST116') { // 0 rows found or RLS prevented access to the specific row
+        if (error.code === 'PGRST116') { 
           console.warn(`${logPrefix} Product not found or access denied by RLS (PGRST116). This is expected for anonymous users if RLS is restrictive or slug is wrong.`);
           return undefined;
         }
         throw error;
       }
       
-      if (!data) { // Should be caught by PGRST116, but as a safeguard.
+      if (!data) { 
         console.warn(`${logPrefix} Product data is null/undefined but no specific Supabase error reported (Status: ${status}). This might indicate an RLS issue silently preventing row access.`);
         return undefined;
       }
@@ -176,6 +186,14 @@ export const productService = {
     const utmParamsToSave = productData.utmParams && Object.values(productData.utmParams).some(val => typeof val === 'string' && val.trim() !== '')
       ? productData.utmParams
       : null;
+    
+    const checkoutCustomizationToSave = {
+      ...defaultCheckoutCustomization,
+      ...(productData.checkoutCustomization || {}),
+      animateTraditionalOrderBumps: typeof productData.checkoutCustomization?.animateTraditionalOrderBumps === 'boolean' 
+        ? productData.checkoutCustomization.animateTraditionalOrderBumps 
+        : defaultCheckoutCustomization.animateTraditionalOrderBumps,
+    };
 
     const newProductData: ProductInsert = {
       platform_user_id: userId,
@@ -184,9 +202,10 @@ export const productService = {
       description: productData.description,
       price_in_cents: productData.priceInCents,
       image_url: productData.imageUrl === '' ? null : productData.imageUrl,
-      checkout_customization: productData.checkoutCustomization as unknown as Json, // Ensure not null for DB if it's not nullable there
+      checkout_customization: checkoutCustomizationToSave as unknown as Json, 
       delivery_url: productData.deliveryUrl === '' ? null : productData.deliveryUrl,
-      order_bump: productData.orderBump as unknown as Json,
+      order_bumps: productData.orderBumps as unknown as Json, 
+      order_bump: productData.postClickOffer as unknown as Json, 
       upsell: productData.upsell as unknown as Json,
       coupons: productData.coupons as unknown as Json,
       utm_params: utmParamsToSave as unknown as Json, 
@@ -221,17 +240,30 @@ export const productService = {
       ? updates.utmParams
       : null;
 
+    const checkoutCustomizationToSave = updates.checkoutCustomization 
+      ? {
+          ...defaultCheckoutCustomization,
+          ...(currentProduct.checkoutCustomization || {}), // Base on existing or default
+          ...updates.checkoutCustomization, // Apply updates
+          animateTraditionalOrderBumps: typeof updates.checkoutCustomization.animateTraditionalOrderBumps === 'boolean'
+            ? updates.checkoutCustomization.animateTraditionalOrderBumps
+            : (currentProduct.checkoutCustomization?.animateTraditionalOrderBumps ?? defaultCheckoutCustomization.animateTraditionalOrderBumps),
+        }
+      : currentProduct.checkoutCustomization;
+
+
     const updatesForSupabase: ProductUpdate = {
         ...(updates.name && { name: updates.name }),
         ...(updates.description && { description: updates.description }),
         ...(updates.priceInCents !== undefined && { price_in_cents: updates.priceInCents }),
         ...(updates.imageUrl !== undefined && { image_url: updates.imageUrl === '' ? null : updates.imageUrl }),
-        ...(updates.checkoutCustomization && { checkout_customization: updates.checkoutCustomization as unknown as Json }),
+        ...(checkoutCustomizationToSave && { checkout_customization: checkoutCustomizationToSave as unknown as Json }),
         ...(updates.deliveryUrl !== undefined && { delivery_url: updates.deliveryUrl === '' ? null : updates.deliveryUrl }),
-        ...(updates.orderBump !== undefined && { order_bump: updates.orderBump as unknown as Json }),
+        ...(updates.orderBumps !== undefined && { order_bumps: updates.orderBumps as unknown as Json }), 
+        ...(updates.postClickOffer !== undefined && { order_bump: updates.postClickOffer as unknown as Json }), 
         ...(updates.upsell !== undefined && { upsell: updates.upsell as unknown as Json }),
         ...(updates.coupons !== undefined && { coupons: updates.coupons as unknown as Json }),
-        utm_params: utmParamsToSave as unknown as Json, // Always include, will be null if empty
+        utm_params: utmParamsToSave as unknown as Json, 
     };
     
     if (updates.name && currentProduct.name !== updates.name) {
@@ -290,7 +322,7 @@ export const productService = {
       } = originalProduct;
       
       const clonedProductData: Omit<Product, 'id' | 'platformUserId' | 'totalSales' | 'clicks' | 'checkoutViews' | 'conversionRate' | 'abandonmentRate' | 'slug'> = {
-        ...clonableData, // This will include utmParams if present on originalProduct
+        ...clonableData, 
         name: `${originalProduct.name} (Cópia)`,
       };
       return await productService.createProduct(clonedProductData, token); 

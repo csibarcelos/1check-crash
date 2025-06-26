@@ -488,3 +488,8 @@ div[contenteditable="true"][data-placeholder].is-empty-placeholder::before {
   opacity: 0.2 !important; 
   color: var(--color-text-muted) !important; 
 }
+
+/* Classe para forçar texto escuro no título do modal em tema claro */
+.modal-title-light-theme-text-force-dark {
+  color: #111827 !important; /* Cinza 900 Tailwind (escuro) */
+}

@@ -35,7 +35,7 @@ const getPaymentMethodLabel = (method: PaymentMethod) => {
 };
 
 const formatCurrency = (valueInCents: number) => {
-    return `R$ ${(valueInCents / 100).toFixed(2).replace('.', ',')}`;
+    return `R\$ ${(valueInCents / 100).toFixed(2).replace('.', ',')}`;
 };
 
 const formatDateTime = (isoString: string): string => {
@@ -313,7 +313,7 @@ const VendasPage: React.FC = () => {
                     <h3 className="text-lg font-semibold text-accent-gold border-b border-border-subtle pb-2 mb-3">Produtos Adquiridos</h3>
                     {Array.isArray(selectedSale.products) && selectedSale.products.map((item: SaleProductItem, idx: number) => (
                         <div key={idx} className="mb-2 p-3 bg-neutral-700/30 rounded-md border border-border-subtle">
-                            <p className="font-semibold text-text-default">{item.name} {item.isOrderBump ? <span className="text-xs text-accent-blue-neon">(Order Bump)</span> : item.isUpsell ? <span className="text-xs text-accent-blue-neon">(Upsell)</span> : ''}</p>
+                            <p className="font-semibold text-text-default">{item.name} {item.isTraditionalOrderBump ? <span className="text-xs text-accent-blue-neon">(Order Bump)</span> : item.isUpsell ? <span className="text-xs text-accent-blue-neon">(Upsell)</span> : ''}</p>
                             <div className="grid grid-cols-2 gap-x-4 text-xs text-text-muted">
                                 <span>Quantidade: {item.quantity}</span>
                                 <span>Preço Unitário: {formatCurrency(item.originalPriceInCents)}</span>

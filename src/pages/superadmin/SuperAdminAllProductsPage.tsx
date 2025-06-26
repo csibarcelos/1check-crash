@@ -12,7 +12,7 @@ import { superAdminService } from '@/services/superAdminService';
 import { Table, TableHeader } from '@/components/ui/Table'; // Import Table
 
 const formatCurrency = (valueInCents: number): string => {
-    return `R$ ${(valueInCents / 100).toFixed(2).replace('.', ',')}`;
+    return `R\$ ${(valueInCents / 100).toFixed(2).replace('.', ',')}`;
 };
 
 const InfoItem: React.FC<{ label: string; value: React.ReactNode; className?: string }> = ({ label, value, className }) => (
@@ -212,10 +212,16 @@ const SuperAdminAllProductsPage: React.FC = () => {
               {JSON.stringify(selectedProduct.checkoutCustomization, null, 2)}
             </pre>
 
-            {selectedProduct.orderBump && (<>
-              <h4 className="font-semibold text-text-default pt-2 border-t border-border-subtle mt-2">Order Bump:</h4>
+            {selectedProduct.postClickOffer && (<>
+              <h4 className="font-semibold text-text-default pt-2 border-t border-border-subtle mt-2">Oferta Pós-Clique (Antigo Order Bump):</h4>
               <pre className="bg-bg-main p-2 rounded text-xs max-h-40 overflow-auto border border-border-subtle text-text-muted">
-                {JSON.stringify(selectedProduct.orderBump, null, 2)}
+                {JSON.stringify(selectedProduct.postClickOffer, null, 2)}
+              </pre>
+            </>)}
+            {selectedProduct.orderBumps && selectedProduct.orderBumps.length > 0 && (<>
+              <h4 className="font-semibold text-text-default pt-2 border-t border-border-subtle mt-2">Order Bumps Tradicionais:</h4>
+              <pre className="bg-bg-main p-2 rounded text-xs max-h-40 overflow-auto border border-border-subtle text-text-muted">
+                {JSON.stringify(selectedProduct.orderBumps, null, 2)}
               </pre>
             </>)}
             {selectedProduct.upsell && (<>

@@ -1,6 +1,7 @@
 
 import React, { createContext, useState, useContext, useEffect, ReactNode, useCallback, useRef, useMemo } from 'react';
-import { AuthUser, Session } from '@supabase/supabase-js';
+import { AuthUser } from '@supabase/supabase-js';
+import type { Session } from '@supabase/supabase-js'; // Changed to type-only import
 import { supabase } from '@/supabaseClient';
 import { User as BaseUser } from '../types'; 
 import { SUPER_ADMIN_EMAIL } from '../constants.tsx'; 
@@ -304,7 +305,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const sessionCacheKey = `${currentSession?.user?.id || 'null'}_${source}`;
     const cachedSessionEntry = sessionCache.get(sessionCacheKey);
     
-    if (cachedSessionEntry === currentSession && !source.includes('manual_refresh')) { 
+    if (cachedSessionEntry === currentSession && !source.includes('manual_refresh') && !source.includes('login_direct')) { 
       console.log('💾 Usando sessão do cache');
       if (!initializationComplete) {
         setInitializationComplete(true);
@@ -503,12 +504,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     setIsLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data: signInData, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      console.log('✅ Login realizado com sucesso');
+      
+      console.log('✅ Login realizado com sucesso (signInWithPassword)');
+      // Após o login bem-sucedido, processar a sessão imediatamente.
+      // Se signInData.session for null, o getSession() abaixo deve obter a sessão correta.
+      const currentSession = signInData.session || (await supabase.auth.getSession()).data.session;
+      
+      if (currentSession) {
+        console.log('🔄 Processando sessão diretamente após login');
+        await processSessionAndUser(currentSession, 'login_direct');
+      } else {
+        console.warn('⚠️ Sessão não disponível imediatamente após login, aguardando onAuthStateChange.');
+        // Se a sessão não estiver disponível, o onAuthStateChange deverá tratar.
+        // No entanto, isso é menos ideal. A sessão deveria estar disponível.
+        // Se o problema persistir, pode ser necessário forçar um refresh ou investigar o fluxo do Supabase.
+      }
+
     } catch (error: any) {
       console.error('❌ Erro no login:', error.message);
-      if (mountedRef.current) setIsLoading(false);
+      if (mountedRef.current) setIsLoading(false); // Garante que o loading é desativado em caso de erro
       
       const errorMessages: Record<string, string> = { 
         'Invalid login credentials': 'Credenciais inválidas. Verifique seu e-mail e senha.', 
@@ -518,8 +534,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       const displayMessage = errorMessages[error.message] || error.message || 'Falha no login.';
       throw new Error(displayMessage);
+    } finally {
+      // setIsLoading(false) é geralmente tratado pelo processSessionAndUser,
+      // mas se o login falhar antes de chamar processSessionAndUser, precisamos garantir que ele seja resetado.
+      // O bloco catch já faz isso para erros. Se não houver erro, processSessionAndUser deve lidar.
+      if (mountedRef.current && !session) { // Se a sessão não foi obtida, pode ser que o loading não foi resetado.
+          setIsLoading(false);
+      }
     }
-  }, []);
+  }, [processSessionAndUser, session]); // Adicionado processSessionAndUser e session
 
   const register = useCallback(async (data: RegisterData): Promise<{ success: boolean; needsEmailConfirmation?: boolean }> => {
     console.log('📝 Tentativa de registro');

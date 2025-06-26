@@ -1,6 +1,7 @@
+
 import React from 'react';
 import { Link } from "react-router-dom";
-import type { LinkProps } from "react-router-dom";
+// Removed: import type { LinkProps } from "react-router-dom"; // This was incorrect
 import { motion, MotionProps } from "framer-motion";
 
 interface ButtonBaseProps {
@@ -20,7 +21,8 @@ interface StandardButtonProps extends ButtonBaseProps, Omit<React.ButtonHTMLAttr
   to?: undefined;
 }
 
-interface LinkButtonProps extends ButtonBaseProps, Omit<LinkProps, 'children' | 'className'> {
+// Corrected LinkButtonProps to use React.ComponentProps<typeof Link>
+interface LinkButtonProps extends ButtonBaseProps, Omit<React.ComponentProps<typeof Link>, 'children' | 'className'> {
   to: string;
 }
 
@@ -140,7 +142,7 @@ export const Button: React.FC<ButtonProps> = ({
             {leftIcon}
           </div>
         )}
-        <span className="text-center font-inherit flex-1 px-1">
+        <span className="text-center font-inherit flex-1 leading-normal">
           {children}
         </span>
         {rightIcon && (
@@ -153,7 +155,7 @@ export const Button: React.FC<ButtonProps> = ({
   };
 
   if (to) {
-    const linkSpecificProps = props as Omit<LinkProps, 'to' | 'children' | 'className'>;
+    const linkSpecificProps = props as Omit<React.ComponentProps<typeof Link>, 'to' | 'children' | 'className'>;
     if (isLoading || (props as StandardButtonProps).disabled) {
       return (
         <span 

@@ -11,7 +11,7 @@ import { superAdminService } from '@/services/superAdminService';
 import { Table, TableHeader } from '@/components/ui/Table'; // Import Table
 
 const formatCurrency = (valueInCents: number): string => {
-    return `R$ ${(valueInCents / 100).toFixed(2).replace('.', ',')}`;
+    return `R\$ ${(valueInCents / 100).toFixed(2).replace('.', ',')}`;
 };
 
 const getStatusClass = (status: PaymentStatus) => {
@@ -146,7 +146,7 @@ const SuperAdminSalesPage: React.FC = () => {
                 <h3 className="text-md font-semibold text-accent-gold border-b border-border-subtle pb-1 mb-2">Produtos</h3>
                 {Array.isArray(selectedSale.products) && selectedSale.products.map((item: SaleProductItem, idx: number) => (
                     <div key={idx} className="mb-1 p-2 bg-bg-surface/50 rounded-sm text-sm border border-border-subtle">
-                        <p className="font-medium text-text-default">{item.name} {item.isOrderBump ? '(Order Bump)' : item.isUpsell ? '(Upsell)' : ''}</p>
+                        <p className="font-medium text-text-default">{item.name} {item.isTraditionalOrderBump ? '(Order Bump)' : item.isUpsell ? '(Upsell)' : ''}</p>
                         <p className="text-xs text-text-muted">Qtd: {item.quantity} | Preço Unit.: {formatCurrency(item.priceInCents / item.quantity)} | Total: {formatCurrency(item.priceInCents)}</p>
                     </div>
                 ))}

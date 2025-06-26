@@ -155,13 +155,13 @@ const ProductEditPage: React.FC = () => {
   const handleSaveAndExit = () => {
     console.log("[ProductEditPage] handleSaveAndExit called.");
     setShouldNavigateAfterSave(true); 
-    triggerFormSubmit();
+    triggerFormSubmit(); 
   };
   
   const handleSave = () => {
     console.log("[ProductEditPage] handleSave called.");
-    setShouldNavigateAfterSave(false); // Não navegar, apenas salvar
-    triggerFormSubmit();
+    setShouldNavigateAfterSave(false); 
+    triggerFormSubmit(); 
   };
 
 
@@ -245,17 +245,17 @@ const ProductEditPage: React.FC = () => {
     console.log("[ProductEditPage] handleConfirmLeave. saveFirst:", saveFirst);
     if (saveFirst) {
       handleSaveAndExit(); 
-      setIsLeaveConfirmModalOpen(false); // Fechar o modal, a navegação ocorrerá após o save se bem-sucedido
+      setIsLeaveConfirmModalOpen(false); 
     } else {
       setIsLeaveConfirmModalOpen(false);
       setHasUnsavedChanges(false); 
-      setTimeout(() => { // Adicionar um pequeno delay para garantir que o estado hasUnsavedChanges seja processado
+      setTimeout(() => { 
         if (blocker.state === 'blocked') {
           console.log("[ProductEditPage] Proceeding with blocker after 'Don't Save'.");
           blocker.proceed();
         } else {
           console.log("[ProductEditPage] Blocker not in 'blocked' state, navigating directly.");
-          navigate('/produtos'); // Fallback se o blocker não estiver mais ativo
+          navigate('/produtos'); 
         }
       }, 0);
     }
@@ -291,8 +291,12 @@ const ProductEditPage: React.FC = () => {
   const dropdownDangerIconClass = "mr-2.5 h-5 w-5 text-status-error/80 group-data-[highlighted]:text-status-error";
 
   return (
-    <div className="space-y-6 pb-24"> 
-      <div className="flex justify-between items-center py-3 mb-4 sticky top-0 bg-bg-main z-10 -mx-6 md:-mx-8 px-6 md:px-8 pt-6 border-b border-border-subtle">
+    <div className="space-y-6 pb-24">
+      <div className={cn(
+        "flex justify-between items-center mb-4 py-4 border-b border-border-subtle", // Removido sticky e top-0
+        "-mx-6 md:-mx-8 px-6 md:px-8", 
+        "bg-bg-surface-opaque z-20" 
+      )}>
         <div className="flex items-center gap-3">
           <Button variant="ghost" onClick={handleNavigateBack} disabled={isSaving || isDeleting || isCloning} aria-label="Voltar para produtos">
             <ArrowUturnLeftIconHero className="h-5 w-5 mr-1.5" /> Voltar
@@ -321,14 +325,14 @@ const ProductEditPage: React.FC = () => {
               )}
             >
               <DropdownMenuPrimitive.Item
-                onSelect={handleSave}
+                onSelect={handleSave} 
                 disabled={isSaving || isDeleting || isCloning || !hasUnsavedChanges}
                 className={dropdownItemClass}
               >
                 <ArrowDownTrayIcon className={dropdownIconClass} /> Salvar Alterações
               </DropdownMenuPrimitive.Item>
               <DropdownMenuPrimitive.Item
-                onSelect={handleSaveAndExit}
+                onSelect={handleSaveAndExit} 
                 disabled={isSaving || isDeleting || isCloning || !hasUnsavedChanges}
                 className={dropdownItemClass}
               >
@@ -374,15 +378,17 @@ const ProductEditPage: React.FC = () => {
         </DropdownMenuPrimitive.Root>
       </div>
       
-      <ProductForm
-        initialData={initialProductData}
-        onSubmit={handleFormSubmit} 
-        isSaving={isSaving}
-        availableProductsForOffers={userProductsForOffers}
-        formId={FORM_ID}
-        onFormChange={handleFormChange} 
-        formRef={formRef}
-      />
+      <div className="container mx-auto px-0 sm:px-0 md:px-0">
+        <ProductForm
+          initialData={initialProductData}
+          onSubmit={handleFormSubmit} 
+          isSaving={isSaving}
+          availableProductsForOffers={userProductsForOffers}
+          formId={FORM_ID}
+          onFormChange={handleFormChange} 
+          formRef={formRef}
+        />
+      </div>
       
       <div className="fixed bottom-0 left-0 right-0 bg-bg-surface-opaque border-t border-border-subtle p-4 shadow-top-hard z-20 md:pl-[calc(288px+1rem)]">
         <div className="max-w-7xl mx-auto flex justify-end items-center space-x-3">
@@ -390,7 +396,14 @@ const ProductEditPage: React.FC = () => {
             Voltar para Produtos
           </Button>
           
-          <Button onClick={handleSave} variant="primary" isLoading={isSaving} disabled={isSaving || isDeleting || isCloning || !hasUnsavedChanges}>
+          <Button 
+            onClick={handleSave} 
+            variant="primary" 
+            isLoading={isSaving} 
+            size="md"
+            disabled={isSaving || isDeleting || isCloning || !hasUnsavedChanges}
+            leftIcon={<ArrowDownTrayIcon className="h-5 w-5" />}
+            >
             Salvar Alterações
           </Button>
         </div>
@@ -409,7 +422,7 @@ const ProductEditPage: React.FC = () => {
 
       <AlertDialog
         isOpen={isLeaveConfirmModalOpen}
-        onClose={handleCancelLeave}
+        onClose={handleCancelLeave} 
         title="Alterações não Salvas"
         description="Você possui alterações não salvas. Deseja salvá-las antes de sair?"
         confirmText="Salvar e Sair"

@@ -46,20 +46,32 @@ export interface Coupon {
   appliesToProductId?: string; // For product-specific coupons, null/undefined for general
 }
 
-export interface OrderBumpOffer {
-  productId: string; // ID of the product being offered as a bump
-  customPriceInCents?: number; // Optional custom price for the bump
-  name: string; // Denormalized for easy display
-  description: string; // Denormalized
-  imageUrl?: string; // Denormalized
+export interface TraditionalOrderBumpOffer {
+  id: string; // Unique ID for this offer instance in the array
+  productId: string; 
+  customPriceInCents?: number; 
+  name: string; // Label for checkbox
+  description?: string; // Short description below label
+  imageUrl?: string; 
 }
 
-export interface UpsellOffer {
-  productId: string; // ID of the product being offered as an upsell
-  customPriceInCents?: number; // Optional custom price for the upsell
-  name: string; // Denormalized
-  description: string; // Denormalized
-  imageUrl?: string; // Denormalized
+export interface PostClickOffer {
+  productId: string; 
+  customPriceInCents?: number; 
+  name: string; // Name of the offer product (used as fallback for modal title if modalTitle is not set)
+  description: string; // Detailed description for the modal
+  imageUrl?: string; 
+  modalTitle?: string; // Customizable title for the modal itself
+  modalAcceptButtonText?: string; // Customizable text for accept button
+  modalDeclineButtonText?: string; // Customizable text for decline button
+}
+
+export interface UpsellOffer { // Esta é a oferta na página de Obrigado
+  productId: string; 
+  customPriceInCents?: number; 
+  name: string; 
+  description: string; 
+  imageUrl?: string; 
 }
 
 
@@ -68,19 +80,20 @@ export interface ProductCheckoutCustomization {
   primaryColor?: string;
   logoUrl?: string;
   videoUrl?: string;
-  salesCopy?: string; // Will store HTML
+  salesCopy?: string; 
   testimonials?: { author: string; text: string }[];
   guaranteeBadges?: { id: string; imageUrl: string; altText: string }[];
   countdownTimer?: {
     enabled: boolean;
-    durationMinutes?: number; // Duração em minutos
+    durationMinutes?: number; 
     messageBefore?: string;
-    messageAfter?: string; // Message to show when timer expires
+    messageAfter?: string; 
     backgroundColor?: string;
     textColor?: string;
   };
-  theme?: 'light' | 'dark'; // New: Checkout theme selection
-  showProductName?: boolean; // New: Toggle product name visibility on checkout
+  theme?: 'light' | 'dark'; 
+  showProductName?: boolean; // Se o nome do produto deve ser exibido no header do checkout
+  animateTraditionalOrderBumps?: boolean; // Para controlar a animação dos order bumps tradicionais
 }
 
 export type Json =
@@ -107,17 +120,18 @@ export interface Product {
   description: string;
   priceInCents: number;
   imageUrl?: string; 
-  checkoutCustomization: ProductCheckoutCustomization | null; // Updated to allow null
+  checkoutCustomization: ProductCheckoutCustomization | null; 
   deliveryUrl?: string;
   totalSales?: number;
   clicks?: number;
   checkoutViews?: number;
   conversionRate?: number;
   abandonmentRate?: number;
-  orderBump?: OrderBumpOffer;
-  upsell?: UpsellOffer;
+  orderBumps?: TraditionalOrderBumpOffer[]; // Array for checkbox-style bumps
+  postClickOffer?: PostClickOffer;        // Single offer for post-click modal
+  upsell?: UpsellOffer;                    // Oferta na página de Obrigado
   coupons?: Coupon[];
-  utmParams?: UtmParams | null; // Updated to allow null
+  utmParams?: UtmParams | null; 
 }
 
 // Buyer <<-- NEW INTERFACE
@@ -153,15 +167,16 @@ export interface SaleProductItem {
   quantity: number;
   priceInCents: number; 
   originalPriceInCents: number; 
-  isOrderBump?: boolean; 
-  isUpsell?: boolean; 
+  isTraditionalOrderBump?: boolean; // Flag for checkbox-style order bumps
+  isPostClickOffer?: boolean;      // Flag for modal-style post-click offer
+  isUpsell?: boolean;                // Usado para identificar se o item veio do Upsell da ThankYouPage
   deliveryUrl?: string;
-  slug?: string; // Added slug
+  slug?: string; 
 }
 
 export interface Sale {
   id: string;
-  buyerId?: string; // <<-- NEW FIELD
+  buyerId?: string; 
   platformUserId: string;
   pushInPayTransactionId: string; 
   upsellPushInPayTransactionId?: string; 
@@ -281,7 +296,7 @@ export interface Transaction {
 export type PixelType = 'Facebook Pixel' | 'Google Ads' | 'GTM' | 'TikTok Pixel';
 export interface PixelIntegration {
   id: string; 
-  type: PixelType; // Changed from 'name' to 'type'
+  type: PixelType; 
   settings: Record<string, string>; 
   enabled: boolean;
 }
@@ -362,14 +377,14 @@ export interface PushInPayPixRequest {
   discountAppliedInCents?: number;
   isUpsellTransaction?: boolean; 
   originalSaleId?: string;      
-  buyerId?: string; // <<-- NEW FIELD for generating PIX payload if needed by EF
+  buyerId?: string; 
 }
 
 export interface PushInPayPixResponseData {
   id: string;
   qr_code: string;
   qr_code_base64: string;
-  status: string; // Corrected: Was PaymentStatus, API returns string
+  status: string; 
   value: number; 
 }
 export interface PushInPayPixResponse {
@@ -380,7 +395,7 @@ export interface PushInPayPixResponse {
 
 export interface PushInPayTransactionStatusData {
     id: string;
-    status: string; // Corrected: Was PaymentStatus, API returns string
+    status: string; 
     value: number;
     paid_at?: string;
 }
@@ -397,8 +412,8 @@ export interface UtmifyCustomer {
   name: string;
   email: string;
   whatsapp: string;
-  phone: string | null; // OBRIGATÓRIO para UTMify
-  document: string | null; // OBRIGATÓRIO para UTMify
+  phone: string | null; 
+  document: string | null; 
   ip?: string;
   country?: string;
 }
@@ -408,14 +423,8 @@ export interface UtmifyProduct {
   name: string;
   quantity: number;
   priceInCents: number; 
-  planId: string; // OBRIGATÓRIO para UTMify
-  planName: string; // OBRIGATÓRIO para UTMify
-  // Os campos abaixo foram removidos pois não são esperados pela API da UTMify conforme o schema.
-  // originalPriceInCents?: number; 
-  // isOrderBump?: boolean; 
-  // isUpsell?: boolean; 
-  // deliveryUrl?: string;
-  // slug?: string; 
+  planId: string; 
+  planName: string; 
 }
 
 export interface UtmifyCommission {
@@ -439,10 +448,10 @@ export interface UtmifyOrderPayload {
   paymentMethod: "pix" | "credit_card" | "boleto";
   status: string; // PaymentStatus
   createdAt: string; 
-  approvedDate: string | null; // OBRIGATÓRIO para UTMify
+  approvedDate: string | null; 
   customer: UtmifyCustomer;
   products: UtmifyProduct[]; 
-  trackingParameters: UtmifyTrackingParameters; // OBRIGATÓRIO para UTMify
+  trackingParameters: UtmifyTrackingParameters; 
   commission?: UtmifyCommission; 
   refundedAt?: string | null; 
   isTest?: boolean;
@@ -457,7 +466,7 @@ export interface UtmifyResponse {
   success: boolean;
   message?: string;
   data?: any; 
-  utmifyResponse?: any; // Adicionado para carregar a resposta completa da UTMify
+  utmifyResponse?: any; 
 }
 
 // For navigation items

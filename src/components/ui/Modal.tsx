@@ -2,7 +2,10 @@
 import React, { Fragment } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { motion, Variants } from "framer-motion";
-import { XMarkIcon } from '../../constants.tsx'; 
+import { XMarkIcon } from '../../constants'; // Assumindo que XMarkIcon está em constants.tsx
+
+// cn utility (pode ser local se preferir não depender de constants.tsx para este componente UI)
+const cn = (...classes: (string | undefined | null | false)[]): string => classes.filter(Boolean).join(' ');
 
 interface ModalProps {
   isOpen: boolean;
@@ -10,7 +13,7 @@ interface ModalProps {
   title?: string;
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl';
-  theme?: 'light' | 'dark-app'; // 'dark-app' para o tema interno, 'light' para checkout claro (se necessário)
+  theme?: 'light' | 'dark-app'; 
 }
 
 export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 'md', theme = 'dark-app' }) => {
@@ -23,10 +26,10 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
 
   const panelClasses = isLightTheme
     ? 'checkout-light-theme bg-[var(--checkout-color-bg-surface)] border-[var(--checkout-color-border-subtle)]'
-    : 'bg-bg-surface bg-opacity-70 backdrop-blur-lg border-border-subtle'; // Glassmorphism
+    : 'bg-bg-surface bg-opacity-70 backdrop-blur-lg border-border-subtle'; 
 
   const titleClasses = isLightTheme
-    ? 'text-[var(--checkout-color-text-strong)]' // Use a strong text from light theme
+    ? 'modal-title-light-theme-text-force-dark' // Alterado para usar a nova classe CSS
     : 'text-accent-gold';
 
   const closeButtonClasses = isLightTheme
@@ -54,10 +57,10 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
       <Dialog as="div" className="relative z-50 app-dark-theme" onClose={onClose}>
         <Transition.Child
           as={Fragment}
-          enter="ease-out duration-300" // Headless UI enter
+          enter="ease-out duration-300"
           enterFrom="opacity-0"
           enterTo="opacity-100"
-          leave="ease-in duration-200" // Headless UI leave
+          leave="ease-in duration-200"
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
@@ -73,7 +76,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
         <div className="fixed inset-0 z-10 overflow-y-auto">
           <div className="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
             <Transition.Child
-              as={Fragment} // For Headless UI to manage show/hide
+              as={Fragment} 
               enter="ease-out duration-300"
               enterFrom="opacity-0 scale-95"
               enterTo="opacity-100 scale-100"
@@ -82,30 +85,43 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
               leaveTo="opacity-0 scale-95"
             >
               <Dialog.Panel 
-                as={motion.div} // Apply Framer Motion directly to Dialog.Panel
+                as={motion.div} 
                 variants={modalVariants}
                 initial="hidden"
                 animate="visible"
                 exit="exit"
-                className={`relative overflow-hidden rounded-3xl text-left shadow-2xl sm:my-8 sm:w-full border ${panelClasses} ${sizeClasses[size]}`}
+                className={cn(
+                  'relative overflow-hidden rounded-3xl text-left shadow-2xl sm:my-8 sm:w-full border',
+                  panelClasses,
+                  sizeClasses[size]
+                )}
               >
-                <div className={`px-6 py-5 border-b ${isLightTheme ? 'border-[var(--checkout-color-border-subtle)]' : 'border-border-subtle'} flex justify-between items-center`}>
+                <div className={cn(
+                  'px-6 py-5 border-b flex justify-between items-center',
+                  isLightTheme ? 'border-[var(--checkout-color-border-subtle)]' : 'border-border-subtle'
+                )}>
                   {title && (
-                    <Dialog.Title as="h3" className={`text-xl font-display font-semibold leading-7 ${titleClasses}`}>
+                    <Dialog.Title as="h3" className={cn(
+                      'text-xl font-display font-semibold leading-7',
+                      titleClasses 
+                    )}>
                       {title}
                     </Dialog.Title>
                   )}
                   {!title && <div className="flex-grow"></div>} 
                   <button
                     type="button"
-                    className={`rounded-md p-1.5 focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-150 ${closeButtonClasses}`}
+                    className={cn(
+                      'rounded-md p-1.5 focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-150',
+                      closeButtonClasses
+                    )}
                     onClick={onClose}
                     aria-label="Fechar modal"
                   >
                     <XMarkIcon className="h-6 w-6" />
                   </button>
                 </div>
-                <div className={`p-6 sm:p-8 ${contentTextClasses}`}>
+                <div className={cn('p-6 sm:p-8', contentTextClasses)}>
                   {children}
                 </div>
               </Dialog.Panel>

@@ -21,6 +21,7 @@ const ThankYouPage = React.lazy(() => import('@/pages/ThankYouPage'));
 const VendasPage = React.lazy(() => import('@/pages/VendasPage'));
 const ClientesPage = React.lazy(() => import('@/pages/ClientesPage'));
 const CarrinhosAbandonadosPage = React.lazy(() => import('@/pages/CarrinhosAbandonadosPage'));
+const EmailAutomationPage = React.lazy(() => import('@/pages/EmailAutomationPage')); // New
 const IntegracoesPage = React.lazy(() => import('@/pages/IntegracoesPage'));
 const ConfiguracoesPage = React.lazy(() => import('@/pages/ConfiguracoesPage'));
 const MinhaContaPage = React.lazy(() => import('@/pages/MinhaContaPage')); 
@@ -53,6 +54,7 @@ export const router = createBrowserRouter([
       { path: "/vendas", element: <ProtectedRoute><MainLayout><VendasPage /></MainLayout></ProtectedRoute> },
       { path: "/clientes", element: <ProtectedRoute><MainLayout><ClientesPage /></MainLayout></ProtectedRoute> },
       { path: "/carrinhos-abandonados", element: <ProtectedRoute><MainLayout><CarrinhosAbandonadosPage /></MainLayout></ProtectedRoute> },
+      { path: "/automacao-email", element: <ProtectedRoute><MainLayout><EmailAutomationPage /></MainLayout></ProtectedRoute> }, // New
       { path: "/integracoes", element: <ProtectedRoute><MainLayout><IntegracoesPage /></MainLayout></ProtectedRoute> },
       { path: "/configuracoes", element: <ProtectedRoute><MainLayout><ConfiguracoesPage /></MainLayout></ProtectedRoute> },
       { path: "/minha-conta", element: <ProtectedRoute><MainLayout><MinhaContaPage /></MainLayout></ProtectedRoute> }, 

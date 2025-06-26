@@ -1,5 +1,5 @@
 
-import { Product, Coupon, TraditionalOrderBumpOffer, PostClickOffer, UpsellOffer, ProductCheckoutCustomization, UtmParams } from '@/types'; 
+import { Product, Coupon, TraditionalOrderBumpOffer, PostClickOffer, UpsellOffer, ProductCheckoutCustomization, UtmParams, PostPurchaseEmailConfig } from '@/types'; 
 import { supabase, getSupabaseUserId } from '@/supabaseClient';  
 import { Database, Json } from '@/types/supabase'; 
 
@@ -31,7 +31,7 @@ const parseJsonField = <T>(field: Json | null | undefined, defaultValue: T): T =
   return field as T; 
 };
 
-const defaultCheckoutCustomization: ProductCheckoutCustomization = {
+export const defaultProductCheckoutCustomization: ProductCheckoutCustomization = {
   primaryColor: '#0D9488', 
   logoUrl: '',
   videoUrl: '',
@@ -48,16 +48,25 @@ const defaultCheckoutCustomization: ProductCheckoutCustomization = {
   },
   theme: 'light',
   showProductName: true,
-  animateTraditionalOrderBumps: true, // Default para animação
+  animateTraditionalOrderBumps: true,
 };
 
-const defaultUtmParams: UtmParams = {
+export const defaultUtmParams: UtmParams = {
   source: '', medium: '', campaign: '', term: '', content: ''
+};
+
+const defaultPostPurchaseEmailConfig: PostPurchaseEmailConfig = {
+  enabled: false,
+  delayDays: 1,
+  subject: 'Obrigado pela sua compra de {{product_name}}!',
+  bodyHtml: '<p>Olá {{customer_name}},</p><p>Agradecemos por adquirir {{product_name}}. Esperamos que aproveite!</p>',
 };
 
 
 const fromSupabaseRow = (row: ProductRow): Product => {
-  const checkoutCustomizationData = parseJsonField<ProductCheckoutCustomization | null>(row.checkout_customization, defaultCheckoutCustomization);
+  const checkoutCustomizationData = parseJsonField<ProductCheckoutCustomization | null>(row.checkout_customization, defaultProductCheckoutCustomization);
+  const postPurchaseEmailData = parseJsonField<PostPurchaseEmailConfig | undefined>(row.post_purchase_email_config, undefined);
+  
   return {
     id: row.id,
     platformUserId: row.platform_user_id,
@@ -67,12 +76,11 @@ const fromSupabaseRow = (row: ProductRow): Product => {
     priceInCents: row.price_in_cents,
     imageUrl: row.image_url || undefined,
     checkoutCustomization: {
-        ...defaultCheckoutCustomization,
-        ...(checkoutCustomizationData || {}), // Garante que todos os campos padrão estejam presentes
-        // Assegura que animateTraditionalOrderBumps tenha um valor booleano
+        ...defaultProductCheckoutCustomization,
+        ...(checkoutCustomizationData || {}),
         animateTraditionalOrderBumps: typeof checkoutCustomizationData?.animateTraditionalOrderBumps === 'boolean' 
             ? checkoutCustomizationData.animateTraditionalOrderBumps 
-            : defaultCheckoutCustomization.animateTraditionalOrderBumps,
+            : defaultProductCheckoutCustomization.animateTraditionalOrderBumps,
     },
     deliveryUrl: row.delivery_url || undefined,
     totalSales: row.total_sales || 0,
@@ -84,7 +92,10 @@ const fromSupabaseRow = (row: ProductRow): Product => {
     postClickOffer: parseJsonField<PostClickOffer | undefined>(row.order_bump, undefined), 
     upsell: parseJsonField<UpsellOffer | undefined>(row.upsell, undefined),
     coupons: parseJsonField<Coupon[]>(row.coupons, []),
-    utmParams: parseJsonField<UtmParams | null>(row.utm_params, defaultUtmParams), 
+    utmParams: parseJsonField<UtmParams | null>(row.utm_params, defaultUtmParams),
+    postPurchaseEmailConfig: postPurchaseEmailData 
+        ? { ...defaultPostPurchaseEmailConfig, ...postPurchaseEmailData } 
+        : undefined,
   };
 };
 
@@ -100,7 +111,7 @@ export const productService = {
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, order_bumps, upsell, coupons, utm_params, created_at, updated_at')
+        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, order_bumps, upsell, coupons, utm_params, post_purchase_email_config, created_at, updated_at')
         .eq('platform_user_id', userId); 
 
       if (error) throw error;
@@ -116,13 +127,13 @@ export const productService = {
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, order_bumps, upsell, coupons, utm_params, created_at, updated_at')
+        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, order_bumps, upsell, coupons, utm_params, post_purchase_email_config, created_at, updated_at')
         .eq('id', id)
         .single<ProductRow>();
 
       if (error) {
         console.error(`${logPrefix} Supabase error:`, error);
-        if (error.code === 'PGRST116') { // No rows found
+        if (error.code === 'PGRST116') { 
             console.warn(`${logPrefix} Product not found (PGRST116).`);
             return undefined; 
         }
@@ -148,7 +159,7 @@ export const productService = {
     try {
       const { data, error, status } = await supabase
         .from('products')
-        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, order_bumps, upsell, coupons, utm_params, created_at, updated_at')
+        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, order_bumps, upsell, coupons, utm_params, post_purchase_email_config, created_at, updated_at')
         .eq('slug', slug)
         .single<ProductRow>(); 
 
@@ -188,12 +199,17 @@ export const productService = {
       : null;
     
     const checkoutCustomizationToSave = {
-      ...defaultCheckoutCustomization,
+      ...defaultProductCheckoutCustomization,
       ...(productData.checkoutCustomization || {}),
       animateTraditionalOrderBumps: typeof productData.checkoutCustomization?.animateTraditionalOrderBumps === 'boolean' 
         ? productData.checkoutCustomization.animateTraditionalOrderBumps 
-        : defaultCheckoutCustomization.animateTraditionalOrderBumps,
+        : defaultProductCheckoutCustomization.animateTraditionalOrderBumps,
     };
+    
+    const postPurchaseEmailToSave = productData.postPurchaseEmailConfig?.enabled
+        ? { ...defaultPostPurchaseEmailConfig, ...productData.postPurchaseEmailConfig }
+        : null;
+
 
     const newProductData: ProductInsert = {
       platform_user_id: userId,
@@ -208,7 +224,8 @@ export const productService = {
       order_bump: productData.postClickOffer as unknown as Json, 
       upsell: productData.upsell as unknown as Json,
       coupons: productData.coupons as unknown as Json,
-      utm_params: utmParamsToSave as unknown as Json, 
+      utm_params: utmParamsToSave as unknown as Json,
+      post_purchase_email_config: postPurchaseEmailToSave as unknown as Json,
     };
 
     try {
@@ -238,18 +255,25 @@ export const productService = {
 
     const utmParamsToSave = updates.utmParams && Object.values(updates.utmParams).some(val => typeof val === 'string' && val.trim() !== '')
       ? updates.utmParams
-      : null;
+      : (currentProduct.utmParams && Object.values(currentProduct.utmParams).some(val => typeof val === 'string' && val.trim() !== '') ? currentProduct.utmParams : null);
+
 
     const checkoutCustomizationToSave = updates.checkoutCustomization 
       ? {
-          ...defaultCheckoutCustomization,
-          ...(currentProduct.checkoutCustomization || {}), // Base on existing or default
-          ...updates.checkoutCustomization, // Apply updates
+          ...defaultProductCheckoutCustomization,
+          ...(currentProduct.checkoutCustomization || {}), 
+          ...updates.checkoutCustomization, 
           animateTraditionalOrderBumps: typeof updates.checkoutCustomization.animateTraditionalOrderBumps === 'boolean'
             ? updates.checkoutCustomization.animateTraditionalOrderBumps
-            : (currentProduct.checkoutCustomization?.animateTraditionalOrderBumps ?? defaultCheckoutCustomization.animateTraditionalOrderBumps),
+            : (currentProduct.checkoutCustomization?.animateTraditionalOrderBumps ?? defaultProductCheckoutCustomization.animateTraditionalOrderBumps),
         }
       : currentProduct.checkoutCustomization;
+      
+    const postPurchaseEmailToSave = updates.postPurchaseEmailConfig
+      ? updates.postPurchaseEmailConfig.enabled
+        ? { ...defaultPostPurchaseEmailConfig, ...updates.postPurchaseEmailConfig }
+        : null // If toggled off, save null to clear it
+      : currentProduct.postPurchaseEmailConfig; // Keep existing if no update provided
 
 
     const updatesForSupabase: ProductUpdate = {
@@ -263,7 +287,8 @@ export const productService = {
         ...(updates.postClickOffer !== undefined && { order_bump: updates.postClickOffer as unknown as Json }), 
         ...(updates.upsell !== undefined && { upsell: updates.upsell as unknown as Json }),
         ...(updates.coupons !== undefined && { coupons: updates.coupons as unknown as Json }),
-        utm_params: utmParamsToSave as unknown as Json, 
+        utm_params: utmParamsToSave as unknown as Json,
+        post_purchase_email_config: postPurchaseEmailToSave as unknown as Json,
     };
     
     if (updates.name && currentProduct.name !== updates.name) {

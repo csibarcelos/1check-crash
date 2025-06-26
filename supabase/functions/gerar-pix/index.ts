@@ -1,4 +1,3 @@
-
 // Caminho: supabase/functions/gerar-pix/index.ts
 
 // @ts-ignore
@@ -6,7 +5,7 @@ import { serve } from "https://deno.land/std@0.203.0/http/server.ts";
 // @ts-ignore
 import { createClient } from 'npm:@supabase/supabase-js@2' 
 import { corsHeaders } from '../_shared/cors.ts';
-import { Database } from '../_shared/db_types.ts' 
+import { Database, Json } from '../_shared/db_types.ts' 
 
 declare const Deno: any;
 
@@ -16,7 +15,7 @@ const PUSH_IN_PAY_FIXED_FEE_IN_CENTS = 30;
 interface PixGenerationRequestPayload {
   value: number; 
   originalValueBeforeDiscount: number; 
-  webhook_url: string;
+  // webhook_url from frontend is now ignored, the function will set its own.
   customerName: string;
   customerEmail: string;
   customerWhatsapp: string;
@@ -119,6 +118,19 @@ interface UtmifyOrderPayloadForWaitingPayment {
     originalSaleId?: string;      
 }
 
+const parseJsonFromDb = <T>(field: Json | null | undefined, defaultValue: T): T => {
+  if (field === null || field === undefined) return defaultValue;
+  if (typeof field === 'string') {
+    try { return JSON.parse(field) as T; }
+    catch (e) { console.warn(`[gerar-pix EF] Failed to parse JSON string from DB field:`, field, e); return defaultValue; }
+  }
+  // If it's already an object (and not null), assume it's the correct type or a compatible structure.
+  if (typeof field === 'object' && field !== null) {
+    return field as T;
+  }
+  return defaultValue; // Fallback for other unexpected types
+};
+
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -142,12 +154,15 @@ serve(async (req: Request) => {
     if (!productOwnerUserId) throw new Error("ID do vendedor (productOwnerUserId) é obrigatório.");
     if (typeof amountForPixFromPayload !== 'number' || amountForPixFromPayload <= 0) throw new Error("Valor do PIX (payload.value) ausente/inválido.");
     if (!payload.customerName || !payload.customerEmail || !payload.customerWhatsapp) throw new Error("Detalhes do cliente obrigatórios.");
-    if (!payload.webhook_url) throw new Error("Webhook URL é obrigatória.");
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     if (!supabaseUrl || !serviceRoleKey) throw new Error("Variáveis de ambiente SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não configuradas.");
     const adminClient = createClient<Database>(supabaseUrl, serviceRoleKey);
+
+    const actualWebhookUrl = `${supabaseUrl}/functions/v1/webhook-pushinpay`;
+    console.log(`[gerar-pix EF] Webhook URL to be used: ${actualWebhookUrl}`);
+
 
     const { data: saleRecord, error: saleFetchError } = await adminClient
       .from('sales')
@@ -192,13 +207,34 @@ serve(async (req: Request) => {
     ]);
 
     if (sellerSettingsResult.error || !sellerSettingsResult.data) throw new Error(`Erro/Config. do vendedor não encontradas: ${sellerSettingsResult.error?.message}`);
-    const sellerApiTokens = sellerSettingsResult.data.api_tokens as any;
-    if (!sellerApiTokens?.pushinPayEnabled || !sellerApiTokens?.pushinPay) throw new Error('PushInPay não habilitado ou token não configurado para o vendedor.');
+    
+    const sellerApiTokensJson = sellerSettingsResult.data.api_tokens;
+    let sellerApiTokens: { pushinPayEnabled?: boolean, pushinPay?: string } | null = null;
+
+    if (typeof sellerApiTokensJson === 'string') {
+        try {
+            sellerApiTokens = JSON.parse(sellerApiTokensJson);
+        } catch (e) {
+            console.error("[gerar-pix EF] Failed to parse api_tokens JSON string:", e);
+            throw new Error("Configuração de API do vendedor (api_tokens) está mal formatada.");
+        }
+    } else if (sellerApiTokensJson && typeof sellerApiTokensJson === 'object') {
+        sellerApiTokens = sellerApiTokensJson as { pushinPayEnabled?: boolean, pushinPay?: string };
+    }
+    
+    if (!sellerApiTokens?.pushinPayEnabled || !sellerApiTokens?.pushinPay) {
+        throw new Error('PushInPay não habilitado ou token não configurado para o vendedor.');
+    }
+    const pushInPayToken = sellerApiTokens.pushinPay;
+
 
     if (platformSettingsResult.error || !platformSettingsResult.data) throw new Error(`Erro/Config. da plataforma não encontradas: ${platformSettingsResult.error?.message}`);
     const platformSettingsData = platformSettingsResult.data;
 
-    const pushInPayApiRequestBody: PushInPayApiRequestBody = { value: finalAmountForPix, webhook_url: payload.webhook_url };
+    const pushInPayApiRequestBody: PushInPayApiRequestBody = { 
+      value: finalAmountForPix, 
+      webhook_url: actualWebhookUrl 
+    };
     
     const basePlatformCommission = Math.round(finalAmountForPix * (platformSettingsData.platform_commission_percentage ?? 0)) + (platformSettingsData.platform_fixed_fee_in_cents ?? 0);
     let totalPlatformShareForPushInPay = basePlatformCommission + PUSH_IN_PAY_FIXED_FEE_IN_CENTS;
@@ -210,7 +246,7 @@ serve(async (req: Request) => {
     }
     
     const pushinPayResponse = await fetch('https://api.pushinpay.com.br/api/pix/cashIn', {
-        method: 'POST', headers: { 'Authorization': `Bearer ${sellerApiTokens.pushinPay}`, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        method: 'POST', headers: { 'Authorization': `Bearer ${pushInPayToken}`, 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify(pushInPayApiRequestBody)
     });
     const pushinPayParsedResponse: PushInPayFullApiResponse = await pushinPayResponse.json();
@@ -234,7 +270,7 @@ serve(async (req: Request) => {
         saleUpdatePayload[amountFieldToStoreInDb] = finalAmountForPix;
     }
     
-    if (!isUpsellTransaction) { // Only store full platform commission for main sale
+    if (!isUpsellTransaction) { 
         saleUpdatePayload.platform_commission_in_cents = totalPlatformShareForPushInPay;
     }
     
@@ -251,12 +287,20 @@ serve(async (req: Request) => {
     console.log(`[gerar-pix EF] Venda ${saleId} atualizada com sucesso.`);
 
     console.log(`[gerar-pix EF] Preparando evento 'waiting_payment' para UTMify (venda ${saleId}, upsell: ${isUpsellTransaction}).`);
-    const productsForUtmify = (isUpsellTransaction ? payload.products : (saleRecord.products as unknown as PixGenerationRequestPayload['products'])).map(p => ({
+    
+    // Robustly parse products from saleRecord or payload
+    let productsForUtmifySource = isUpsellTransaction ? payload.products : saleRecord.products;
+    const parsedSaleRecordProducts = parseJsonFromDb<PixGenerationRequestPayload['products']>(productsForUtmifySource, []);
+
+    const productsForUtmify = parsedSaleRecordProducts.map(p => ({
         id: p.productId, name: p.name, quantity: p.quantity, priceInCents: p.priceInCents,
         planId: p.productId, planName: p.name,    
     }));
 
-    const trackingParamsFromDb = saleRecord.tracking_parameters as any;
+    // Robustly parse trackingParameters
+    const trackingParamsFromDb = parseJsonFromDb<Record<string, string | null>>(saleRecord.tracking_parameters, {});
+    const payloadTrackingParams = payload.trackingParameters || {};
+
 
     const utmifyPayloadForWaitingPayment: UtmifyOrderPayloadForWaitingPayment = {
         orderId: isUpsellTransaction ? `${saleRecord.id}-upsell-${Date.now()}` : saleRecord.id,
@@ -269,17 +313,17 @@ serve(async (req: Request) => {
         },
         products: productsForUtmify,
         trackingParameters: {
-            src: payload.trackingParameters?.src || trackingParamsFromDb?.src || null,
-            sck: payload.trackingParameters?.sck || trackingParamsFromDb?.sck || null,
-            utm_source: payload.trackingParameters?.utm_source || trackingParamsFromDb?.utm_source || null,
-            utm_medium: payload.trackingParameters?.utm_medium || trackingParamsFromDb?.utm_medium || null,
-            utm_campaign: payload.trackingParameters?.utm_campaign || trackingParamsFromDb?.utm_campaign || null,
-            utm_term: payload.trackingParameters?.utm_term || trackingParamsFromDb?.utm_term || null,
-            utm_content: payload.trackingParameters?.utm_content || trackingParamsFromDb?.utm_content || null,
+            src: payloadTrackingParams?.src || trackingParamsFromDb?.src || null,
+            sck: payloadTrackingParams?.sck || trackingParamsFromDb?.sck || null,
+            utm_source: payloadTrackingParams?.utm_source || trackingParamsFromDb?.utm_source || null,
+            utm_medium: payloadTrackingParams?.utm_medium || trackingParamsFromDb?.utm_medium || null,
+            utm_campaign: payloadTrackingParams?.utm_campaign || trackingParamsFromDb?.utm_campaign || null,
+            utm_term: payloadTrackingParams?.utm_term || trackingParamsFromDb?.utm_term || null,
+            utm_content: payloadTrackingParams?.utm_content || trackingParamsFromDb?.utm_content || null,
         },
         commission: {
             totalPriceInCents: finalAmountForPix, 
-            gatewayFeeInCents: totalPlatformShareForPushInPay, // This now includes the 30-cent fee for both main and upsell
+            gatewayFeeInCents: totalPlatformShareForPushInPay, 
             userCommissionInCents: finalAmountForPix - totalPlatformShareForPushInPay,
             currency: "BRL",
         },
@@ -310,7 +354,7 @@ serve(async (req: Request) => {
     const clientErrorMessage = err.message || "Ocorreu um erro interno.";
     return new Response(JSON.stringify({ success: false, message: clientErrorMessage }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: err.message.startsWith("Gateway de Pagamento:") ? 402 : (err.message.includes("não encontrado") || err.message.includes("obrigatório")) ? 400 : 500 
+        status: err.message.startsWith("Gateway de Pagamento:") ? 402 : (err.message.includes("não encontrado") || err.message.includes("obrigatório") || err.message.includes("mal formatada")) ? 400 : 500 
     });
   }
 })

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Product, ProductCheckoutCustomization, TraditionalOrderBumpOffer, PostClickOffer, UpsellOffer, Coupon, UtmParams } from '@/types';
+import { Product, ProductCheckoutCustomization, TraditionalOrderBumpOffer, PostClickOffer, UpsellOffer, Coupon, UtmParams, PostPurchaseEmailConfig } from '@/types';
 import { Button } from '@/components/ui/Button';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { Input, Textarea } from '@/components/ui/Input';
@@ -10,7 +10,7 @@ import {
     COLOR_PALETTE_OPTIONS, TrashIcon, PlusIcon, UploadIcon, LinkIcon, 
     LockClosedIcon as OpenLockIcon, EyeIcon as ViewIcon, PaintBrushIcon, 
     TagIcon as PriceTagIcon, ShoppingBagIcon, GiftIcon, ChartPieIcon as UtmIcon,
-    SparklesIcon 
+    SparklesIcon, EnvelopeIcon // Added EnvelopeIcon
 } from '../../constants.tsx';
 import { MiniEditor } from '@/components/shared/MiniEditor';
 import { CouponFormModal } from '@/components/shared/CouponFormModal';
@@ -21,19 +21,20 @@ import { Tabs, TabConfig } from '@/components/ui/Tabs';
 import { supabase } from '@/supabaseClient';
 import { useToast } from '@/contexts/ToastContext';
 import { v4 as uuidv4 } from 'uuid';
+import { defaultProductCheckoutCustomization, defaultUtmParams } from '@/services/productService';
+
 
 const formatCurrency = (valueInCents: number): string => {
     return `R\$ ${(valueInCents / 100).toFixed(2).replace('.', ',')}`;
 };
 
-const defaultCheckoutCustomizationValues: ProductCheckoutCustomization = {
-  primaryColor: '#0D9488', logoUrl: '', videoUrl: '', salesCopy: '',
-  testimonials: [], guaranteeBadges: [],
-  countdownTimer: { enabled: false, durationMinutes: 15, messageBefore: 'Oferta expira em:', messageAfter: 'Oferta expirada!', backgroundColor: '#EF4444', textColor: '#FFFFFF' },
-  theme: 'light', showProductName: true, animateTraditionalOrderBumps: true,
+const defaultPostPurchaseEmailConfigValues: PostPurchaseEmailConfig = {
+  enabled: false,
+  delayDays: 3,
+  subject: 'Obrigado por comprar {{product_name}}!',
+  bodyHtml: '<p>Olá {{customer_name}},</p><p>Agradecemos por adquirir nosso produto: {{product_name}}.</p><p>Esperamos que você aproveite ao máximo! Se precisar de ajuda, estamos à disposição.</p><p>Atenciosamente,</p><p>Equipe {{shop_name}}</p>',
 };
 
-const defaultUtmParams: UtmParams = { source: '', medium: '', campaign: '', term: '', content: '' };
 
 const listItemVariants: Variants = {
   initial: { opacity: 0, y: -10, scale: 0.98 },
@@ -76,22 +77,18 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
   const [price, setPrice] = useState(initialData?.priceInCents ? (initialData.priceInCents / 100).toFixed(2).replace('.', ',') : '');
   
   const supabaseOrigin = useMemo(() => {
-    // Assuming 'productimages' bucket exists due to prior upload logic.
-    // Using a dummy path like '_' for robustness.
-    const { data } = supabase.storage.from('productimages').getPublicUrl('_');
+    const { data } = supabase.storage.from('productimages').getPublicUrl('_'); // Dummy path
     if (data?.publicUrl) {
         try {
             return new URL(data.publicUrl).origin;
         } catch (e) { 
             console.error("Error parsing Supabase origin URL from publicUrl:", data.publicUrl, e);
-            // Fallback: try to construct from SUPABASE_URL if it was exposed, or return empty.
-            // For now, returning empty as direct env access isn't standard here.
             return ''; 
         }
     }
     console.warn("Could not get publicUrl to determine Supabase origin.");
     return '';
-  }, []); // Runs once, assuming supabase.storage instance doesn't change.
+  }, []); 
 
 
   const [imageInputMode, setImageInputMode] = useState<'url' | 'upload'>(
@@ -105,13 +102,18 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
   const [deliveryUrl, setDeliveryUrl] = useState(initialData?.deliveryUrl || '');
   const [checkoutCustomization, setCheckoutCustomization] = useState<ProductCheckoutCustomization>(
     initialData?.checkoutCustomization 
-        ? { ...defaultCheckoutCustomizationValues, ...initialData.checkoutCustomization,
-            countdownTimer: { ...defaultCheckoutCustomizationValues.countdownTimer!, ...(initialData.checkoutCustomization.countdownTimer || {}) },
-            animateTraditionalOrderBumps: typeof initialData.checkoutCustomization.animateTraditionalOrderBumps === 'boolean' ? initialData.checkoutCustomization.animateTraditionalOrderBumps : defaultCheckoutCustomizationValues.animateTraditionalOrderBumps,
+        ? { ...defaultProductCheckoutCustomization, ...initialData.checkoutCustomization,
+            countdownTimer: { ...defaultProductCheckoutCustomization.countdownTimer!, ...(initialData.checkoutCustomization.countdownTimer || {}) },
+            animateTraditionalOrderBumps: typeof initialData.checkoutCustomization.animateTraditionalOrderBumps === 'boolean' ? initialData.checkoutCustomization.animateTraditionalOrderBumps : defaultProductCheckoutCustomization.animateTraditionalOrderBumps,
         } 
-        : defaultCheckoutCustomizationValues
+        : defaultProductCheckoutCustomization
   );
   const [utmParams, setUtmParams] = useState<UtmParams>(initialData?.utmParams || defaultUtmParams);
+  const [postPurchaseEmailConfig, setPostPurchaseEmailConfig] = useState<PostPurchaseEmailConfig>(
+    initialData?.postPurchaseEmailConfig 
+      ? { ...defaultPostPurchaseEmailConfigValues, ...initialData.postPurchaseEmailConfig }
+      : defaultPostPurchaseEmailConfigValues
+  );
 
   const [traditionalOrderBumps, setTraditionalOrderBumps] = useState<TraditionalOrderBumpOffer[]>(initialData?.orderBumps || []);
   const [postClickOffer, setPostClickOffer] = useState<PostClickOffer | undefined>(initialData?.postClickOffer);
@@ -141,13 +143,14 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
     setImagePreviewUrl(initialData?.imageUrl || null);
     setDeliveryUrl(initialData?.deliveryUrl || '');
     setCheckoutCustomization(initialData?.checkoutCustomization 
-      ? { ...defaultCheckoutCustomizationValues, ...initialData.checkoutCustomization,
-          countdownTimer: { ...defaultCheckoutCustomizationValues.countdownTimer!, ...(initialData.checkoutCustomization.countdownTimer || {}) },
-          animateTraditionalOrderBumps: typeof initialData.checkoutCustomization.animateTraditionalOrderBumps === 'boolean' ? initialData.checkoutCustomization.animateTraditionalOrderBumps : defaultCheckoutCustomizationValues.animateTraditionalOrderBumps,
+      ? { ...defaultProductCheckoutCustomization, ...initialData.checkoutCustomization,
+          countdownTimer: { ...defaultProductCheckoutCustomization.countdownTimer!, ...(initialData.checkoutCustomization.countdownTimer || {}) },
+          animateTraditionalOrderBumps: typeof initialData.checkoutCustomization.animateTraditionalOrderBumps === 'boolean' ? initialData.checkoutCustomization.animateTraditionalOrderBumps : defaultProductCheckoutCustomization.animateTraditionalOrderBumps,
         } 
-      : defaultCheckoutCustomizationValues
+      : defaultProductCheckoutCustomization
     );
     setUtmParams(initialData?.utmParams || defaultUtmParams);
+    setPostPurchaseEmailConfig(initialData?.postPurchaseEmailConfig ? { ...defaultPostPurchaseEmailConfigValues, ...initialData.postPurchaseEmailConfig } : defaultPostPurchaseEmailConfigValues);
     setTraditionalOrderBumps(initialData?.orderBumps || []);
     setPostClickOffer(initialData?.postClickOffer);
     setUpsell(initialData?.upsell);
@@ -157,15 +160,10 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
         const hasSupabaseGeneratedUrl = initialData.imageUrl.startsWith(supabaseOrigin);
         setImageInputMode(initialData.imageUrl && !hasSupabaseGeneratedUrl ? 'url' : 'url');
     } else if (initialData?.imageUrl) {
-        // If supabaseOrigin is not yet resolved but imageUrl exists, default to 'url'
-        // This might happen on very fast initial loads if useMemo for supabaseOrigin hasn't finished
         setImageInputMode('url');
     }
 
-
-    const timer = setTimeout(() => {
-        isInitialLoadDone.current = true;
-    }, 100); 
+    const timer = setTimeout(() => { isInitialLoadDone.current = true; }, 100); 
     return () => clearTimeout(timer);
   }, [initialData, supabaseOrigin]);
 
@@ -236,13 +234,14 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
           ...checkoutCustomization, 
           theme: checkoutCustomization.theme || 'light', 
           showProductName: checkoutCustomization.showProductName !== undefined ? checkoutCustomization.showProductName : true,
-          animateTraditionalOrderBumps: typeof checkoutCustomization.animateTraditionalOrderBumps === 'boolean' ? checkoutCustomization.animateTraditionalOrderBumps : defaultCheckoutCustomizationValues.animateTraditionalOrderBumps,
+          animateTraditionalOrderBumps: typeof checkoutCustomization.animateTraditionalOrderBumps === 'boolean' ? checkoutCustomization.animateTraditionalOrderBumps : defaultProductCheckoutCustomization.animateTraditionalOrderBumps,
       },
       orderBumps: traditionalOrderBumps.length > 0 ? traditionalOrderBumps.filter(ob => ob.productId) : undefined,
       postClickOffer: postClickOffer?.productId ? postClickOffer : undefined, 
       upsell: upsell?.productId ? upsell : undefined,
       coupons: coupons.length > 0 ? coupons : undefined,
       utmParams: Object.values(utmParams).some(val => typeof val === 'string' && val.trim() !== '') ? utmParams : undefined,
+      postPurchaseEmailConfig: postPurchaseEmailConfig.enabled ? postPurchaseEmailConfig : undefined,
     };
     await onSubmit(formData);
   };
@@ -255,7 +254,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
   ];
 
   const handleCustomizationChange = <K extends keyof ProductCheckoutCustomization, V extends ProductCheckoutCustomization[K]>(field: K, value: V) => { setCheckoutCustomization(prev => ({ ...prev, [field]: value })); notifyChange(); };
-  const handleCountdownTimerChange = <K extends keyof NonNullable<ProductCheckoutCustomization['countdownTimer']>>(field: K, value: NonNullable<ProductCheckoutCustomization['countdownTimer']>[K]) => { setCheckoutCustomization(prev => ({ ...prev, countdownTimer: { ...(prev.countdownTimer || defaultCheckoutCustomizationValues.countdownTimer!), [field]: value } })); notifyChange(); };
+  const handleCountdownTimerChange = <K extends keyof NonNullable<ProductCheckoutCustomization['countdownTimer']>>(field: K, value: NonNullable<ProductCheckoutCustomization['countdownTimer']>[K]) => { setCheckoutCustomization(prev => ({ ...prev, countdownTimer: { ...(prev.countdownTimer || defaultProductCheckoutCustomization.countdownTimer!), [field]: value } })); notifyChange(); };
   const handleUtmParamChange = (param: keyof UtmParams, value: string) => { setUtmParams(prev => ({ ...prev, [param]: value })); notifyChange(); };
   const handleSalesCopyChange = (html: string) => { handleCustomizationChange('salesCopy', html); }; 
   const addGuaranteeBadge = () => { handleCustomizationChange('guaranteeBadges', [...(checkoutCustomization.guaranteeBadges || []), { id: `badge_${Date.now()}`, imageUrl: '', altText: '' }]); };
@@ -316,7 +315,6 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
       modalAcceptButtonText: postClickOfferCopySuggestions.texto_botao_aceitar[0].replace('{preco}', formatCurrency(price)),
       modalDeclineButtonText: postClickOfferCopySuggestions.texto_botao_recusar[0],
     });
-    // Reset copy suggestion indices
     setPostClickOfferTitleIndex(0); setPostClickOfferDescIndex(0);
     setPostClickOfferAcceptBtnIndex(0); setPostClickOfferDeclineBtnIndex(0);
     notifyChange();
@@ -350,40 +348,17 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
     let setIndexFunction: React.Dispatch<React.SetStateAction<number>> = () => {};
   
     switch (fieldKey) {
-      case 'modalTitle':
-        suggestionsArray = postClickOfferCopySuggestions.titulo_modal;
-        currentIndex = postClickOfferTitleIndex;
-        setIndexFunction = setPostClickOfferTitleIndex;
-        break;
-      case 'description':
-        suggestionsArray = postClickOfferCopySuggestions.descricao_modal;
-        currentIndex = postClickOfferDescIndex;
-        setIndexFunction = setPostClickOfferDescIndex;
-        break;
-      case 'modalAcceptButtonText':
-        suggestionsArray = postClickOfferCopySuggestions.texto_botao_aceitar;
-        currentIndex = postClickOfferAcceptBtnIndex;
-        setIndexFunction = setPostClickOfferAcceptBtnIndex;
-        break;
-      case 'modalDeclineButtonText':
-        suggestionsArray = postClickOfferCopySuggestions.texto_botao_recusar;
-        currentIndex = postClickOfferDeclineBtnIndex;
-        setIndexFunction = setPostClickOfferDeclineBtnIndex;
-        break;
-      default:
-        return;
+      case 'modalTitle': suggestionsArray = postClickOfferCopySuggestions.titulo_modal; currentIndex = postClickOfferTitleIndex; setIndexFunction = setPostClickOfferTitleIndex; break;
+      case 'description': suggestionsArray = postClickOfferCopySuggestions.descricao_modal; currentIndex = postClickOfferDescIndex; setIndexFunction = setPostClickOfferDescIndex; break;
+      case 'modalAcceptButtonText': suggestionsArray = postClickOfferCopySuggestions.texto_botao_aceitar; currentIndex = postClickOfferAcceptBtnIndex; setIndexFunction = setPostClickOfferAcceptBtnIndex; break;
+      case 'modalDeclineButtonText': suggestionsArray = postClickOfferCopySuggestions.texto_botao_recusar; currentIndex = postClickOfferDeclineBtnIndex; setIndexFunction = setPostClickOfferDeclineBtnIndex; break;
+      default: return;
     }
   
     if (suggestionsArray.length === 0) return;
-  
     const nextIndex = (currentIndex + 1) % suggestionsArray.length;
     let nextCopy = suggestionsArray[nextIndex];
-  
-    // Replace {preco} placeholder
-    if (fieldKey === 'description' || fieldKey === 'modalAcceptButtonText') {
-      nextCopy = nextCopy.replace(/{preco}|R\$\s*\d+,\d+/g, formatCurrency(postClickOffer.customPriceInCents || 0));
-    }
-  
+    if (fieldKey === 'description' || fieldKey === 'modalAcceptButtonText') nextCopy = nextCopy.replace(/{preco}|R\$\s*\d+,\d+/g, formatCurrency(postClickOffer.customPriceInCents || 0));
     updatePostClickOfferField(fieldKey, nextCopy);
     setIndexFunction(nextIndex);
   };
@@ -418,32 +393,28 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
 
   const countdownDurationOptions = [ { label: 'Nenhum', value: "0" }, { label: '5 minutos', value: "5" }, { label: '10 minutos', value: "10" }, { label: '15 minutos', value: "15" }, { label: '20 minutos', value: "20" }, { label: '30 minutos', value: "30" }, { label: '60 minutos', value: "60" }, ].map(cd => ({ value: cd.value, label: cd.label }));
   
+  const handlePostPurchaseEmailConfigChange = <K extends keyof PostPurchaseEmailConfig>(field: K, value: PostPurchaseEmailConfig[K]) => { setPostPurchaseEmailConfig(prev => ({...prev, [field]: value})); notifyChange(); };
+  const handlePostPurchaseEmailBodyChange = (html: string) => { handlePostPurchaseEmailConfigChange('bodyHtml', html); };
+  const postPurchaseDelayOptions = [ {value: "1", label: "1 Dia Após Compra"}, {value: "2", label: "2 Dias Após Compra"}, {value: "3", label: "3 Dias Após Compra"}, {value: "5", label: "5 Dias Após Compra"}, {value: "7", label: "7 Dias Após Compra"}, {value: "10", label: "10 Dias Após Compra"}, {value: "15", label: "15 Dias Após Compra"}, {value: "30", label: "30 Dias Após Compra"} ];
+
+
   const traditionalOrderBumpProductOptions = (currentIndex: number) => {
-    const selectedProductIds = traditionalOrderBumps
-        .map((bump, idx) => (idx !== currentIndex ? bump.productId : null))
-        .filter(id => id !== null && id !== '');
+    const selectedProductIds = traditionalOrderBumps.map((bump, idx) => (idx !== currentIndex ? bump.productId : null)).filter(id => id !== null && id !== '');
     if (postClickOffer?.productId) selectedProductIds.push(postClickOffer.productId);
     if (upsell?.productId) selectedProductIds.push(upsell.productId);
-
-    return availableProductsForOffers
-        .filter(p => !selectedProductIds.includes(p.id))
-        .map(p => ({ value: p.id, label: `${p.name} (R$ ${(p.priceInCents / 100).toFixed(2).replace('.', ',')})` }));
+    return availableProductsForOffers.filter(p => !selectedProductIds.includes(p.id)).map(p => ({ value: p.id, label: `${p.name} (R$ ${(p.priceInCents / 100).toFixed(2).replace('.', ',')})` }));
   };
   
   const postClickOfferProductOptions = () => {
       const selectedProductIds = traditionalOrderBumps.map(bump => bump.productId).filter(id => id !== null && id !== '');
       if (upsell?.productId) selectedProductIds.push(upsell.productId);
-      return availableProductsForOffers
-          .filter(p => !selectedProductIds.includes(p.id))
-          .map(p => ({ value: p.id, label: `${p.name} (R$ ${(p.priceInCents / 100).toFixed(2).replace('.', ',')})` }));
+      return availableProductsForOffers.filter(p => !selectedProductIds.includes(p.id)).map(p => ({ value: p.id, label: `${p.name} (R$ ${(p.priceInCents / 100).toFixed(2).replace('.', ',')})` }));
   };
 
   const upsellProductOptions = () => {
       const selectedProductIds = traditionalOrderBumps.map(bump => bump.productId).filter(id => id !== null && id !== '');
       if (postClickOffer?.productId) selectedProductIds.push(postClickOffer.productId);
-      return availableProductsForOffers
-          .filter(p => !selectedProductIds.includes(p.id))
-          .map(p => ({ value: p.id, label: `${p.name} (R$ ${(p.priceInCents / 100).toFixed(2).replace('.', ',')})` }));
+      return availableProductsForOffers.filter(p => !selectedProductIds.includes(p.id)).map(p => ({ value: p.id, label: `${p.name} (R$ ${(p.priceInCents / 100).toFixed(2).replace('.', ',')})` }));
   };
 
   const wrappedSetProductName = (val: string) => { setProductName(val); notifyChange(); };
@@ -468,14 +439,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
           <Input label="Nome do Produto" name="productName" value={productName} onChange={(e) => wrappedSetProductName(e.target.value)} required placeholder="Ex: Curso de Marketing Digital Avançado" disabled={isSaving} />
           <Textarea label="Descrição" name="description" value={description} onChange={(e) => wrappedSetDescription(e.target.value)} required placeholder="Descreva seu produto em detalhes..." rows={5} disabled={isSaving}/>
           <Input label="Preço (R$)" name="price" type="text" value={price} onChange={(e) => wrappedSetPrice(e.target.value)} required placeholder="Ex: 197,00" disabled={isSaving}/>
-          
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-text-default">Imagem Principal do Produto</label>
-            <Tabs tabs={imageInputTabs} defaultValue={imageInputMode} onValueChange={(val) => wrappedSetImageInputMode(val as 'url' | 'upload')} />
-            {imagePreviewUrl && <img src={imagePreviewUrl} alt="Prévia da Imagem" className="mt-2 max-h-48 w-auto rounded-lg border border-border-subtle shadow-sm"/>}
-            {isUploadingImage && <div className="flex items-center text-sm text-accent-blue-neon"><LoadingSpinner size="sm" className="mr-2"/>Enviando imagem...</div>}
-          </div>
-
+          <div className="space-y-2"> <label className="block text-sm font-medium text-text-default">Imagem Principal do Produto</label> <Tabs tabs={imageInputTabs} defaultValue={imageInputMode} onValueChange={(val) => wrappedSetImageInputMode(val as 'url' | 'upload')} /> {imagePreviewUrl && <img src={imagePreviewUrl} alt="Prévia da Imagem" className="mt-2 max-h-48 w-auto rounded-lg border border-border-subtle shadow-sm"/>} {isUploadingImage && <div className="flex items-center text-sm text-accent-blue-neon"><LoadingSpinner size="sm" className="mr-2"/>Enviando imagem...</div>} </div>
           <Input label="URL de Entrega (Opcional)" name="deliveryUrl" type="url" value={deliveryUrl} onChange={(e) => wrappedSetDeliveryUrl(e.target.value)} placeholder="https://areademembros.com/acesso-curso" icon={<OpenLockIcon className="h-5 w-5 text-text-muted"/>} disabled={isSaving}/>
         </div>
       </Card>
@@ -502,101 +466,54 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
     )},
     { value: 'offers', label: <><PriceTagIcon className="h-5 w-5 mr-2"/>Ofertas Especiais</>, content: (
       <div className="space-y-6">
-        <Card title="Order Bumps Tradicionais (Checkbox - até 5)">
-          <ToggleSwitch 
-            label="Habilitar animação de destaque nos Order Bumps?" 
-            enabled={checkoutCustomization.animateTraditionalOrderBumps ?? true} 
-            onEnabledChange={(isEnabled) => handleCustomizationChange('animateTraditionalOrderBumps', isEnabled)} 
-            disabled={isSaving}
-            className="mb-4"
-          />
-          <AnimatePresence>
-            {traditionalOrderBumps.map((bump, index) => (
-              <motion.div key={bump.id} variants={listItemVariants} initial="initial" animate="animate" exit="exit" layout className="space-y-3 p-4 border border-border-subtle rounded-xl bg-bg-surface-opaque mb-4">
-                <h4 className="text-sm font-semibold text-text-strong">Order Bump {index + 1}</h4>
-                <Combobox
-                  label="Selecionar Produto:"
-                  options={traditionalOrderBumpProductOptions(index)}
-                  value={bump.productId}
-                  onValueChange={(value) => updateTraditionalOrderBump(index, 'productId', value)}
-                  placeholder="Escolha um produto"
-                  emptyMessage="Nenhum produto disponível."
-                  disabled={isSaving}
-                />
-                {bump.productId && (
-                  <>
-                    <Input label="Nome/Label no Checkout" value={bump.name} onChange={(e) => updateTraditionalOrderBump(index, 'name', e.target.value)} placeholder="Ex: Ebook Exclusivo" disabled={isSaving}/>
-                    <Textarea label="Descrição (Opcional)" value={bump.description || ''} onChange={(e) => updateTraditionalOrderBump(index, 'description', e.target.value)} placeholder="Pequena descrição da oferta" rows={2} disabled={isSaving}/>
-                    <Input label="Preço Customizado (R$)" type="text" value={formatCurrencyForInput(bump.customPriceInCents)} onChange={(e) => updateTraditionalOrderBump(index, 'customPriceInCents', e.target.value)} placeholder="Preço original se vazio" disabled={isSaving}/>
-                    <Input label="URL da Imagem (Opcional)" type="url" value={bump.imageUrl || ''} onChange={(e) => updateTraditionalOrderBump(index, 'imageUrl', e.target.value)} placeholder="https://exemplo.com/imagem-oferta.jpg" disabled={isSaving}/>
-                  </>
-                )}
-                <Button type="button" variant="danger" size="sm" onClick={() => removeTraditionalOrderBump(index)} disabled={isSaving}>Remover Order Bump {index + 1}</Button>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-          {traditionalOrderBumps.length < 5 && (
-            <Button type="button" variant="secondary" onClick={addTraditionalOrderBump} leftIcon={<PlusIcon />} disabled={isSaving}>Adicionar Order Bump</Button>
-          )}
-        </Card>
-
-        <Card title="Oferta Adicional Pós-Clique (Modal - 1 por produto)">
-            {postClickOffer ? (
-              <motion.div variants={listItemVariants} initial="initial" animate="animate" exit="exit" layout className="space-y-3 p-3 border border-border-subtle rounded-xl bg-bg-surface-opaque">
-                <p className="font-medium text-text-strong">Produto Selecionado: <span className="text-primary">{availableProductsForOffers.find(p=>p.id === postClickOffer.productId)?.name || postClickOffer.name}</span></p>
-                <Input label="Título no Modal" value={postClickOffer.modalTitle || ''} onChange={(e) => updatePostClickOfferField('modalTitle', e.target.value)} placeholder="Ex: 🔥 OFERTA ÚNICA! 🔥" disabled={isSaving}
-                  rightElement={ <button type="button" onClick={() => suggestCopyForPostClickOffer('modalTitle')} className="p-1 hover:bg-white/10 rounded-md" title="Sugerir copy"><SparklesIcon className="h-5 w-5 text-accent-gold"/></button> } />
-                
-                <div>
-                    <label className="block text-sm font-medium text-text-default mb-1.5">Descrição no Modal</label>
-                    <MiniEditor 
-                        value={postClickOffer.description || ''} 
-                        onChange={(html) => updatePostClickOfferField('description', html)} 
-                        placeholder="Detalhes da sua oferta irresistível..."
-                    />
-                     <button type="button" onClick={() => suggestCopyForPostClickOffer('description')} className="mt-1 p-1 text-xs text-accent-gold hover:bg-white/10 rounded-md flex items-center" title="Sugerir copy"><SparklesIcon className="h-4 w-4 mr-1"/>Sugerir descrição</button>
-                </div>
-
-                <Input label="Preço Customizado (R$)" type="text" value={formatCurrencyForInput(postClickOffer.customPriceInCents)} onChange={(e) => updatePostClickOfferField('customPriceInCents', e.target.value)} placeholder="Preço original se vazio" disabled={isSaving}/>
-                <Input label="URL da Imagem (Opcional)" type="url" value={postClickOffer.imageUrl || ''} onChange={(e) => updatePostClickOfferField('imageUrl', e.target.value)} placeholder="https://exemplo.com/imagem-modal.jpg" disabled={isSaving}/>
-                <Input label="Texto Botão Aceitar" value={postClickOffer.modalAcceptButtonText || ''} onChange={(e) => updatePostClickOfferField('modalAcceptButtonText', e.target.value)} placeholder="Ex: Sim, Quero Adicionar!" disabled={isSaving}
-                  rightElement={ <button type="button" onClick={() => suggestCopyForPostClickOffer('modalAcceptButtonText')} className="p-1 hover:bg-white/10 rounded-md" title="Sugerir copy"><SparklesIcon className="h-5 w-5 text-accent-gold"/></button> }/>
-                <Input label="Texto Botão Recusar" value={postClickOffer.modalDeclineButtonText || ''} onChange={(e) => updatePostClickOfferField('modalDeclineButtonText', e.target.value)} placeholder="Ex: Não, Obrigado." disabled={isSaving}
-                  rightElement={ <button type="button" onClick={() => suggestCopyForPostClickOffer('modalDeclineButtonText')} className="p-1 hover:bg-white/10 rounded-md" title="Sugerir copy"><SparklesIcon className="h-5 w-5 text-accent-gold"/></button> }/>
-                <Button type="button" variant="danger" size="sm" onClick={removePostClickOffer} disabled={isSaving}>Remover Oferta Pós-Clique</Button>
-              </motion.div>
-            ) : (
-              <div className="space-y-2">
-                <Combobox label="Selecionar Produto para Oferta Pós-Clique:" options={postClickOfferProductOptions()} value={postClickOfferValue} onValueChange={handlePostClickOfferProductSelect} placeholder="Nenhum (Sem Oferta Pós-Clique)" emptyMessage="Nenhum produto disponível." disabled={isSaving || availableProductsForOffers.length === 0}/>
-                {availableProductsForOffers.length === 0 && <p className="text-xs text-text-muted mt-1">Crie outros produtos para selecioná-los aqui.</p>}
-              </div>
-            )}
-        </Card>
-        
-        <Card title="Oferta Pós-Compra (Upsell na Página de Obrigado)">
-            {upsell ? (
-              <motion.div variants={listItemVariants} initial="initial" animate="animate" exit="exit" layout className="space-y-3 p-3 border border-border-subtle rounded-xl bg-bg-surface-opaque">
-                <p className="font-medium text-text-strong">Produto: <span className="text-primary">{availableProductsForOffers.find(p=>p.id === upsell.productId)?.name || upsell.name}</span></p>
-                <Textarea label="Descrição da Oferta de Upsell" value={upsell.description} onChange={(e) => updateUpsellOfferField('description', e.target.value)} placeholder="Descreva a oferta de upsell..." rows={3} disabled={isSaving}/>
-                <Input label="Preço Customizado (R$)" type="text" value={formatCurrencyForInput(upsell.customPriceInCents)} onChange={(e) => updateUpsellOfferField('customPriceInCents', e.target.value)} placeholder="Preço original se vazio" disabled={isSaving}/>
-                <Input label="URL da Imagem (Opcional)" type="url" value={upsell.imageUrl || ''} onChange={(e) => updateUpsellOfferField('imageUrl', e.target.value)} placeholder="https://exemplo.com/imagem-upsell.jpg" disabled={isSaving}/>
-                <Button type="button" variant="danger" size="sm" onClick={removeUpsellOffer} disabled={isSaving}>Remover Upsell</Button>
-              </motion.div>
-            ) : (
-              <div className="space-y-2">
-                 <Combobox label="Selecionar Produto para Upsell:" options={upsellProductOptions()} value={upsellValue} onValueChange={handleUpsellProductSelect} placeholder="Nenhum (Sem Upsell)" emptyMessage="Nenhum produto disponível." disabled={isSaving || availableProductsForOffers.length === 0}/>
-                {availableProductsForOffers.length === 0 && <p className="text-xs text-text-muted mt-1">Crie outros produtos para selecioná-los aqui.</p>}
-              </div>
-            )}
-        </Card>
+        <Card title="Order Bumps Tradicionais (Checkbox - até 5)"> <ToggleSwitch label="Habilitar animação de destaque nos Order Bumps?" enabled={checkoutCustomization.animateTraditionalOrderBumps ?? true} onEnabledChange={(isEnabled) => handleCustomizationChange('animateTraditionalOrderBumps', isEnabled)} disabled={isSaving} className="mb-4"/> <AnimatePresence> {traditionalOrderBumps.map((bump, index) => ( <motion.div key={bump.id} variants={listItemVariants} initial="initial" animate="animate" exit="exit" layout className="space-y-3 p-4 border border-border-subtle rounded-xl bg-bg-surface-opaque mb-4"> <h4 className="text-sm font-semibold text-text-strong">Order Bump {index + 1}</h4> <Combobox label="Selecionar Produto:" options={traditionalOrderBumpProductOptions(index)} value={bump.productId} onValueChange={(value) => updateTraditionalOrderBump(index, 'productId', value)} placeholder="Escolha um produto" emptyMessage="Nenhum produto disponível." disabled={isSaving}/> {bump.productId && ( <> <Input label="Nome/Label no Checkout" value={bump.name} onChange={(e) => updateTraditionalOrderBump(index, 'name', e.target.value)} placeholder="Ex: Ebook Exclusivo" disabled={isSaving}/> <Textarea label="Descrição (Opcional)" value={bump.description || ''} onChange={(e) => updateTraditionalOrderBump(index, 'description', e.target.value)} placeholder="Pequena descrição da oferta" rows={2} disabled={isSaving}/> <Input label="Preço Customizado (R$)" type="text" value={formatCurrencyForInput(bump.customPriceInCents)} onChange={(e) => updateTraditionalOrderBump(index, 'customPriceInCents', e.target.value)} placeholder="Preço original se vazio" disabled={isSaving}/> <Input label="URL da Imagem (Opcional)" type="url" value={bump.imageUrl || ''} onChange={(e) => updateTraditionalOrderBump(index, 'imageUrl', e.target.value)} placeholder="https://exemplo.com/imagem-oferta.jpg" disabled={isSaving}/> </> )} <Button type="button" variant="danger" size="sm" onClick={() => removeTraditionalOrderBump(index)} disabled={isSaving}>Remover Order Bump {index + 1}</Button> </motion.div> ))} </AnimatePresence> {traditionalOrderBumps.length < 5 && ( <Button type="button" variant="secondary" onClick={addTraditionalOrderBump} leftIcon={<PlusIcon />} disabled={isSaving}>Adicionar Order Bump</Button> )} </Card>
+        <Card title="Oferta Adicional Pós-Clique (Modal - 1 por produto)"> {postClickOffer ? ( <motion.div variants={listItemVariants} initial="initial" animate="animate" exit="exit" layout className="space-y-3 p-3 border border-border-subtle rounded-xl bg-bg-surface-opaque"> <p className="font-medium text-text-strong">Produto Selecionado: <span className="text-primary">{availableProductsForOffers.find(p=>p.id === postClickOffer.productId)?.name || postClickOffer.name}</span></p> <Input label="Título no Modal" value={postClickOffer.modalTitle || ''} onChange={(e) => updatePostClickOfferField('modalTitle', e.target.value)} placeholder="Ex: 🔥 OFERTA ÚNICA! 🔥" disabled={isSaving} rightElement={ <button type="button" onClick={() => suggestCopyForPostClickOffer('modalTitle')} className="p-1 hover:bg-white/10 rounded-md" title="Sugerir copy"><SparklesIcon className="h-5 w-5 text-accent-gold"/></button> } /> <div> <label className="block text-sm font-medium text-text-default mb-1.5">Descrição no Modal</label> <MiniEditor value={postClickOffer.description || ''} onChange={(html) => updatePostClickOfferField('description', html)} placeholder="Detalhes da sua oferta irresistível..."/> <button type="button" onClick={() => suggestCopyForPostClickOffer('description')} className="mt-1 p-1 text-xs text-accent-gold hover:bg-white/10 rounded-md flex items-center" title="Sugerir copy"><SparklesIcon className="h-4 w-4 mr-1"/>Sugerir descrição</button> </div> <Input label="Preço Customizado (R$)" type="text" value={formatCurrencyForInput(postClickOffer.customPriceInCents)} onChange={(e) => updatePostClickOfferField('customPriceInCents', e.target.value)} placeholder="Preço original se vazio" disabled={isSaving}/> <Input label="URL da Imagem (Opcional)" type="url" value={postClickOffer.imageUrl || ''} onChange={(e) => updatePostClickOfferField('imageUrl', e.target.value)} placeholder="https://exemplo.com/imagem-modal.jpg" disabled={isSaving}/> <Input label="Texto Botão Aceitar" value={postClickOffer.modalAcceptButtonText || ''} onChange={(e) => updatePostClickOfferField('modalAcceptButtonText', e.target.value)} placeholder="Ex: Sim, Quero Adicionar!" disabled={isSaving} rightElement={ <button type="button" onClick={() => suggestCopyForPostClickOffer('modalAcceptButtonText')} className="p-1 hover:bg-white/10 rounded-md" title="Sugerir copy"><SparklesIcon className="h-5 w-5 text-accent-gold"/></button> }/> <Input label="Texto Botão Recusar" value={postClickOffer.modalDeclineButtonText || ''} onChange={(e) => updatePostClickOfferField('modalDeclineButtonText', e.target.value)} placeholder="Ex: Não, Obrigado." disabled={isSaving} rightElement={ <button type="button" onClick={() => suggestCopyForPostClickOffer('modalDeclineButtonText')} className="p-1 hover:bg-white/10 rounded-md" title="Sugerir copy"><SparklesIcon className="h-5 w-5 text-accent-gold"/></button> }/> <Button type="button" variant="danger" size="sm" onClick={removePostClickOffer} disabled={isSaving}>Remover Oferta Pós-Clique</Button> </motion.div> ) : ( <div className="space-y-2"> <Combobox label="Selecionar Produto para Oferta Pós-Clique:" options={postClickOfferProductOptions()} value={postClickOfferValue} onValueChange={handlePostClickOfferProductSelect} placeholder="Nenhum (Sem Oferta Pós-Clique)" emptyMessage="Nenhum produto disponível." disabled={isSaving || availableProductsForOffers.length === 0}/> {availableProductsForOffers.length === 0 && <p className="text-xs text-text-muted mt-1">Crie outros produtos para selecioná-los aqui.</p>} </div> )} </Card>
+        <Card title="Oferta Pós-Compra (Upsell na Página de Obrigado)"> {upsell ? ( <motion.div variants={listItemVariants} initial="initial" animate="animate" exit="exit" layout className="space-y-3 p-3 border border-border-subtle rounded-xl bg-bg-surface-opaque"> <p className="font-medium text-text-strong">Produto: <span className="text-primary">{availableProductsForOffers.find(p=>p.id === upsell.productId)?.name || upsell.name}</span></p> <Textarea label="Descrição da Oferta de Upsell" value={upsell.description} onChange={(e) => updateUpsellOfferField('description', e.target.value)} placeholder="Descreva a oferta de upsell..." rows={3} disabled={isSaving}/> <Input label="Preço Customizado (R$)" type="text" value={formatCurrencyForInput(upsell.customPriceInCents)} onChange={(e) => updateUpsellOfferField('customPriceInCents', e.target.value)} placeholder="Preço original se vazio" disabled={isSaving}/> <Input label="URL da Imagem (Opcional)" type="url" value={upsell.imageUrl || ''} onChange={(e) => updateUpsellOfferField('imageUrl', e.target.value)} placeholder="https://exemplo.com/imagem-upsell.jpg" disabled={isSaving}/> <Button type="button" variant="danger" size="sm" onClick={removeUpsellOffer} disabled={isSaving}>Remover Upsell</Button> </motion.div> ) : ( <div className="space-y-2"> <Combobox label="Selecionar Produto para Upsell:" options={upsellProductOptions()} value={upsellValue} onValueChange={handleUpsellProductSelect} placeholder="Nenhum (Sem Upsell)" emptyMessage="Nenhum produto disponível." disabled={isSaving || availableProductsForOffers.length === 0}/> {availableProductsForOffers.length === 0 && <p className="text-xs text-text-muted mt-1">Crie outros produtos para selecioná-los aqui.</p>} </div> )} </Card>
       </div>
+    )},
+    { value: 'email-pos-compra', label: <><EnvelopeIcon className="h-5 w-5 mr-2"/>E-mail Pós-Compra</>, content: (
+      <Card title="Configuração do E-mail Pós-Compra">
+        <div className="space-y-4">
+          <ToggleSwitch
+            label="Habilitar E-mail Pós-Compra para este produto?"
+            enabled={postPurchaseEmailConfig.enabled}
+            onEnabledChange={(isEnabled) => handlePostPurchaseEmailConfigChange('enabled', isEnabled)}
+            disabled={isSaving}
+          />
+          {postPurchaseEmailConfig.enabled && (
+            <motion.div variants={listItemVariants} initial="initial" animate="animate" exit="exit" layout className="space-y-4 mt-3 pl-3 border-l-2 border-border-interactive/50">
+              <Select
+                label="Atraso para Envio:"
+                options={postPurchaseDelayOptions}
+                value={String(postPurchaseEmailConfig.delayDays)}
+                onValueChange={(value) => handlePostPurchaseEmailConfigChange('delayDays', parseInt(value, 10))}
+                disabled={isSaving}
+              />
+              <Input
+                label="Assunto do E-mail"
+                value={postPurchaseEmailConfig.subject}
+                onChange={(e) => handlePostPurchaseEmailConfigChange('subject', e.target.value)}
+                placeholder="Ex: Informações importantes sobre seu produto {{product_name}}"
+                disabled={isSaving}
+              />
+              <div>
+                <label className="block text-sm font-medium text-text-default mb-1.5">Corpo do E-mail (HTML)</label>
+                <MiniEditor
+                  value={postPurchaseEmailConfig.bodyHtml}
+                  onChange={handlePostPurchaseEmailBodyChange}
+                  placeholder={'<p>Olá {{customer_name}}, obrigado por comprar {{product_name}}!</p>'}
+                />
+                <p className="text-xs text-text-muted mt-2">{'Placeholders disponíveis: {{customer_name}}, {{product_name}}, {{order_id}}, {{product_delivery_url}}, {{shop_name}}.'}</p>
+              </div>
+            </motion.div>
+          )}
+        </div>
+      </Card>
     )},
     { value: 'marketing', label: <><UtmIcon className="h-5 w-5 mr-2"/>Marketing e Cupons</>, content: (
       <div className="space-y-6">
         <Card title="Parâmetros UTM Padrão"> <div className="space-y-4"> <Input label="utm_source" name="utm_source" value={utmParams.source || ''} onChange={(e) => handleUtmParamChange('source', e.target.value)} placeholder="Ex: google, facebook" icon={<UtmIcon className="h-5 w-5 text-text-muted"/>} disabled={isSaving}/> <Input label="utm_medium" name="utm_medium" value={utmParams.medium || ''} onChange={(e) => handleUtmParamChange('medium', e.target.value)} placeholder="Ex: cpc, email" icon={<UtmIcon className="h-5 w-5 text-text-muted"/>} disabled={isSaving}/> <Input label="utm_campaign" name="utm_campaign" value={utmParams.campaign || ''} onChange={(e) => handleUtmParamChange('campaign', e.target.value)} placeholder="Ex: promocao_natal" icon={<UtmIcon className="h-5 w-5 text-text-muted"/>} disabled={isSaving}/> <Input label="utm_term (Opcional)" name="utm_term" value={utmParams.term || ''} onChange={(e) => handleUtmParamChange('term', e.target.value)} placeholder="Ex: palavra_chave" icon={<UtmIcon className="h-5 w-5 text-text-muted"/>} disabled={isSaving}/> <Input label="utm_content (Opcional)" name="utm_content" value={utmParams.content || ''} onChange={(e) => handleUtmParamChange('content', e.target.value)} placeholder="Ex: banner_azul" icon={<UtmIcon className="h-5 w-5 text-text-muted"/>} disabled={isSaving}/> </div> </Card>
-        <Card title="Cupons de Desconto"> <div className="space-y-3"> {coupons.length === 0 && <p className="text-sm text-text-muted">Nenhum cupom adicionado.</p>} <AnimatePresence> {coupons.map(coupon => ( <motion.div key={coupon.id} variants={listItemVariants} initial="initial" animate="animate" exit="exit" layout className="p-3 border border-border-subtle rounded-xl bg-bg-surface-opaque flex justify-between items-center"> <div><p className="font-semibold text-primary">{coupon.code}</p> <p className="text-xs text-text-default"> {coupon.discountType === 'percentage' ? `${coupon.discountValue}% OFF` : `R$ ${(coupon.discountValue/100).toFixed(2)} OFF`} {coupon.isAutomatic && <span className="ml-1 text-status-success text-xs">(Automático)</span>} {!coupon.isActive && <span className="ml-1 text-status-warning text-xs">(Inativo)</span>} </p> 
-          {coupon.description && <p className="text-xs text-text-muted italic mt-0.5">"{coupon.description}"</p>}
-        </div> <div className="space-x-1"> <Button type="button" variant="ghost" size="sm" onClick={() => openCouponModal(coupon)} disabled={isSaving}>Editar</Button> <Button type="button" variant="ghost" size="sm" onClick={() => deleteCoupon(coupon.id)} className="text-status-error hover:text-opacity-80" disabled={isSaving}><TrashIcon className="h-4 w-4"/></Button> </div> </motion.div> ))} </AnimatePresence> <Button type="button" variant="secondary" onClick={() => openCouponModal()} leftIcon={<PlusIcon className="h-5 w-5"/>} className="w-full" disabled={isSaving}>Adicionar Cupom</Button> </div> </Card>
+        <Card title="Cupons de Desconto"> <div className="space-y-3"> {coupons.length === 0 && <p className="text-sm text-text-muted">Nenhum cupom adicionado.</p>} <AnimatePresence> {coupons.map(coupon => ( <motion.div key={coupon.id} variants={listItemVariants} initial="initial" animate="animate" exit="exit" layout className="p-3 border border-border-subtle rounded-xl bg-bg-surface-opaque flex justify-between items-center"> <div><p className="font-semibold text-primary">{coupon.code}</p> <p className="text-xs text-text-default"> {coupon.discountType === 'percentage' ? `${coupon.discountValue}% OFF` : `R$ ${(coupon.discountValue/100).toFixed(2)} OFF`} {coupon.isAutomatic && <span className="ml-1 text-status-success text-xs">(Automático)</span>} {!coupon.isActive && <span className="ml-1 text-status-warning text-xs">(Inativo)</span>} </p> {coupon.description && <p className="text-xs text-text-muted italic mt-0.5">"{coupon.description}"</p>} </div> <div className="space-x-1"> <Button type="button" variant="ghost" size="sm" onClick={() => openCouponModal(coupon)} disabled={isSaving}>Editar</Button> <Button type="button" variant="ghost" size="sm" onClick={() => deleteCoupon(coupon.id)} className="text-status-error hover:text-opacity-80" disabled={isSaving}><TrashIcon className="h-4 w-4"/></Button> </div> </motion.div> ))} </AnimatePresence> <Button type="button" variant="secondary" onClick={() => openCouponModal()} leftIcon={<PlusIcon className="h-5 w-5"/>} className="w-full" disabled={isSaving}>Adicionar Cupom</Button> </div> </Card>
       </div>
     )},
   ];

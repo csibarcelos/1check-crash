@@ -1,5 +1,5 @@
 
-import { AppSettings, PlatformSettings, PixelIntegration } from '@/types'; 
+import { AppSettings, PlatformSettings, PixelIntegration, AbandonedCartEmailConfig } from '@/types'; 
 import { supabase, getSupabaseUserId } from '@/supabaseClient'; 
 import { Database, Json } from '@/types/supabase'; 
 import { COLOR_PALETTE_OPTIONS } from '../constants.tsx'; 
@@ -28,6 +28,13 @@ const parseJsonField = <T>(field: Json | null | undefined, defaultValue: T): T =
   return defaultValue;
 };
 
+const defaultAbandonedCartRecoveryConfig: AbandonedCartEmailConfig = {
+  enabled: false,
+  delayHours: 6,
+  subject: 'Você esqueceu algo no seu carrinho!',
+  bodyHtml: '<p>Olá {{customer_name}},</p><p>Notamos que você deixou alguns itens no seu carrinho. Que tal finalizar sua compra?</p><p><a href="{{abandoned_checkout_link}}">Clique aqui para voltar ao checkout</a></p><p>Produto: {{product_name}}</p>',
+};
+
 const fromSupabaseAppSettingsRow = (row: AppSettingsRow | null): AppSettings => {
   const defaults: AppSettings = {
     checkoutIdentity: { logoUrl: '', faviconUrl: '', brandColor: COLOR_PALETTE_OPTIONS[0].value },
@@ -35,6 +42,7 @@ const fromSupabaseAppSettingsRow = (row: AppSettingsRow | null): AppSettings => 
     smtpSettings: { host: '', port: 587, user: '', pass: '' },
     apiTokens: { pushinPay: '', utmify: '', pushinPayEnabled: false, utmifyEnabled: false },
     pixelIntegrations: [],
+    abandonedCartRecoveryConfig: defaultAbandonedCartRecoveryConfig,
   };
   if (!row) return defaults;
 
@@ -42,6 +50,8 @@ const fromSupabaseAppSettingsRow = (row: AppSettingsRow | null): AppSettings => 
   const storedSmtpSettings = parseJsonField(row.smtp_settings, defaults.smtpSettings);
   const storedApiTokens = parseJsonField(row.api_tokens, defaults.apiTokens);
   const storedPixelIntegrations = parseJsonField<PixelIntegration[]>(row.pixel_integrations, defaults.pixelIntegrations || []);
+  const storedAbandonedCartConfig = parseJsonField(row.abandoned_cart_recovery_config, defaults.abandonedCartRecoveryConfig);
+
 
   return {
     customDomain: row.custom_domain ?? defaults.customDomain,
@@ -62,7 +72,11 @@ const fromSupabaseAppSettingsRow = (row: AppSettingsRow | null): AppSettings => 
         pushinPayEnabled: storedApiTokens?.pushinPayEnabled ?? defaults.apiTokens.pushinPayEnabled,
         utmifyEnabled: storedApiTokens?.utmifyEnabled ?? defaults.apiTokens.utmifyEnabled,
     },
-    pixelIntegrations: storedPixelIntegrations ?? [], 
+    pixelIntegrations: storedPixelIntegrations ?? [],
+    abandonedCartRecoveryConfig: {
+      ...defaultAbandonedCartRecoveryConfig,
+      ...(storedAbandonedCartConfig || {}),
+    },
   };
 };
 
@@ -75,13 +89,17 @@ const toSupabaseAppSettingsDbObjectForUpsert = (userId: string, settings: Partia
     smtp_settings: settings.smtpSettings !== undefined ? settings.smtpSettings as unknown as Json : null,
     api_tokens: settings.apiTokens !== undefined ? settings.apiTokens as unknown as Json : null,
     pixel_integrations: settings.pixelIntegrations !== undefined ? settings.pixelIntegrations as unknown as Json : null,
+    abandoned_cart_recovery_config: settings.abandonedCartRecoveryConfig !== undefined ? settings.abandonedCartRecoveryConfig as unknown as Json : null,
   };
   
+  // Redundant checks after initial assignment, could be simplified.
+  // For example, the initial assignment already handles undefined correctly by setting to null.
   if (settings.customDomain !== undefined) dbObject.custom_domain = settings.customDomain;
   if (settings.checkoutIdentity !== undefined) dbObject.checkout_identity = settings.checkoutIdentity as unknown as Json;
   if (settings.smtpSettings !== undefined) dbObject.smtp_settings = settings.smtpSettings as unknown as Json;
   if (settings.apiTokens !== undefined) dbObject.api_tokens = settings.apiTokens as unknown as Json;
   if (settings.pixelIntegrations !== undefined) dbObject.pixel_integrations = settings.pixelIntegrations as unknown as Json;
+  if (settings.abandonedCartRecoveryConfig !== undefined) dbObject.abandoned_cart_recovery_config = settings.abandonedCartRecoveryConfig as unknown as Json;
   
   return dbObject;
 };

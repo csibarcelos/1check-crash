@@ -13,20 +13,21 @@ import { Table, TableHeader } from '@/components/ui/Table';
 
 const ITEMS_PER_PAGE = 10;
 
+const labels: Record<AbandonedCartStatus, string> = {
+  [AbandonedCartStatus.NOT_CONTACTED]: 'Não Contactado',
+  [AbandonedCartStatus.RECOVERY_EMAIL_SENT]: 'Email Enviado',
+  [AbandonedCartStatus.RECOVERED]: 'Recuperado',
+  [AbandonedCartStatus.IGNORED]: 'Ignorado',
+};
+
 const getStatusLabel = (status: AbandonedCartStatus) => {
-  const labels: Record<AbandonedCartStatus, string> = {
-    [AbandonedCartStatus.NOT_CONTACTED]: 'Não Contactado',
-    [AbandonedCartStatus.EMAIL_SENT]: 'Email Enviado',
-    [AbandonedCartStatus.RECOVERED]: 'Recuperado',
-    [AbandonedCartStatus.IGNORED]: 'Ignorado',
-  };
   return labels[status] || status;
 };
 
 const getStatusClass = (status: AbandonedCartStatus) => {
   switch (status) {
     case AbandonedCartStatus.RECOVERED: return 'bg-green-600/20 text-green-400';
-    case AbandonedCartStatus.EMAIL_SENT: return 'bg-blue-600/20 text-blue-400';
+    case AbandonedCartStatus.RECOVERY_EMAIL_SENT: return 'bg-blue-600/20 text-blue-400';
     case AbandonedCartStatus.NOT_CONTACTED: return 'bg-yellow-500/20 text-yellow-400';
     case AbandonedCartStatus.IGNORED: return 'bg-neutral-700 text-neutral-400';
     default: return 'bg-neutral-700 text-neutral-300';

@@ -10,25 +10,27 @@ import { settingsService } from '@/services/settingsService';
 import { AppSettings, PixelIntegration, PixelType } from '@/types';
 import { LinkIcon, KeyIcon, PlusIcon, PencilIcon, TrashIcon, TagIcon } from '../constants.tsx';
 import { useAuth } from '@/contexts/AuthContext';
-import { useToast } from '@/contexts/ToastContext'; // Import useToast
+import { useToast } from '@/contexts/ToastContext'; 
 
 const PIXEL_TYPES: PixelType[] = ['Facebook Pixel', 'Google Ads', 'GTM', 'TikTok Pixel'];
 
-// Definindo initialAppSettings para ter uma base completa
-const initialAppSettingsState: AppSettings = {
+const initialAppSettingsForIntegrationsPage: AppSettings = {
   customDomain: '',
   checkoutIdentity: { logoUrl: '', faviconUrl: '', brandColor: '#0D9488' },
   smtpSettings: { host: '', port: 587, user: '', pass: '' },
   apiTokens: { pushinPay: '', utmify: '', pushinPayEnabled: false, utmifyEnabled: false },
   pixelIntegrations: [],
+  abandonedCartRecoveryConfig: {
+    enabled: false,
+    delayHours: 6,
+    subject: 'Você esqueceu algo no carrinho!',
+    bodyHtml: '<p>Recupere seu carrinho.</p>'
+  }
 };
 
 
 const IntegracoesPage: React.FC = () => {
-  // Estado para armazenar o objeto AppSettings completo carregado
-  const [currentSettings, setCurrentSettings] = useState<AppSettings>(initialAppSettingsState);
-
-  // Estados locais para os campos do formulário
+  const [currentSettings, setCurrentSettings] = useState<AppSettings>(initialAppSettingsForIntegrationsPage);
   const [pushinPayToken, setPushinPayToken] = useState('');
   const [utmifyToken, setUtmifyToken] = useState('');
   const [pushinPayEnabled, setPushinPayEnabled] = useState(false);
@@ -37,8 +39,6 @@ const IntegracoesPage: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  // Removed: const [error, setError] = useState<string | null>(null);
-  // Removed: const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const [isPixelModalOpen, setIsPixelModalOpen] = useState(false);
   const [editingPixel, setEditingPixel] = useState<PixelIntegration | null>(null);
@@ -49,7 +49,7 @@ const IntegracoesPage: React.FC = () => {
 
 
   const { accessToken, isLoading: authIsLoading } = useAuth(); 
-  const { showToast } = useToast(); // Get showToast function
+  const { showToast } = useToast(); 
 
   const fetchSettings = useCallback(async () => {
     if (!accessToken) {
@@ -60,9 +60,8 @@ const IntegracoesPage: React.FC = () => {
     setIsLoading(true); 
     try {
       const settings = await settingsService.getAppSettings(accessToken);
-      setCurrentSettings(settings); // Armazena as configurações completas
+      setCurrentSettings(settings); 
       
-      // Popula os estados locais a partir das configurações carregadas
       setPushinPayToken(settings.apiTokens?.pushinPay || '');
       setUtmifyToken(settings.apiTokens?.utmify || '');
       setPushinPayEnabled(settings.apiTokens?.pushinPayEnabled || false);
@@ -105,14 +104,13 @@ const IntegracoesPage: React.FC = () => {
         pushinPayEnabled: pushinPayEnabled,
         utmifyEnabled: utmifyEnabled,
       };
-      console.log("[IntegracoesPage] Preparing to save API Tokens. Current state for apiTokens object:", currentApiTokensToSave);
-
+      
       const settingsToSave: AppSettings = {
         ...currentSettings, 
         apiTokens: currentApiTokensToSave,
         pixelIntegrations: pixelIntegrations, 
       };
-      console.log("[IntegracoesPage] Saving API Tokens, full settings object being sent to service:", settingsToSave);
+      
       await settingsService.saveAppSettings(settingsToSave, accessToken);
       setCurrentSettings(settingsToSave); 
       showToast({ title: "Sucesso!", description: 'Configurações de API salvas com sucesso!', variant: "success" });
@@ -194,7 +192,7 @@ const IntegracoesPage: React.FC = () => {
             },
             pixelIntegrations: updatedPixelsList 
         };
-        console.log("[IntegracoesPage] Saving Pixel, full settings object:", settingsToSave);
+        
         await settingsService.saveAppSettings(settingsToSave, accessToken);
         setCurrentSettings(settingsToSave); 
         showToast({ title: "Sucesso!", description: 'Pixel salvo com sucesso!', variant: "success" });
@@ -226,7 +224,7 @@ const IntegracoesPage: React.FC = () => {
             },
             pixelIntegrations: updatedPixelsList
         };
-        console.log("[IntegracoesPage] Deleting Pixel, full settings object:", settingsToSave);
+        
         await settingsService.saveAppSettings(settingsToSave, accessToken);
         setCurrentSettings(settingsToSave); 
         showToast({ title: "Sucesso!", description: 'Pixel excluído com sucesso!', variant: "success" });
@@ -268,8 +266,6 @@ const IntegracoesPage: React.FC = () => {
         <LinkIcon className="h-8 w-8 text-primary" />
         <h1 className="text-3xl font-bold text-text-strong">Integrações</h1>
       </div>
-
-      {/* Toasts will appear via ToastContext provider */}
 
       <form onSubmit={handleSubmitApiTokens}>
         <Card title="Chaves de API (Tokens)">

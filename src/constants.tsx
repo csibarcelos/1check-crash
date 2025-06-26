@@ -45,7 +45,8 @@ import {
   ShoppingBagIcon as HeroShoppingBagIcon,
   GiftIcon as HeroGiftIcon,
   SparklesIcon as HeroSparklesIcon,
-  FaceSmileIcon as HeroFaceSmileIcon, // Adicionado FaceSmileIcon
+  FaceSmileIcon as HeroFaceSmileIcon, 
+  EnvelopeIcon as HeroEnvelopeIcon, // Added EnvelopeIcon
 } from '@heroicons/react/24/outline';
 
 // Re-export Heroicons with consistent naming and explicit React.FC typing
@@ -92,6 +93,7 @@ export const ShoppingBagIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroShop
 export const GiftIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroGiftIcon;
 export const SparklesIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroSparklesIcon;
 export const FaceSmileIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroFaceSmileIcon;
+export const EnvelopeIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroEnvelopeIcon;
 
 
 export const HomeIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -196,6 +198,7 @@ export const NAV_ITEMS: NavItemConfig[] = [
   { name: 'Vendas', href: '/vendas', icon: ShoppingCartIcon, soon: false },
   { name: 'Clientes', href: '/clientes', icon: UserGroupIcon, soon: false }, 
   { name: 'Carrinhos Abandonados', href: '/carrinhos-abandonados', icon: ArchiveBoxXMarkIcon, soon: false },
+  { name: 'Automação de E-mail', href: '/automacao-email', icon: EnvelopeIcon, soon: false }, // New Nav Item
   { name: 'Integrações', href: '/integracoes', icon: LinkIcon, soon: false },
   { name: 'Configurações', href: '/configuracoes', icon: CogIcon, soon: false },
 ];

@@ -74,6 +74,13 @@ export interface UpsellOffer { // Esta é a oferta na página de Obrigado
   imageUrl?: string; 
 }
 
+export interface PostPurchaseEmailConfig {
+  enabled: boolean;
+  delayDays: number; 
+  subject: string;
+  bodyHtml: string;
+}
+
 
 // Product
 export interface ProductCheckoutCustomization {
@@ -132,6 +139,7 @@ export interface Product {
   upsell?: UpsellOffer;                    // Oferta na página de Obrigado
   coupons?: Coupon[];
   utmParams?: UtmParams | null; 
+  postPurchaseEmailConfig?: PostPurchaseEmailConfig;
 }
 
 // Buyer <<-- NEW INTERFACE
@@ -257,7 +265,7 @@ export interface Customer {
 // Abandoned Cart
 export enum AbandonedCartStatus {
   NOT_CONTACTED = 'not_contacted',
-  EMAIL_SENT = 'email_sent',
+  RECOVERY_EMAIL_SENT = 'recovery_email_sent', // Added new status
   RECOVERED = 'recovered',
   IGNORED = 'ignored',
 }
@@ -271,10 +279,11 @@ export interface AbandonedCart {
   productId: string;
   productName: string;
   potentialValueInCents: number;
-  date: string;
+  date: string; // Same as created_at
   lastInteractionAt: string;
   status: AbandonedCartStatus;
   trackingParameters?: Record<string, string>; 
+  recoveryEmailSentAt?: string; // Added
 }
 
 // Finances
@@ -301,6 +310,13 @@ export interface PixelIntegration {
   enabled: boolean;
 }
 
+export interface AbandonedCartEmailConfig {
+  enabled: boolean;
+  delayHours: number;
+  subject: string;
+  bodyHtml: string;
+}
+
 export interface AppSettings {
   customDomain?: string;
   checkoutIdentity: {
@@ -321,6 +337,7 @@ export interface AppSettings {
     utmifyEnabled: boolean;
   };
   pixelIntegrations?: PixelIntegration[]; 
+  abandonedCartRecoveryConfig?: AbandonedCartEmailConfig;
 }
 
 export interface PlatformSettings {
@@ -495,4 +512,13 @@ export interface LiveViewEvent {
     userId?: string;
     checkoutSessionId?: string;
   };
+}
+
+// Sent Follow-Up Email Tracking
+export interface SentFollowUpEmail {
+  id: string;
+  sale_id: string;
+  product_id: string;
+  platform_user_id: string;
+  sent_at: string;
 }

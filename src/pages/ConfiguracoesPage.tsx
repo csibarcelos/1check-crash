@@ -9,7 +9,7 @@ import { AppSettings } from '@/types';
 import { CogIcon, COLOR_PALETTE_OPTIONS, InformationCircleIcon } from '../constants.tsx';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
-import { Tabs, TabConfig } from '@/components/ui/Tabs'; // Importa o novo componente Tabs
+import { Tabs, TabConfig } from '@/components/ui/Tabs'; 
 
 const initialAppSettings: AppSettings = {
   checkoutIdentity: {
@@ -24,13 +24,19 @@ const initialAppSettings: AppSettings = {
     user: '',
     pass: '',
   },
-  apiTokens: {
+  apiTokens: { // Mantido para estrutura, mas gerenciado em IntegracoesPage
     pushinPay: '',
     utmify: '',
     pushinPayEnabled: false,
     utmifyEnabled: false,
   },
-  pixelIntegrations: [],
+  pixelIntegrations: [], // Mantido para estrutura, mas gerenciado em IntegracoesPage
+  abandonedCartRecoveryConfig: { // Adicionado com defaults
+    enabled: false,
+    delayHours: 6,
+    subject: 'Você esqueceu algo no seu carrinho!',
+    bodyHtml: '<p>Olá {{customer_name}},</p><p>Notamos que você deixou alguns itens no seu carrinho. Que tal finalizar sua compra?</p><p><a href="{{abandoned_checkout_link}}">Clique aqui para voltar ao checkout</a></p><p>Produto: {{product_name}}</p>',
+  }
 };
 
 const ConfiguracoesPage: React.FC = () => {
@@ -50,27 +56,25 @@ const ConfiguracoesPage: React.FC = () => {
       const fetchedSettings = await settingsService.getAppSettings(accessToken);
       
       setSettings(() => ({
-        ...initialAppSettings,
-        ...fetchedSettings,
+        ...initialAppSettings, // Começa com defaults completos
+        ...fetchedSettings,    // Sobrescreve com o que veio do DB
+        // Garante que sub-objetos tenham defaults se não vierem do DB
         checkoutIdentity: {
-          logoUrl: fetchedSettings.checkoutIdentity?.logoUrl || initialAppSettings.checkoutIdentity.logoUrl,
-          faviconUrl: fetchedSettings.checkoutIdentity?.faviconUrl || initialAppSettings.checkoutIdentity.faviconUrl,
-          brandColor: fetchedSettings.checkoutIdentity?.brandColor || initialAppSettings.checkoutIdentity.brandColor,
+          ...initialAppSettings.checkoutIdentity,
+          ...(fetchedSettings.checkoutIdentity || {}),
         },
         smtpSettings: {
-          host: fetchedSettings.smtpSettings?.host || initialAppSettings.smtpSettings?.host || '',
-          port: fetchedSettings.smtpSettings?.port || initialAppSettings.smtpSettings?.port || 587,
-          user: fetchedSettings.smtpSettings?.user || initialAppSettings.smtpSettings?.user || '',
-          pass: fetchedSettings.smtpSettings?.pass || initialAppSettings.smtpSettings?.pass || '',
+          ...initialAppSettings.smtpSettings!, // Non-null assertion, as it's in defaults
+          ...(fetchedSettings.smtpSettings || {}),
         },
-        apiTokens: {
-          pushinPay: fetchedSettings.apiTokens?.pushinPay || initialAppSettings.apiTokens?.pushinPay || '',
-          utmify: fetchedSettings.apiTokens?.utmify || initialAppSettings.apiTokens?.utmify || '',
-          pushinPayEnabled: fetchedSettings.apiTokens?.pushinPayEnabled ?? initialAppSettings.apiTokens?.pushinPayEnabled ?? false,
-          utmifyEnabled: fetchedSettings.apiTokens?.utmifyEnabled ?? initialAppSettings.apiTokens?.utmifyEnabled ?? false,
-        },
-        pixelIntegrations: fetchedSettings.pixelIntegrations || initialAppSettings.pixelIntegrations || [],
-        customDomain: fetchedSettings.customDomain || initialAppSettings.customDomain || '',
+        // apiTokens e pixelIntegrations são mantidos para consistência do tipo AppSettings,
+        // mas não são mais editados diretamente aqui.
+        apiTokens: fetchedSettings.apiTokens || initialAppSettings.apiTokens,
+        pixelIntegrations: fetchedSettings.pixelIntegrations || initialAppSettings.pixelIntegrations,
+        abandonedCartRecoveryConfig: {
+          ...initialAppSettings.abandonedCartRecoveryConfig!, // Non-null assertion
+          ...(fetchedSettings.abandonedCartRecoveryConfig || {}),
+        }
       }));
     } catch (err: any) {
       showToast({ title: "Erro ao Carregar", description: err.message || 'Falha ao carregar configurações.', variant: "error" });
@@ -106,7 +110,6 @@ const ConfiguracoesPage: React.FC = () => {
           },
         };
       }
-      // This case handles top-level fields like 'customDomain'
       return { ...prev, [field as keyof AppSettings]: value };
     });
   };
@@ -124,12 +127,12 @@ const ConfiguracoesPage: React.FC = () => {
     setIsSaving(true);
 
     try {
+      // Envia apenas as configurações relevantes desta página
       const settingsToSave: Partial<AppSettings> = {
         customDomain: settings.customDomain,
         checkoutIdentity: settings.checkoutIdentity,
         smtpSettings: settings.smtpSettings,
-        apiTokens: settings.apiTokens, 
-        pixelIntegrations: settings.pixelIntegrations,
+        // Não envia apiTokens e pixelIntegrations daqui
       };
 
       await settingsService.saveAppSettings(settingsToSave, accessToken);

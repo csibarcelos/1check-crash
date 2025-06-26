@@ -68,6 +68,7 @@ export interface Database {
           upsell: Json | null
           coupons: Json | null
           utm_params: Json | null 
+          post_purchase_email_config: Json | null // New
           created_at: string
           updated_at: string
         }
@@ -91,6 +92,7 @@ export interface Database {
           upsell?: Json | null
           coupons?: Json | null
           utm_params?: Json | null 
+          post_purchase_email_config?: Json | null // New
           created_at?: string
           updated_at?: string
         }
@@ -114,6 +116,7 @@ export interface Database {
           upsell?: Json | null
           coupons?: Json | null
           utm_params?: Json | null 
+          post_purchase_email_config?: Json | null // New
           created_at?: string
           updated_at?: string
         }
@@ -200,7 +203,7 @@ export interface Database {
           id?: string
           buyer_id?: string | null // <<-- NEW COLUMN
           platform_user_id: string
-          push_in_pay_transaction_id?: string // Made optional
+          push_in_pay_transaction_id: string // Changed: Made non-optional as per DB schema (NOT NULL)
           upsell_push_in_pay_transaction_id?: string | null
           order_id_urmify?: string | null
           products: Json
@@ -337,6 +340,7 @@ export interface Database {
           smtp_settings: Json | null
           api_tokens: Json | null
           pixel_integrations: Json | null
+          abandoned_cart_recovery_config: Json | null // New
           created_at: string
           updated_at: string
         }
@@ -347,6 +351,7 @@ export interface Database {
           smtp_settings?: Json | null
           api_tokens?: Json | null
           pixel_integrations?: Json | null
+          abandoned_cart_recovery_config?: Json | null // New
           created_at?: string
           updated_at?: string
         }
@@ -357,6 +362,7 @@ export interface Database {
           smtp_settings?: Json | null
           api_tokens?: Json | null
           pixel_integrations?: Json | null
+          abandoned_cart_recovery_config?: Json | null // New
           created_at?: string
           updated_at?: string
         }
@@ -407,6 +413,7 @@ export interface Database {
           last_interaction_at: string
           status: string
           tracking_parameters: Json | null
+          recovery_email_sent_at: string | null // New
         }
         Insert: {
           id?: string
@@ -421,6 +428,7 @@ export interface Database {
           last_interaction_at?: string
           status?: string
           tracking_parameters?: Json | null
+          recovery_email_sent_at?: string | null // New
         }
         Update: {
           id?: string
@@ -435,6 +443,7 @@ export interface Database {
           last_interaction_at?: string
           status?: string
           tracking_parameters?: Json | null
+          recovery_email_sent_at?: string | null // New
         }
         Relationships: [
           {
@@ -492,6 +501,31 @@ export interface Database {
             referencedRelation: "users"
             referencedColumns: ["id"]
           }
+        ]
+      }
+      sent_follow_up_emails: { // New Table
+        Row: {
+          id: string 
+          sale_id: string 
+          product_id: string 
+          platform_user_id: string
+          sent_at: string 
+        }
+        Insert: {
+          id?: string
+          sale_id: string
+          product_id: string
+          platform_user_id: string
+          sent_at?: string
+        }
+        Update: {
+          id?: string
+          sent_at?: string
+        }
+        Relationships: [
+          { foreignKeyName: "sent_follow_up_emails_sale_id_fkey", columns: ["sale_id"], referencedRelation: "sales", referencedColumns: ["id"] },
+          { foreignKeyName: "sent_follow_up_emails_product_id_fkey", columns: ["product_id"], referencedRelation: "products", referencedColumns: ["id"] },
+          { foreignKeyName: "sent_follow_up_emails_platform_user_id_fkey", columns: ["platform_user_id"], referencedRelation: "users", referencedColumns: ["id"] }
         ]
       }
     }

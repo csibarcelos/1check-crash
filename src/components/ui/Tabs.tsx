@@ -1,3 +1,4 @@
+
 import React from 'react';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { cn } from '../../constants'; // Assuming cn is in constants.tsx at src level
@@ -79,4 +80,4 @@ export const Tabs = React.forwardRef<
     </TabsPrimitive.Root>
   );
 });
-Tabs.displayName = TabsPrimitive.Root.displayName;
+Tabs.displayName = "Tabs"; // Changed from TabsPrimitive.Root.displayName

@@ -25,18 +25,13 @@ serve(async (req: Request) => {
   let webhookTxIdForLogging: string | undefined;
 
   try {
-    // A maioria dos webhooks modernos usa JSON. Revertendo para req.json() para maior compatibilidade.
-    const webhookBody = await req.json();
-    console.log("[webhook-pushinpay] Received webhook body:", JSON.stringify(webhookBody, null, 2));
-
-    // O corpo do webhook da PushInPay pode ter formatos diferentes.
-    // Vamos tentar extrair o transaction_id de forma robusta.
-    const transactionId = webhookBody?.transaction_id || webhookBody?.id || webhookBody?.data?.id;
+    const formData = await req.formData();
+    const transactionId = formData.get('id')?.toString() || formData.get('transaction_id')?.toString();
     
     webhookTxIdForLogging = transactionId;
 
     if (!transactionId) {
-      console.warn("[webhook-pushinpay] Transaction ID missing from webhook payload.");
+      console.warn("[webhook-pushinpay] Transaction ID missing from webhook payload (checked 'id' and 'transaction_id').");
       return new Response(JSON.stringify({ message: "Transaction ID missing." }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
         status: 200 // Acknowledge to gateway
@@ -54,10 +49,11 @@ serve(async (req: Request) => {
 
     const adminClient: SupabaseClient<Database> = createClient<Database>(supabaseUrl, serviceRoleKey);
 
+    // SOLUÇÃO: MUDADO DE .eq PARA .ilike para busca case-insensitive
     const { data: sale, error: saleFetchError } = await adminClient
       .from('sales')
       .select('id, platform_user_id, push_in_pay_transaction_id, upsell_push_in_pay_transaction_id')
-      .or(`push_in_pay_transaction_id.eq.${transactionId},upsell_push_in_pay_transaction_id.eq.${transactionId}`)
+      .or(`push_in_pay_transaction_id.ilike.${transactionId},upsell_push_in_pay_transaction_id.ilike.${transactionId}`)
       .maybeSingle();
 
     if (saleFetchError) {
@@ -69,14 +65,14 @@ serve(async (req: Request) => {
     }
 
     if (!sale) {
-      console.warn(`[webhook-pushinpay] No sale found for TX ID ${transactionId}.`);
+      console.error(`[webhook-pushinpay] No sale found for TX ID ${transactionId}.`);
       return new Response(JSON.stringify({ message: "Webhook received, no matching sale." }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
         status: 200
       });
     }
 
-    const isUpsell = sale.upsell_push_in_pay_transaction_id === transactionId;
+    const isUpsell = sale.upsell_push_in_pay_transaction_id?.toLowerCase() === transactionId.toLowerCase();
     console.log(`[webhook-pushinpay] Sale found: ID ${sale.id}. Triggering 'verificar-status-pix'.`);
 
     // Invocando a outra função. A lógica aqui permanece a mesma.

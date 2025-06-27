@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useBlocker } from "react-router-dom";
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
@@ -36,32 +35,18 @@ const ProductEditPage: React.FC = () => {
 
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isLeaveConfirmModalOpen, setIsLeaveConfirmModalOpen] = useState(false);
-  const [shouldNavigateAfterSave, setShouldNavigateAfterSave] = useState(false); 
   
   const formRef = useRef<HTMLFormElement>(null);
 
-  useEffect(() => {
-    console.log("[ProductEditPage] hasUnsavedChanges updated to:", hasUnsavedChanges);
-  }, [hasUnsavedChanges]);
-
-  const blocker = useBlocker(() => {
-    console.log("[ProductEditPage] Blocker triggered. hasUnsavedChanges:", hasUnsavedChanges);
-    if (hasUnsavedChanges) {
-      setIsLeaveConfirmModalOpen(true);
-      return true; 
-    }
-    return false; 
-  });
+  const blocker = useBlocker(hasUnsavedChanges);
   
   useEffect(() => {
-    console.log("[ProductEditPage] Blocker state changed:", blocker.state);
-    console.log("[ProductEditPage] isLeaveConfirmModalOpen state:", isLeaveConfirmModalOpen);
-    if (!hasUnsavedChanges && isLeaveConfirmModalOpen && blocker.state === 'blocked') {
-      console.log("[ProductEditPage] Proceeding with navigation as no unsaved changes or modal open.");
+    if (blocker.state === "blocked") {
+      setIsLeaveConfirmModalOpen(true);
+    } else {
       setIsLeaveConfirmModalOpen(false);
-      blocker.proceed();
     }
-  }, [hasUnsavedChanges, isLeaveConfirmModalOpen, blocker]);
+  }, [blocker.state]);
 
 
   const fetchProductAndRelatedData = useCallback(async (id: string) => {
@@ -72,7 +57,6 @@ const ProductEditPage: React.FC = () => {
     }
     setIsLoading(true);
     setHasUnsavedChanges(false); 
-    setShouldNavigateAfterSave(false); 
     try {
       const [fetchedProduct, allUserProducts] = await Promise.all([
         productService.getProductById(id, accessToken),
@@ -103,14 +87,6 @@ const ProductEditPage: React.FC = () => {
     }
   }, [productId, fetchProductAndRelatedData, navigate, showToast]);
 
-  
-  useEffect(() => {
-    if (shouldNavigateAfterSave && !hasUnsavedChanges) {
-      navigate('/produtos');
-      setShouldNavigateAfterSave(false); 
-    }
-  }, [shouldNavigateAfterSave, hasUnsavedChanges, navigate]);
-
 
   const handleFormSubmit = async (formData: Omit<Product, 'id' | 'platformUserId' | 'slug' | 'totalSales' | 'clicks' | 'checkoutViews' | 'conversionRate' | 'abandonmentRate'>) => {
     if (!productId) {
@@ -127,13 +103,6 @@ const ProductEditPage: React.FC = () => {
       } else {
         await fetchProductAndRelatedData(productId); 
       }
-      
-      if (shouldNavigateAfterSave) {
-        console.log("[ProductEditPage] Navigate after save condition met. Navigating to /produtos");
-        navigate('/produtos');
-        setShouldNavigateAfterSave(false);
-      }
-
     } catch (err: any) {
       showToast({ title: "Erro ao Atualizar", description: err.message || 'Falha ao atualizar produto. Tente novamente.', variant: "error" });
       console.error(err);
@@ -142,7 +111,7 @@ const ProductEditPage: React.FC = () => {
     }
   };
   
-  const triggerFormSubmit = () => {
+  const handleSave = () => {
     const formElement = formRef.current || document.getElementById(FORM_ID);
     if (formElement instanceof HTMLFormElement) {
         const submitEvent = new Event('submit', { cancelable: true, bubbles: true });
@@ -151,19 +120,6 @@ const ProductEditPage: React.FC = () => {
         showToast({ title: "Erro Interno", description: "Não foi possível submeter o formulário.", variant: "error"});
     }
   };
-
-  const handleSaveAndExit = () => {
-    console.log("[ProductEditPage] handleSaveAndExit called.");
-    setShouldNavigateAfterSave(true); 
-    triggerFormSubmit(); 
-  };
-  
-  const handleSave = () => {
-    console.log("[ProductEditPage] handleSave called.");
-    setShouldNavigateAfterSave(false); 
-    triggerFormSubmit(); 
-  };
-
 
   const handleNavigateBack = () => {
     if (hasUnsavedChanges) {
@@ -208,7 +164,7 @@ const ProductEditPage: React.FC = () => {
       if (clonedProduct) {
         setHasUnsavedChanges(false); 
         showToast({ title: "Produto Clonado!", description: `Produto "${clonedProduct.name}" criado com sucesso. Você será redirecionado.`, variant: "success" });
-        navigate('/produtos'); 
+        setTimeout(() => navigate('/produtos'), 100);
       } else {
         showToast({ title: "Erro ao Clonar", description: "Não foi possível clonar o produto.", variant: "error" });
       }
@@ -226,7 +182,7 @@ const ProductEditPage: React.FC = () => {
       await productService.deleteProduct(productId, accessToken);
       setHasUnsavedChanges(false); 
       showToast({ title: "Produto Excluído!", description: "O produto foi excluído com sucesso.", variant: "success" });
-      navigate('/produtos'); 
+      setTimeout(() => navigate('/produtos'), 100);
     } catch (err: any) {
       showToast({ title: "Erro ao Excluir", description: err.message || "Não foi possível excluir o produto.", variant: "error" });
     } finally {
@@ -240,34 +196,23 @@ const ProductEditPage: React.FC = () => {
       setHasUnsavedChanges(true);
     }
   }, [isLoading]);
-
+  
   const handleConfirmLeave = async (saveFirst: boolean) => {
-    console.log("[ProductEditPage] handleConfirmLeave. saveFirst:", saveFirst);
     if (saveFirst) {
-      handleSaveAndExit(); 
-      setIsLeaveConfirmModalOpen(false); 
-    } else {
-      setIsLeaveConfirmModalOpen(false);
+      handleSave();
       setHasUnsavedChanges(false); 
-      setTimeout(() => { 
-        if (blocker.state === 'blocked') {
-          console.log("[ProductEditPage] Proceeding with blocker after 'Don't Save'.");
-          blocker.proceed();
-        } else {
-          console.log("[ProductEditPage] Blocker not in 'blocked' state, navigating directly.");
-          navigate('/produtos'); 
-        }
-      }, 0);
+      setIsLeaveConfirmModalOpen(false);
+      setTimeout(() => blocker.proceed && blocker.proceed(), 100);
+    } else {
+      setHasUnsavedChanges(false);
+      setIsLeaveConfirmModalOpen(false);
+      setTimeout(() => blocker.proceed && blocker.proceed(), 100);
     }
   };
-  
 
   const handleCancelLeave = () => {
-    console.log("[ProductEditPage] handleCancelLeave called.");
     setIsLeaveConfirmModalOpen(false);
-    if (blocker.state === 'blocked') {
-      blocker.reset();
-    }
+    blocker.reset && blocker.reset();
   };
   
   if (isLoading || !initialProductData) {
@@ -330,13 +275,6 @@ const ProductEditPage: React.FC = () => {
                 className={dropdownItemClass}
               >
                 <ArrowDownTrayIcon className={dropdownIconClass} /> Salvar Alterações
-              </DropdownMenuPrimitive.Item>
-              <DropdownMenuPrimitive.Item
-                onSelect={handleSaveAndExit} 
-                disabled={isSaving || isDeleting || isCloning || !hasUnsavedChanges}
-                className={dropdownItemClass}
-              >
-                <ArrowDownTrayIcon className={dropdownIconClass} /> Salvar e Sair
               </DropdownMenuPrimitive.Item>
               
               <DropdownMenuPrimitive.Separator className="h-px bg-border-subtle my-1" />
@@ -420,18 +358,17 @@ const ProductEditPage: React.FC = () => {
         confirmButtonVariant="danger"
       />
 
-      <AlertDialog
+       <AlertDialog
         isOpen={isLeaveConfirmModalOpen}
-        onClose={handleCancelLeave} 
-        title="Alterações não Salvas"
-        description="Você possui alterações não salvas. Deseja salvá-las antes de sair?"
-        confirmText="Salvar e Sair"
+        onOpenChange={setIsLeaveConfirmModalOpen}
+        onClose={handleCancelLeave}
+        title="Alterações não salvas"
+        description="Você tem alterações não salvas. Deseja salvá-las antes de sair?"
         onConfirm={() => handleConfirmLeave(true)}
+        confirmText="Salvar e Sair"
         cancelText="Continuar Editando"
       >
-        <Button variant="danger" onClick={() => handleConfirmLeave(false)} className="mt-2 sm:mt-0">
-          Sair sem Salvar
-        </Button>
+        <Button variant="danger" onClick={() => handleConfirmLeave(false)}>Sair sem Salvar</Button>
       </AlertDialog>
     </div>
   );

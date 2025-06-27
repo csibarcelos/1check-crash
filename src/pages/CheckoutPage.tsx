@@ -23,11 +23,6 @@ import { getOptimalTextColor, calculateEffectiveBg } from '@/utils/colorUtils.ts
 // Local cn utility
 const cn = (...classes: (string | undefined | null | false)[]): string => classes.filter(Boolean).join(' ');
 
-// Simple in-memory cache for product data
-const PRODUCT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const productDataCache = new Map<string, { data: Product; timestamp: number }>();
-
-
 const formatCurrency = (valueInCents: number): string => {
     return `R\$ ${(valueInCents / 100).toFixed(2).replace('.', ',')}`;
 };
@@ -191,14 +186,23 @@ const CheckoutPageUI: React.FC<CheckoutPageUIProps> = React.memo(({
     );
   }
 
+  const renderHeaderLogo = () => {
+    // **CRITICAL FIX**: Check the showLogo flag first. If false, render nothing.
+    if (product.checkoutCustomization?.showLogo === false) {
+      return null;
+    }
+    // If showLogo is true or undefined (defaulting to true), check for a custom logo.
+    if (product.checkoutCustomization?.logoUrl) {
+      return <img src={product.checkoutCustomization.logoUrl} alt={`${product.name} Logo`} className="h-16 md:h-20 mx-auto mb-4 object-contain" />;
+    }
+    // If showLogo is true but no custom logo, show the default platform logo.
+    return <AppLogoIcon className="h-16 md:h-20 mx-auto mb-4" style={{ color: resolvedPrimaryHex }} />;
+  };
+
   return (
     <div className={cn(themeContainerClass, "min-h-screen py-10 md:py-16 lg:py-20")}>
       <header className="mb-10 md:mb-12 text-center">
-        {product.checkoutCustomization?.logoUrl ? (
-          <img src={product.checkoutCustomization.logoUrl} alt={`${product.name} Logo`} className="h-16 md:h-20 mx-auto mb-4 object-contain" />
-        ) : (
-          <AppLogoIcon className="h-16 md:h-20 mx-auto mb-4" style={{ color: resolvedPrimaryHex }} />
-        )}
+        {renderHeaderLogo()}
          {(product.checkoutCustomization?.showProductName !== false) && (
              <h1 className={`text-3xl md:text-4xl font-bold ${headerProductNameClass} font-display`}>{product.name}</h1>
          )}
@@ -669,7 +673,36 @@ useEffect(() => {
   const handleManualCheck = useCallback(async () => { if (!pixData?.id || !canManuallyCheck || isManualChecking) return; setIsManualChecking(true); setCanManuallyCheck(false); await checkPaymentStatus(pixData.id); setIsManualChecking(false); if (manualCheckTimeoutRef.current) clearTimeout(manualCheckTimeoutRef.current); manualCheckTimeoutRef.current = window.setTimeout(() => setCanManuallyCheck(true), MANUAL_CHECK_COOLDOWN_MS); }, [pixData, canManuallyCheck, isManualChecking, checkPaymentStatus]);
   const handleProceedToThankYou = useCallback(() => { if (currentSaleId && product?.id) { navigate(`/thank-you/${currentSaleId}?origProdId=${product.id}&csid=${checkoutSessionId}`); } }, [currentSaleId, product, navigate, checkoutSessionId]);
 
-  useEffect(() => { if (!slug) { setError("Produto não especificado."); setIsPageLoading(false); return; } const fetchProductData = async () => { setIsPageLoading(true); setError(null); const cacheKey = `product_${slug}`; const cached = productDataCache.get(cacheKey); if (cached && Date.now() - cached.timestamp < PRODUCT_CACHE_TTL) { setProduct(cached.data); if (cached.data.platformUserId) setAppSettings(await settingsService.getAppSettingsByUserId(cached.data.platformUserId, null)); setCurrentTheme(cached.data.checkoutCustomization?.theme || 'light'); setIsPageLoading(false); return; } try { const fetchedProductData = await productService.getProductBySlug(slug, null); setProduct(fetchedProductData || null); if (!fetchedProductData) { setError("Produto não encontrado ou indisponível."); setIsPageLoading(false); return; } productDataCache.set(cacheKey, { data: fetchedProductData, timestamp: Date.now() }); if (fetchedProductData.platformUserId) setAppSettings(await settingsService.getAppSettingsByUserId(fetchedProductData.platformUserId, null)); setCurrentTheme(fetchedProductData.checkoutCustomization?.theme || 'light'); } catch (err: any) { setError(err.message || "Erro ao carregar dados do produto."); }  finally { setIsPageLoading(false); } }; fetchProductData(); }, [slug]);
+  useEffect(() => { 
+    if (!slug) { 
+      setError("Produto não especificado."); 
+      setIsPageLoading(false); 
+      return; 
+    } 
+    const fetchProductData = async () => { 
+      setIsPageLoading(true); 
+      setError(null); 
+      try { 
+        // Always fetch from service, which now handles caching internally
+        const fetchedProductData = await productService.getProductBySlug(slug, null); 
+        setProduct(fetchedProductData || null); 
+        
+        if (!fetchedProductData) { 
+          setError("Produto não encontrado ou indisponível."); 
+        } else {
+          if (fetchedProductData.platformUserId) {
+            setAppSettings(await settingsService.getAppSettingsByUserId(fetchedProductData.platformUserId, null));
+          }
+          setCurrentTheme(fetchedProductData.checkoutCustomization?.theme || 'light');
+        }
+      } catch (err: any) { 
+        setError(err.message || "Erro ao carregar dados do produto."); 
+      } finally { 
+        setIsPageLoading(false); 
+      } 
+    }; 
+    fetchProductData(); 
+  }, [slug]);
   
   useEffect(() => {
     if (product && !appliedCoupon) {

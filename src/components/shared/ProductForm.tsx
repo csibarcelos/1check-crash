@@ -1,6 +1,5 @@
-
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Product, ProductCheckoutCustomization, TraditionalOrderBumpOffer, PostClickOffer, UpsellOffer, Coupon, UtmParams, PostPurchaseEmailConfig } from '@/types';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Product, ProductCheckoutCustomization, TraditionalOrderBumpOffer, PostClickOffer, UpsellOffer, Coupon, UtmParams, PostPurchaseEmails, DeliveryEmailConfig, FollowUpEmailConfig } from '@/types';
 import { Button } from '@/components/ui/Button';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { Input, Textarea } from '@/components/ui/Input';
@@ -10,7 +9,7 @@ import {
     COLOR_PALETTE_OPTIONS, TrashIcon, PlusIcon, UploadIcon, LinkIcon, 
     LockClosedIcon as OpenLockIcon, EyeIcon as ViewIcon, PaintBrushIcon, 
     TagIcon as PriceTagIcon, ShoppingBagIcon, GiftIcon, ChartPieIcon as UtmIcon,
-    SparklesIcon, EnvelopeIcon // Added EnvelopeIcon
+    SparklesIcon, EnvelopeIcon, InformationCircleIcon
 } from '../../constants.tsx';
 import { MiniEditor } from '@/components/shared/MiniEditor';
 import { CouponFormModal } from '@/components/shared/CouponFormModal';
@@ -21,20 +20,12 @@ import { Tabs, TabConfig } from '@/components/ui/Tabs';
 import { supabase } from '@/supabaseClient';
 import { useToast } from '@/contexts/ToastContext';
 import { v4 as uuidv4 } from 'uuid';
-import { defaultProductCheckoutCustomization, defaultUtmParams } from '@/services/productService';
+import { defaultProductCheckoutCustomization, defaultUtmParams, defaultPostPurchaseEmails } from '@/services/productService';
 
 
 const formatCurrency = (valueInCents: number): string => {
     return `R\$ ${(valueInCents / 100).toFixed(2).replace('.', ',')}`;
 };
-
-const defaultPostPurchaseEmailConfigValues: PostPurchaseEmailConfig = {
-  enabled: false,
-  delayDays: 3,
-  subject: 'Obrigado por comprar {{product_name}}!',
-  bodyHtml: '<p>Olá {{customer_name}},</p><p>Agradecemos por adquirir nosso produto: {{product_name}}.</p><p>Esperamos que você aproveite ao máximo! Se precisar de ajuda, estamos à disposição.</p><p>Atenciosamente,</p><p>Equipe {{shop_name}}</p>',
-};
-
 
 const listItemVariants: Variants = {
   initial: { opacity: 0, y: -10, scale: 0.98 },
@@ -76,28 +67,19 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
   const [description, setDescription] = useState(initialData?.description || '');
   const [price, setPrice] = useState(initialData?.priceInCents ? (initialData.priceInCents / 100).toFixed(2).replace('.', ',') : '');
   
-  const supabaseOrigin = useMemo(() => {
-    const { data } = supabase.storage.from('productimages').getPublicUrl('_'); // Dummy path
-    if (data?.publicUrl) {
-        try {
-            return new URL(data.publicUrl).origin;
-        } catch (e) { 
-            console.error("Error parsing Supabase origin URL from publicUrl:", data.publicUrl, e);
-            return ''; 
-        }
-    }
-    console.warn("Could not get publicUrl to determine Supabase origin.");
-    return '';
-  }, []); 
+  // States for main image
+  const [mainImageInputMode, setMainImageInputMode] = useState<'url' | 'upload'>(initialData?.imageUrl ? 'url' : 'upload');
+  const [mainImageUrl, setMainImageUrl] = useState(initialData?.imageUrl || '');
+  const [mainImageFile, setMainImageFile] = useState<File | null>(null);
+  const [mainImagePreview, setMainImagePreview] = useState<string | null>(initialData?.imageUrl || null);
+  const [isUploadingMainImage, setIsUploadingMainImage] = useState(false);
 
-
-  const [imageInputMode, setImageInputMode] = useState<'url' | 'upload'>(
-    initialData?.imageUrl && supabaseOrigin && !initialData.imageUrl.startsWith(supabaseOrigin) ? 'url' : 'url'
-  );
-  const [imageUrl, setImageUrl] = useState(initialData?.imageUrl || '');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(initialData?.imageUrl || null);
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  // States for logo
+  const [logoInputMode, setLogoInputMode] = useState<'url' | 'upload'>(initialData?.checkoutCustomization?.logoUrl ? 'url' : 'upload');
+  const [logoUrl, setLogoUrl] = useState(initialData?.checkoutCustomization?.logoUrl || '');
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(initialData?.checkoutCustomization?.logoUrl || null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   const [deliveryUrl, setDeliveryUrl] = useState(initialData?.deliveryUrl || '');
   const [checkoutCustomization, setCheckoutCustomization] = useState<ProductCheckoutCustomization>(
@@ -109,11 +91,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
         : defaultProductCheckoutCustomization
   );
   const [utmParams, setUtmParams] = useState<UtmParams>(initialData?.utmParams || defaultUtmParams);
-  const [postPurchaseEmailConfig, setPostPurchaseEmailConfig] = useState<PostPurchaseEmailConfig>(
-    initialData?.postPurchaseEmailConfig 
-      ? { ...defaultPostPurchaseEmailConfigValues, ...initialData.postPurchaseEmailConfig }
-      : defaultPostPurchaseEmailConfigValues
-  );
+  const [postPurchaseEmailConfig, setPostPurchaseEmailConfig] = useState<PostPurchaseEmails>(initialData?.postPurchaseEmailConfig || defaultPostPurchaseEmails);
 
   const [traditionalOrderBumps, setTraditionalOrderBumps] = useState<TraditionalOrderBumpOffer[]>(initialData?.orderBumps || []);
   const [postClickOffer, setPostClickOffer] = useState<PostClickOffer | undefined>(initialData?.postClickOffer);
@@ -139,70 +117,56 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
     setProductName(initialData?.name || '');
     setDescription(initialData?.description || '');
     setPrice(initialData?.priceInCents ? (initialData.priceInCents / 100).toFixed(2).replace('.', ',') : '');
-    setImageUrl(initialData?.imageUrl || '');
-    setImagePreviewUrl(initialData?.imageUrl || null);
+    setMainImageUrl(initialData?.imageUrl || '');
+    setMainImagePreview(initialData?.imageUrl || null);
     setDeliveryUrl(initialData?.deliveryUrl || '');
-    setCheckoutCustomization(initialData?.checkoutCustomization 
+    
+    const initialCheckoutCustomization = initialData?.checkoutCustomization 
       ? { ...defaultProductCheckoutCustomization, ...initialData.checkoutCustomization,
           countdownTimer: { ...defaultProductCheckoutCustomization.countdownTimer!, ...(initialData.checkoutCustomization.countdownTimer || {}) },
           animateTraditionalOrderBumps: typeof initialData.checkoutCustomization.animateTraditionalOrderBumps === 'boolean' ? initialData.checkoutCustomization.animateTraditionalOrderBumps : defaultProductCheckoutCustomization.animateTraditionalOrderBumps,
         } 
-      : defaultProductCheckoutCustomization
-    );
+      : defaultProductCheckoutCustomization;
+    setCheckoutCustomization(initialCheckoutCustomization);
+    setLogoUrl(initialCheckoutCustomization.logoUrl || '');
+    setLogoPreview(initialCheckoutCustomization.logoUrl || null);
+
     setUtmParams(initialData?.utmParams || defaultUtmParams);
-    setPostPurchaseEmailConfig(initialData?.postPurchaseEmailConfig ? { ...defaultPostPurchaseEmailConfigValues, ...initialData.postPurchaseEmailConfig } : defaultPostPurchaseEmailConfigValues);
+    setPostPurchaseEmailConfig(initialData?.postPurchaseEmailConfig || defaultPostPurchaseEmails);
     setTraditionalOrderBumps(initialData?.orderBumps || []);
     setPostClickOffer(initialData?.postClickOffer);
     setUpsell(initialData?.upsell);
     setCoupons(initialData?.coupons || []);
     
-    if (supabaseOrigin && initialData?.imageUrl) {
-        const hasSupabaseGeneratedUrl = initialData.imageUrl.startsWith(supabaseOrigin);
-        setImageInputMode(initialData.imageUrl && !hasSupabaseGeneratedUrl ? 'url' : 'url');
-    } else if (initialData?.imageUrl) {
-        setImageInputMode('url');
-    }
-
     const timer = setTimeout(() => { isInitialLoadDone.current = true; }, 100); 
     return () => clearTimeout(timer);
-  }, [initialData, supabaseOrigin]);
+  }, [initialData]);
 
-
-  const handleImageFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files[0]) {
-      const file = event.target.files[0];
-      setImageFile(file);
-      setImagePreviewUrl(URL.createObjectURL(file));
-      setImageUrl(''); 
-      notifyChange();
-    }
-  };
-
-  const handleImageUpload = async (): Promise<string | null> => {
-    if (!imageFile) return null;
-    setIsUploadingImage(true);
+  const handleFileUpload = async (file: File, folder: 'productimages' | 'logos'): Promise<string | null> => {
     try {
-      const fileName = `${Date.now()}_${imageFile.name.replace(/\s+/g, '_')}`;
+      const fileName = `${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
       const { data, error } = await supabase.storage
-        .from('productimages') 
-        .upload(fileName, imageFile, {
-          cacheControl: '3600',
-          upsert: false, 
-        });
+        .from(folder)
+        .upload(fileName, file, { cacheControl: '3600', upsert: false });
 
       if (error) throw error;
       
-      const { data: { publicUrl } } = supabase.storage.from('productimages').getPublicUrl(data.path);
-      showToast({ title: "Upload Concluído", description: "Imagem enviada com sucesso!", variant: 'success' });
+      const { data: { publicUrl } } = supabase.storage.from(folder).getPublicUrl(data.path);
       return publicUrl;
     } catch (error: any) {
-      console.error("Error uploading image to Supabase Storage:", error);
-      showToast({ title: "Erro no Upload", description: error.message || "Falha ao enviar imagem.", variant: 'error' });
+      console.error(`Error uploading image to Supabase Storage in folder ${folder}:`, error);
+      const errorMessage = error.message?.includes("Bucket not found") 
+        ? `Bucket "${folder}" não encontrado. Verifique as configurações de Storage no Supabase.`
+        : error.message || "Falha ao enviar imagem.";
+      showToast({ 
+        title: "Erro no Upload", 
+        description: errorMessage, 
+        variant: 'error' 
+      });
       return null;
-    } finally {
-      setIsUploadingImage(false);
     }
   };
+
 
   const handleInternalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -216,44 +180,82 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
       return;
     }
 
-    let finalImageUrl = imageUrl;
-    if (imageInputMode === 'upload' && imageFile) {
-        const uploadedUrl = await handleImageUpload();
-        if (uploadedUrl) finalImageUrl = uploadedUrl;
+    let finalMainImageUrl = mainImageUrl;
+    if (mainImageInputMode === 'upload' && mainImageFile) {
+        setIsUploadingMainImage(true);
+        const uploadedUrl = await handleFileUpload(mainImageFile, 'productimages');
+        setIsUploadingMainImage(false);
+        if (uploadedUrl) finalMainImageUrl = uploadedUrl;
         else if (!initialData?.imageUrl) { 
-             showToast({ title: "Erro na Imagem", description: "Falha ao fazer upload da imagem. Verifique o arquivo e tente novamente.", variant: "error"});
+             showToast({ title: "Erro na Imagem Principal", description: "Falha ao fazer upload da imagem. Verifique o arquivo e tente novamente.", variant: "error"});
              return; 
         }
     }
+
+    let finalLogoUrl = logoUrl;
+    if (logoInputMode === 'upload' && logoFile) {
+      setIsUploadingLogo(true);
+      const uploadedUrl = await handleFileUpload(logoFile, 'logos');
+      setIsUploadingLogo(false);
+      if (uploadedUrl) finalLogoUrl = uploadedUrl;
+    }
+
+    const finalCheckoutCustomization = {
+        ...checkoutCustomization,
+        logoUrl: finalLogoUrl.trim() || undefined,
+        theme: checkoutCustomization.theme || 'light',
+        showProductName: checkoutCustomization.showProductName !== undefined ? checkoutCustomization.showProductName : true,
+        showLogo: checkoutCustomization.showLogo !== undefined ? checkoutCustomization.showLogo : true,
+        animateTraditionalOrderBumps: typeof checkoutCustomization.animateTraditionalOrderBumps === 'boolean' ? checkoutCustomization.animateTraditionalOrderBumps : defaultProductCheckoutCustomization.animateTraditionalOrderBumps,
+    };
     
     const formData: Omit<Product, 'id' | 'platformUserId' | 'slug' | 'totalSales' | 'clicks' | 'checkoutViews' | 'conversionRate' | 'abandonmentRate'> = {
       name: productName, description, priceInCents: priceInCentsNum,
-      imageUrl: finalImageUrl.trim() || undefined,
+      imageUrl: finalMainImageUrl.trim() || undefined,
       deliveryUrl: deliveryUrl.trim() || undefined,
-      checkoutCustomization: { 
-          ...checkoutCustomization, 
-          theme: checkoutCustomization.theme || 'light', 
-          showProductName: checkoutCustomization.showProductName !== undefined ? checkoutCustomization.showProductName : true,
-          animateTraditionalOrderBumps: typeof checkoutCustomization.animateTraditionalOrderBumps === 'boolean' ? checkoutCustomization.animateTraditionalOrderBumps : defaultProductCheckoutCustomization.animateTraditionalOrderBumps,
-      },
+      checkoutCustomization: finalCheckoutCustomization,
       orderBumps: traditionalOrderBumps.length > 0 ? traditionalOrderBumps.filter(ob => ob.productId) : undefined,
       postClickOffer: postClickOffer?.productId ? postClickOffer : undefined, 
       upsell: upsell?.productId ? upsell : undefined,
       coupons: coupons.length > 0 ? coupons : undefined,
       utmParams: Object.values(utmParams).some(val => typeof val === 'string' && val.trim() !== '') ? utmParams : undefined,
-      postPurchaseEmailConfig: postPurchaseEmailConfig.enabled ? postPurchaseEmailConfig : undefined,
+      postPurchaseEmailConfig: postPurchaseEmailConfig,
     };
     await onSubmit(formData);
   };
   
-  const imageInputTabs: TabConfig[] = [
-    { value: 'url', label: 'URL da Imagem', content: 
-        <Input type="url" value={imageUrl} onChange={(e) => { setImageUrl(e.target.value); setImageFile(null); setImagePreviewUrl(e.target.value || null); notifyChange(); }} placeholder="https://exemplo.com/imagem.jpg" disabled={isSaving || isUploadingImage} icon={<LinkIcon className="h-5 w-5"/>}/> },
-    { value: 'upload', label: 'Enviar Arquivo', content: 
-        <Input type="file" accept="image/*" onChange={handleImageFileChange} disabled={isSaving || isUploadingImage} icon={<UploadIcon className="h-5 w-5"/>} /> },
+  const handleMainImageFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      const file = event.target.files[0];
+      setMainImageFile(file);
+      setMainImagePreview(URL.createObjectURL(file));
+      setMainImageUrl('');
+      notifyChange();
+    }
+  };
+  
+  const handleLogoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      const file = event.target.files[0];
+      setLogoFile(file);
+      setLogoPreview(URL.createObjectURL(file));
+      setLogoUrl('');
+      notifyChange();
+    }
+  };
+
+
+  const mainImageInputTabs: TabConfig[] = [
+    { value: 'url', label: 'URL da Imagem', content: <Input type="url" value={mainImageUrl} onChange={(e) => { setMainImageUrl(e.target.value); setMainImageFile(null); setMainImagePreview(e.target.value || null); notifyChange(); }} placeholder="https://exemplo.com/imagem.jpg" disabled={isSaving || isUploadingMainImage} icon={<LinkIcon className="h-5 w-5"/>}/> },
+    { value: 'upload', label: 'Enviar Arquivo', content: <Input type="file" accept="image/*" onChange={handleMainImageFileChange} disabled={isSaving || isUploadingMainImage} icon={<UploadIcon className="h-5 w-5"/>} /> },
   ];
 
-  const handleCustomizationChange = <K extends keyof ProductCheckoutCustomization, V extends ProductCheckoutCustomization[K]>(field: K, value: V) => { setCheckoutCustomization(prev => ({ ...prev, [field]: value })); notifyChange(); };
+  const logoInputTabs: TabConfig[] = [
+    { value: 'url', label: 'URL do Logo', content: <Input type="url" value={logoUrl} onChange={(e) => { setLogoUrl(e.target.value); setLogoFile(null); setLogoPreview(e.target.value || null); notifyChange(); }} placeholder="https://exemplo.com/logo.png" disabled={isSaving || isUploadingLogo} icon={<LinkIcon className="h-5 w-5"/>} /> },
+    { value: 'upload', label: 'Enviar Logo', content: <Input type="file" accept="image/*" onChange={handleLogoFileChange} disabled={isSaving || isUploadingLogo} icon={<UploadIcon className="h-5 w-5"/>} /> },
+  ];
+
+  const handleCustomizationChange = <K extends keyof ProductCheckoutCustomization>(field: K, value: ProductCheckoutCustomization[K]) => { setCheckoutCustomization(prev => ({ ...prev, [field]: value })); notifyChange(); };
   const handleCountdownTimerChange = <K extends keyof NonNullable<ProductCheckoutCustomization['countdownTimer']>>(field: K, value: NonNullable<ProductCheckoutCustomization['countdownTimer']>[K]) => { setCheckoutCustomization(prev => ({ ...prev, countdownTimer: { ...(prev.countdownTimer || defaultProductCheckoutCustomization.countdownTimer!), [field]: value } })); notifyChange(); };
   const handleUtmParamChange = (param: keyof UtmParams, value: string) => { setUtmParams(prev => ({ ...prev, [param]: value })); notifyChange(); };
   const handleSalesCopyChange = (html: string) => { handleCustomizationChange('salesCopy', html); }; 
@@ -369,7 +371,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
     if (!selectedProdId) { setUpsell(undefined); notifyChange(); return; }
     const selectedProductOffer = availableProductsForOffers.find(p => p.id === selectedProdId);
     if (!selectedProductOffer) { setUpsell(undefined); notifyChange(); return; }
-    setUpsell({ productId: selectedProductOffer.id, name: selectedProductOffer.name, description: selectedProductOffer.description.substring(0,150), customPriceInCents: selectedProductOffer.priceInCents, imageUrl: selectedProductOffer.imageUrl || '' });
+    setUpsell({ productId: selectedProductOffer.id, name: selectedProductOffer.name, description: selectedProductOffer.description.substring(0,150), customPriceInCents: selectedProductOffer.priceInCents, imageUrl: selectedProductOffer.imageUrl || '', redirectUrl: '' });
     notifyChange();
   };
 
@@ -393,8 +395,30 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
 
   const countdownDurationOptions = [ { label: 'Nenhum', value: "0" }, { label: '5 minutos', value: "5" }, { label: '10 minutos', value: "10" }, { label: '15 minutos', value: "15" }, { label: '20 minutos', value: "20" }, { label: '30 minutos', value: "30" }, { label: '60 minutos', value: "60" }, ].map(cd => ({ value: cd.value, label: cd.label }));
   
-  const handlePostPurchaseEmailConfigChange = <K extends keyof PostPurchaseEmailConfig>(field: K, value: PostPurchaseEmailConfig[K]) => { setPostPurchaseEmailConfig(prev => ({...prev, [field]: value})); notifyChange(); };
-  const handlePostPurchaseEmailBodyChange = (html: string) => { handlePostPurchaseEmailConfigChange('bodyHtml', html); };
+  const handleDeliveryEmailChange = <K extends keyof DeliveryEmailConfig>(field: K, value: DeliveryEmailConfig[K]) => {
+    setPostPurchaseEmailConfig(prev => ({ ...prev, delivery: { ...prev.delivery, [field]: value } }));
+    // Defer the 'unsaved changes' notification for toggle switches to prevent a React flushSync warning
+    // that can occur when Radix UI components interact with router blockers and animations.
+    if (field === 'enabled') {
+      setTimeout(notifyChange, 0);
+    } else {
+      notifyChange();
+    }
+  };
+  
+  const handleFollowUpEmailChange = <K extends keyof FollowUpEmailConfig>(field: K, value: FollowUpEmailConfig[K]) => {
+      setPostPurchaseEmailConfig(prev => ({ ...prev, followUp: { ...prev.followUp, [field]: value } }));
+      // Defer the 'unsaved changes' notification for toggle switches.
+      if (field === 'enabled') {
+        setTimeout(notifyChange, 0);
+      } else {
+        notifyChange();
+      }
+  };
+  
+  const handleDeliveryEmailBodyChange = (html: string) => { handleDeliveryEmailChange('bodyHtml', html); };
+  const handleFollowUpEmailBodyChange = (html: string) => { handleFollowUpEmailChange('bodyHtml', html); };
+
   const postPurchaseDelayOptions = [ {value: "1", label: "1 Dia Após Compra"}, {value: "2", label: "2 Dias Após Compra"}, {value: "3", label: "3 Dias Após Compra"}, {value: "5", label: "5 Dias Após Compra"}, {value: "7", label: "7 Dias Após Compra"}, {value: "10", label: "10 Dias Após Compra"}, {value: "15", label: "15 Dias Após Compra"}, {value: "30", label: "30 Dias Após Compra"} ];
 
 
@@ -421,7 +445,8 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
   const wrappedSetDescription = (val: string) => { setDescription(val); notifyChange(); };
   const wrappedSetPrice = (val: string) => { setPrice(val); notifyChange(); };
   const wrappedSetDeliveryUrl = (val: string) => { setDeliveryUrl(val); notifyChange(); };
-  const wrappedSetImageInputMode = (val: 'url' | 'upload') => { setImageInputMode(val); notifyChange(); };
+  const wrappedSetMainImageInputMode = (val: 'url' | 'upload') => { setMainImageInputMode(val); notifyChange(); };
+  const wrappedSetLogoInputMode = (val: 'url' | 'upload') => { setLogoInputMode(val); notifyChange(); };
 
   const formatCurrencyForInput = (valueInCents?: number) => {
     if (valueInCents === undefined || isNaN(valueInCents)) return '';
@@ -439,7 +464,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
           <Input label="Nome do Produto" name="productName" value={productName} onChange={(e) => wrappedSetProductName(e.target.value)} required placeholder="Ex: Curso de Marketing Digital Avançado" disabled={isSaving} />
           <Textarea label="Descrição" name="description" value={description} onChange={(e) => wrappedSetDescription(e.target.value)} required placeholder="Descreva seu produto em detalhes..." rows={5} disabled={isSaving}/>
           <Input label="Preço (R$)" name="price" type="text" value={price} onChange={(e) => wrappedSetPrice(e.target.value)} required placeholder="Ex: 197,00" disabled={isSaving}/>
-          <div className="space-y-2"> <label className="block text-sm font-medium text-text-default">Imagem Principal do Produto</label> <Tabs tabs={imageInputTabs} defaultValue={imageInputMode} onValueChange={(val) => wrappedSetImageInputMode(val as 'url' | 'upload')} /> {imagePreviewUrl && <img src={imagePreviewUrl} alt="Prévia da Imagem" className="mt-2 max-h-48 w-auto rounded-lg border border-border-subtle shadow-sm"/>} {isUploadingImage && <div className="flex items-center text-sm text-accent-blue-neon"><LoadingSpinner size="sm" className="mr-2"/>Enviando imagem...</div>} </div>
+          <div className="space-y-2"> <label className="block text-sm font-medium text-text-default">Imagem Principal do Produto</label> <Tabs tabs={mainImageInputTabs} defaultValue={mainImageInputMode} onValueChange={(val) => wrappedSetMainImageInputMode(val as 'url' | 'upload')} /> {mainImagePreview && <img src={mainImagePreview} alt="Prévia da Imagem Principal" className="mt-2 max-h-48 w-auto rounded-lg border border-border-subtle shadow-sm"/>} {isUploadingMainImage && <div className="flex items-center text-sm text-accent-blue-neon"><LoadingSpinner size="sm" className="mr-2"/>Enviando imagem...</div>} </div>
           <Input label="URL de Entrega (Opcional)" name="deliveryUrl" type="url" value={deliveryUrl} onChange={(e) => wrappedSetDeliveryUrl(e.target.value)} placeholder="https://areademembros.com/acesso-curso" icon={<OpenLockIcon className="h-5 w-5 text-text-muted"/>} disabled={isSaving}/>
         </div>
       </Card>
@@ -449,8 +474,9 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
         <div className="space-y-6">
           <div> <label className="block text-sm font-medium text-text-default mb-1.5">Cor Principal</label> <div className="grid grid-cols-5 gap-2 mt-1"> {COLOR_PALETTE_OPTIONS.map(color => ( <button key={color.value} type="button" title={color.name} onClick={() => handleCustomizationChange('primaryColor', color.value)} className={`h-8 w-full rounded-lg border-2 transition-all duration-150 ${checkoutCustomization.primaryColor === color.value ? 'ring-2 ring-offset-2 ring-accent-blue-neon border-accent-blue-neon ring-offset-bg-surface' : 'border-border-subtle hover:border-accent-blue-neon/70'}`} style={{ backgroundColor: color.value }} disabled={isSaving} /> ))} </div> <Input name="customColor" type="color" value={checkoutCustomization.primaryColor || '#0D9488'} onChange={(e) => handleCustomizationChange('primaryColor', e.target.value)} className="mt-2 h-10 w-full sm:w-auto bg-bg-surface border-border-subtle" disabled={isSaving}/> </div>
           <div> <Select label="Tema da Página de Checkout" options={[{value: 'light', label: 'Claro (Padrão)'}, {value: 'dark', label: 'Escuro (Reimagined)'}]} value={checkoutCustomization.theme || 'light'} onValueChange={(value) => handleCustomizationChange('theme', value as 'light' | 'dark')} disabled={isSaving}/> </div>
-          <ToggleSwitch label="Exibir Nome do Produto no Cabeçalho do Checkout" enabled={checkoutCustomization.showProductName !== undefined ? checkoutCustomization.showProductName : true} onEnabledChange={(isEnabled) => handleCustomizationChange('showProductName', isEnabled)} disabled={isSaving}/>
-          <Input label="URL do Logo Pequeno (Exibido no Checkout)" name="logoUrl" value={checkoutCustomization.logoUrl || ''} onChange={(e) => handleCustomizationChange('logoUrl', e.target.value)} placeholder="https://exemplo.com/logo-pequeno.png" disabled={isSaving} icon={<ViewIcon className="h-5 w-5 text-text-muted"/>}/>
+          <ToggleSwitch label="Exibir Nome do Produto no Cabeçalho do Checkout" enabled={checkoutCustomization.showProductName !== false} onEnabledChange={(isEnabled) => handleCustomizationChange('showProductName', isEnabled)} disabled={isSaving}/>
+          <ToggleSwitch label="Exibir Logo no Cabeçalho do Checkout" enabled={checkoutCustomization.showLogo !== false} onEnabledChange={(isEnabled) => handleCustomizationChange('showLogo', isEnabled)} disabled={isSaving}/>
+          <div className="space-y-2"> <label className="block text-sm font-medium text-text-default">Logo Pequeno (Exibido no Checkout)</label> <Tabs tabs={logoInputTabs} defaultValue={logoInputMode} onValueChange={(val) => wrappedSetLogoInputMode(val as 'url' | 'upload')} /> {logoPreview && <img src={logoPreview} alt="Prévia do Logo" className="mt-2 max-h-24 w-auto rounded-lg border border-border-subtle shadow-sm"/>} {isUploadingLogo && <div className="flex items-center text-sm text-accent-blue-neon"><LoadingSpinner size="sm" className="mr-2"/>Enviando logo...</div>} </div>
           <Input label="URL do Vídeo (YouTube Embed)" name="videoUrl" value={checkoutCustomization.videoUrl || ''} onChange={(e) => handleCustomizationChange('videoUrl', e.target.value)} placeholder="https://youtube.com/embed/seu-video" disabled={isSaving} icon={<ViewIcon className="h-5 w-5 text-text-muted"/>}/>
         </div>
       </Card>
@@ -467,48 +493,85 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
     { value: 'offers', label: <><PriceTagIcon className="h-5 w-5 mr-2"/>Ofertas Especiais</>, content: (
       <div className="space-y-6">
         <Card title="Order Bumps Tradicionais (Checkbox - até 5)"> <ToggleSwitch label="Habilitar animação de destaque nos Order Bumps?" enabled={checkoutCustomization.animateTraditionalOrderBumps ?? true} onEnabledChange={(isEnabled) => handleCustomizationChange('animateTraditionalOrderBumps', isEnabled)} disabled={isSaving} className="mb-4"/> <AnimatePresence> {traditionalOrderBumps.map((bump, index) => ( <motion.div key={bump.id} variants={listItemVariants} initial="initial" animate="animate" exit="exit" layout className="space-y-3 p-4 border border-border-subtle rounded-xl bg-bg-surface-opaque mb-4"> <h4 className="text-sm font-semibold text-text-strong">Order Bump {index + 1}</h4> <Combobox label="Selecionar Produto:" options={traditionalOrderBumpProductOptions(index)} value={bump.productId} onValueChange={(value) => updateTraditionalOrderBump(index, 'productId', value)} placeholder="Escolha um produto" emptyMessage="Nenhum produto disponível." disabled={isSaving}/> {bump.productId && ( <> <Input label="Nome/Label no Checkout" value={bump.name} onChange={(e) => updateTraditionalOrderBump(index, 'name', e.target.value)} placeholder="Ex: Ebook Exclusivo" disabled={isSaving}/> <Textarea label="Descrição (Opcional)" value={bump.description || ''} onChange={(e) => updateTraditionalOrderBump(index, 'description', e.target.value)} placeholder="Pequena descrição da oferta" rows={2} disabled={isSaving}/> <Input label="Preço Customizado (R$)" type="text" value={formatCurrencyForInput(bump.customPriceInCents)} onChange={(e) => updateTraditionalOrderBump(index, 'customPriceInCents', e.target.value)} placeholder="Preço original se vazio" disabled={isSaving}/> <Input label="URL da Imagem (Opcional)" type="url" value={bump.imageUrl || ''} onChange={(e) => updateTraditionalOrderBump(index, 'imageUrl', e.target.value)} placeholder="https://exemplo.com/imagem-oferta.jpg" disabled={isSaving}/> </> )} <Button type="button" variant="danger" size="sm" onClick={() => removeTraditionalOrderBump(index)} disabled={isSaving}>Remover Order Bump {index + 1}</Button> </motion.div> ))} </AnimatePresence> {traditionalOrderBumps.length < 5 && ( <Button type="button" variant="secondary" onClick={addTraditionalOrderBump} leftIcon={<PlusIcon />} disabled={isSaving}>Adicionar Order Bump</Button> )} </Card>
-        <Card title="Oferta Adicional Pós-Clique (Modal - 1 por produto)"> {postClickOffer ? ( <motion.div variants={listItemVariants} initial="initial" animate="animate" exit="exit" layout className="space-y-3 p-3 border border-border-subtle rounded-xl bg-bg-surface-opaque"> <p className="font-medium text-text-strong">Produto Selecionado: <span className="text-primary">{availableProductsForOffers.find(p=>p.id === postClickOffer.productId)?.name || postClickOffer.name}</span></p> <Input label="Título no Modal" value={postClickOffer.modalTitle || ''} onChange={(e) => updatePostClickOfferField('modalTitle', e.target.value)} placeholder="Ex: 🔥 OFERTA ÚNICA! 🔥" disabled={isSaving} rightElement={ <button type="button" onClick={() => suggestCopyForPostClickOffer('modalTitle')} className="p-1 hover:bg-white/10 rounded-md" title="Sugerir copy"><SparklesIcon className="h-5 w-5 text-accent-gold"/></button> } /> <div> <label className="block text-sm font-medium text-text-default mb-1.5">Descrição no Modal</label> <MiniEditor value={postClickOffer.description || ''} onChange={(html) => updatePostClickOfferField('description', html)} placeholder="Detalhes da sua oferta irresistível..."/> <button type="button" onClick={() => suggestCopyForPostClickOffer('description')} className="mt-1 p-1 text-xs text-accent-gold hover:bg-white/10 rounded-md flex items-center" title="Sugerir copy"><SparklesIcon className="h-4 w-4 mr-1"/>Sugerir descrição</button> </div> <Input label="Preço Customizado (R$)" type="text" value={formatCurrencyForInput(postClickOffer.customPriceInCents)} onChange={(e) => updatePostClickOfferField('customPriceInCents', e.target.value)} placeholder="Preço original se vazio" disabled={isSaving}/> <Input label="URL da Imagem (Opcional)" type="url" value={postClickOffer.imageUrl || ''} onChange={(e) => updatePostClickOfferField('imageUrl', e.target.value)} placeholder="https://exemplo.com/imagem-modal.jpg" disabled={isSaving}/> <Input label="Texto Botão Aceitar" value={postClickOffer.modalAcceptButtonText || ''} onChange={(e) => updatePostClickOfferField('modalAcceptButtonText', e.target.value)} placeholder="Ex: Sim, Quero Adicionar!" disabled={isSaving} rightElement={ <button type="button" onClick={() => suggestCopyForPostClickOffer('modalAcceptButtonText')} className="p-1 hover:bg-white/10 rounded-md" title="Sugerir copy"><SparklesIcon className="h-5 w-5 text-accent-gold"/></button> }/> <Input label="Texto Botão Recusar" value={postClickOffer.modalDeclineButtonText || ''} onChange={(e) => updatePostClickOfferField('modalDeclineButtonText', e.target.value)} placeholder="Ex: Não, Obrigado." disabled={isSaving} rightElement={ <button type="button" onClick={() => suggestCopyForPostClickOffer('modalDeclineButtonText')} className="p-1 hover:bg-white/10 rounded-md" title="Sugerir copy"><SparklesIcon className="h-5 w-5 text-accent-gold"/></button> }/> <Button type="button" variant="danger" size="sm" onClick={removePostClickOffer} disabled={isSaving}>Remover Oferta Pós-Clique</Button> </motion.div> ) : ( <div className="space-y-2"> <Combobox label="Selecionar Produto para Oferta Pós-Clique:" options={postClickOfferProductOptions()} value={postClickOfferValue} onValueChange={handlePostClickOfferProductSelect} placeholder="Nenhum (Sem Oferta Pós-Clique)" emptyMessage="Nenhum produto disponível." disabled={isSaving || availableProductsForOffers.length === 0}/> {availableProductsForOffers.length === 0 && <p className="text-xs text-text-muted mt-1">Crie outros produtos para selecioná-los aqui.</p>} </div> )} </Card>
-        <Card title="Oferta Pós-Compra (Upsell na Página de Obrigado)"> {upsell ? ( <motion.div variants={listItemVariants} initial="initial" animate="animate" exit="exit" layout className="space-y-3 p-3 border border-border-subtle rounded-xl bg-bg-surface-opaque"> <p className="font-medium text-text-strong">Produto: <span className="text-primary">{availableProductsForOffers.find(p=>p.id === upsell.productId)?.name || upsell.name}</span></p> <Textarea label="Descrição da Oferta de Upsell" value={upsell.description} onChange={(e) => updateUpsellOfferField('description', e.target.value)} placeholder="Descreva a oferta de upsell..." rows={3} disabled={isSaving}/> <Input label="Preço Customizado (R$)" type="text" value={formatCurrencyForInput(upsell.customPriceInCents)} onChange={(e) => updateUpsellOfferField('customPriceInCents', e.target.value)} placeholder="Preço original se vazio" disabled={isSaving}/> <Input label="URL da Imagem (Opcional)" type="url" value={upsell.imageUrl || ''} onChange={(e) => updateUpsellOfferField('imageUrl', e.target.value)} placeholder="https://exemplo.com/imagem-upsell.jpg" disabled={isSaving}/> <Button type="button" variant="danger" size="sm" onClick={removeUpsellOffer} disabled={isSaving}>Remover Upsell</Button> </motion.div> ) : ( <div className="space-y-2"> <Combobox label="Selecionar Produto para Upsell:" options={upsellProductOptions()} value={upsellValue} onValueChange={handleUpsellProductSelect} placeholder="Nenhum (Sem Upsell)" emptyMessage="Nenhum produto disponível." disabled={isSaving || availableProductsForOffers.length === 0}/> {availableProductsForOffers.length === 0 && <p className="text-xs text-text-muted mt-1">Crie outros produtos para selecioná-los aqui.</p>} </div> )} </Card>
+        <Card title="Oferta Adicional Pós-Clique (Modal - 1 por produto)"> {postClickOffer ? ( <motion.div variants={listItemVariants} initial="initial" animate="animate" exit="exit" layout className="space-y-3 p-3 border border-border-subtle rounded-xl bg-bg-surface-opaque"> <p className="font-medium text-text-strong">Produto Selecionado: <span className="text-primary">{availableProductsForOffers.find(p=>p.id === postClickOffer.productId)?.name || postClickOffer.name}</span></p> <Input label="Título no Modal" value={postClickOffer.modalTitle || ''} onChange={(e) => updatePostClickOfferField('modalTitle', e.target.value)} placeholder="Ex: 🔥 OFERTA ÚNICA! 🔥" disabled={isSaving} rightElement={ <button type="button" onClick={() => suggestCopyForPostClickOffer('modalTitle')} className="p-1 hover:bg-white/10 rounded-md" title="Sugerir copy"><SparklesIcon className="h-5 w-5 text-accent-gold"/></button> } /> <div> <label className="block text-sm font-medium text-text-default mb-1.5">Descrição no Modal</label> <MiniEditor value={postClickOffer.description || ''} onChange={(html) => updatePostClickOfferField('description', html)} placeholder="Detalhes da sua oferta irresistível..."/> <button type="button" onClick={() => suggestCopyForPostClickOffer('description')} className="mt-1 p-1 text-xs text-accent-gold hover:bg-white/10 rounded-md flex items-center" title="Sugerir descrição"><SparklesIcon className="h-4 w-4 mr-1"/>Sugerir descrição</button> </div> <Input label="Preço Customizado (R$)" type="text" value={formatCurrencyForInput(postClickOffer.customPriceInCents)} onChange={(e) => updatePostClickOfferField('customPriceInCents', e.target.value)} placeholder="Preço original se vazio" disabled={isSaving}/> <Input label="URL da Imagem (Opcional)" type="url" value={postClickOffer.imageUrl || ''} onChange={(e) => updatePostClickOfferField('imageUrl', e.target.value)} placeholder="https://exemplo.com/imagem-modal.jpg" disabled={isSaving}/> <Input label="Texto Botão Aceitar" value={postClickOffer.modalAcceptButtonText || ''} onChange={(e) => updatePostClickOfferField('modalAcceptButtonText', e.target.value)} placeholder="Ex: Sim, Quero Adicionar!" disabled={isSaving} rightElement={ <button type="button" onClick={() => suggestCopyForPostClickOffer('modalAcceptButtonText')} className="p-1 hover:bg-white/10 rounded-md" title="Sugerir copy"><SparklesIcon className="h-5 w-5 text-accent-gold"/></button> }/> <Input label="Texto Botão Recusar" value={postClickOffer.modalDeclineButtonText || ''} onChange={(e) => updatePostClickOfferField('modalDeclineButtonText', e.target.value)} placeholder="Ex: Não, Obrigado." disabled={isSaving} rightElement={ <button type="button" onClick={() => suggestCopyForPostClickOffer('modalDeclineButtonText')} className="p-1 hover:bg-white/10 rounded-md" title="Sugerir copy"><SparklesIcon className="h-5 w-5 text-accent-gold"/></button> }/> <Button type="button" variant="danger" size="sm" onClick={removePostClickOffer} disabled={isSaving}>Remover Oferta Pós-Clique</Button> </motion.div> ) : ( <div className="space-y-2"> <Combobox label="Selecionar Produto para Oferta Pós-Clique:" options={postClickOfferProductOptions()} value={postClickOfferValue} onValueChange={handlePostClickOfferProductSelect} placeholder="Nenhum (Sem Oferta Pós-Clique)" emptyMessage="Nenhum produto disponível." disabled={isSaving || availableProductsForOffers.length === 0}/> {availableProductsForOffers.length === 0 && <p className="text-xs text-text-muted mt-1">Crie outros produtos para selecioná-los aqui.</p>} </div> )} </Card>
+        <Card title="Oferta Pós-Compra (Upsell na Página de Obrigado)"> {upsell ? ( <motion.div variants={listItemVariants} initial="initial" animate="animate" exit="exit" layout className="space-y-3 p-3 border border-border-subtle rounded-xl bg-bg-surface-opaque"> <p className="font-medium text-text-strong">Produto: <span className="text-primary">{availableProductsForOffers.find(p=>p.id === upsell.productId)?.name || upsell.name}</span></p> <Textarea label="Descrição da Oferta de Upsell" value={upsell.description} onChange={(e) => updateUpsellOfferField('description', e.target.value)} placeholder="Descreva a oferta de upsell..." rows={3} disabled={isSaving}/> <Input label="Preço Customizado (R$)" type="text" value={formatCurrencyForInput(upsell.customPriceInCents)} onChange={(e) => updateUpsellOfferField('customPriceInCents', e.target.value)} placeholder="Preço original se vazio" disabled={isSaving}/> <Input label="URL da Imagem (Opcional)" type="url" value={upsell.imageUrl || ''} onChange={(e) => updateUpsellOfferField('imageUrl', e.target.value)} placeholder="https://exemplo.com/imagem-upsell.jpg" disabled={isSaving}/> <Input label="URL de Redirecionamento (Opcional)" type="url" value={upsell.redirectUrl || ''} onChange={(e) => updateUpsellOfferField('redirectUrl', e.target.value)} placeholder="https://suapagina.com/upsell-incrivel" disabled={isSaving}/> <Button type="button" variant="danger" size="sm" onClick={removeUpsellOffer} disabled={isSaving}>Remover Upsell</Button> </motion.div> ) : ( <div className="space-y-2"> <Combobox label="Selecionar Produto para Upsell:" options={upsellProductOptions()} value={upsellValue} onValueChange={handleUpsellProductSelect} placeholder="Nenhum (Sem Upsell)" emptyMessage="Nenhum produto disponível." disabled={isSaving || availableProductsForOffers.length === 0}/> {availableProductsForOffers.length === 0 && <p className="text-xs text-text-muted mt-1">Crie outros produtos para selecioná-los aqui.</p>} </div> )} </Card>
       </div>
     )},
-    { value: 'email-pos-compra', label: <><EnvelopeIcon className="h-5 w-5 mr-2"/>E-mail Pós-Compra</>, content: (
-      <Card title="Configuração do E-mail Pós-Compra">
-        <div className="space-y-4">
-          <ToggleSwitch
-            label="Habilitar E-mail Pós-Compra para este produto?"
-            enabled={postPurchaseEmailConfig.enabled}
-            onEnabledChange={(isEnabled) => handlePostPurchaseEmailConfigChange('enabled', isEnabled)}
-            disabled={isSaving}
-          />
-          {postPurchaseEmailConfig.enabled && (
-            <motion.div variants={listItemVariants} initial="initial" animate="animate" exit="exit" layout className="space-y-4 mt-3 pl-3 border-l-2 border-border-interactive/50">
-              <Select
-                label="Atraso para Envio:"
-                options={postPurchaseDelayOptions}
-                value={String(postPurchaseEmailConfig.delayDays)}
-                onValueChange={(value) => handlePostPurchaseEmailConfigChange('delayDays', parseInt(value, 10))}
-                disabled={isSaving}
-              />
-              <Input
-                label="Assunto do E-mail"
-                value={postPurchaseEmailConfig.subject}
-                onChange={(e) => handlePostPurchaseEmailConfigChange('subject', e.target.value)}
-                placeholder="Ex: Informações importantes sobre seu produto {{product_name}}"
-                disabled={isSaving}
-              />
-              <div>
-                <label className="block text-sm font-medium text-text-default mb-1.5">Corpo do E-mail (HTML)</label>
-                <MiniEditor
-                  value={postPurchaseEmailConfig.bodyHtml}
-                  onChange={handlePostPurchaseEmailBodyChange}
-                  placeholder={'<p>Olá {{customer_name}}, obrigado por comprar {{product_name}}!</p>'}
+    { value: 'email-pos-compra', label: <><EnvelopeIcon className="h-5 w-5 mr-2"/>E-mails Pós-Compra</>, content: (
+      <div className="space-y-6">
+        <Card title="E-mail de Entrega do Conteúdo (Instantâneo)">
+          <div className="space-y-4">
+            <ToggleSwitch
+              label="Habilitar e-mail de entrega do conteúdo?"
+              enabled={postPurchaseEmailConfig.delivery.enabled}
+              onEnabledChange={(isEnabled) => handleDeliveryEmailChange('enabled', isEnabled)}
+              disabled={isSaving}
+            />
+             <div className="flex items-start p-3 bg-bg-main border border-border-subtle rounded-lg mt-1">
+                <InformationCircleIcon className="h-5 w-5 text-accent-blue-neon mr-2 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-text-muted">Este e-mail é enviado imediatamente após a confirmação do pagamento. Ideal para enviar links de acesso ou informações iniciais.</p>
+            </div>
+            {postPurchaseEmailConfig.delivery.enabled && (
+              <motion.div variants={listItemVariants} initial="initial" animate="animate" exit="exit" layout className="space-y-4 mt-3 pl-3 border-l-2 border-border-interactive/50">
+                <Input
+                  label="Assunto do E-mail de Entrega"
+                  value={postPurchaseEmailConfig.delivery.subject}
+                  onChange={(e) => handleDeliveryEmailChange('subject', e.target.value)}
+                  placeholder="Ex: Seu acesso ao produto {{product_name}} chegou!"
+                  disabled={isSaving}
                 />
-                <p className="text-xs text-text-muted mt-2">{'Placeholders disponíveis: {{customer_name}}, {{product_name}}, {{order_id}}, {{product_delivery_url}}, {{shop_name}}.'}</p>
-              </div>
-            </motion.div>
-          )}
-        </div>
-      </Card>
+                <div>
+                  <label className="block text-sm font-medium text-text-default mb-1.5">Corpo do E-mail de Entrega (HTML)</label>
+                  <MiniEditor
+                    value={postPurchaseEmailConfig.delivery.bodyHtml}
+                    onChange={handleDeliveryEmailBodyChange}
+                    placeholder={'<p>Olá {{customer_name}}, aqui está seu produto {{product_name}}!</p>'}
+                  />
+                  <p className="text-xs text-text-muted mt-2">{'Placeholders: {{customer_name}}, {{product_name}}, {{order_id}}, {{product_delivery_url}}, {{shop_name}}.'}</p>
+                </div>
+              </motion.div>
+            )}
+          </div>
+        </Card>
+
+        <Card title="E-mail de Acompanhamento (Follow-up)">
+            <div className="space-y-4">
+                 <ToggleSwitch
+                    label="Habilitar e-mail de acompanhamento (follow-up)?"
+                    enabled={postPurchaseEmailConfig.followUp.enabled}
+                    onEnabledChange={(isEnabled) => handleFollowUpEmailChange('enabled', isEnabled)}
+                    disabled={isSaving}
+                 />
+                 {postPurchaseEmailConfig.followUp.enabled && (
+                    <motion.div variants={listItemVariants} initial="initial" animate="animate" exit="exit" layout className="space-y-4 mt-3 pl-3 border-l-2 border-border-interactive/50">
+                        <Select
+                            label="Atraso para Envio:"
+                            options={postPurchaseDelayOptions}
+                            value={String(postPurchaseEmailConfig.followUp.delayDays)}
+                            onValueChange={(value) => handleFollowUpEmailChange('delayDays', parseInt(value, 10))}
+                            disabled={isSaving}
+                        />
+                        <Input
+                            label="Assunto do E-mail de Acompanhamento"
+                            value={postPurchaseEmailConfig.followUp.subject}
+                            onChange={(e) => handleFollowUpEmailChange('subject', e.target.value)}
+                            placeholder="Ex: O que você achou do {{product_name}}?"
+                            disabled={isSaving}
+                        />
+                        <div>
+                            <label className="block text-sm font-medium text-text-default mb-1.5">Corpo do E-mail de Acompanhamento (HTML)</label>
+                            <MiniEditor
+                                value={postPurchaseEmailConfig.followUp.bodyHtml}
+                                onChange={handleFollowUpEmailBodyChange}
+                                placeholder={'<p>Olá {{customer_name}}, gostaríamos de saber sua opinião sobre o {{product_name}}!</p>'}
+                            />
+                            <p className="text-xs text-text-muted mt-2">{'Placeholders: {{customer_name}}, {{product_name}}, {{order_id}}, {{product_delivery_url}}, {{shop_name}}.'}</p>
+                        </div>
+                    </motion.div>
+                 )}
+            </div>
+        </Card>
+      </div>
     )},
     { value: 'marketing', label: <><UtmIcon className="h-5 w-5 mr-2"/>Marketing e Cupons</>, content: (
       <div className="space-y-6">

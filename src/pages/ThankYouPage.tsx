@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { Card } from '@/components/ui/Card';
@@ -104,6 +103,11 @@ const ThankYouPage: React.FC = () => {
         setOriginalProductDetails(origProduct || null);
         const newTheme = origProduct?.checkoutCustomization?.theme || 'light';
         setCurrentTheme(newTheme);
+
+        if (origProduct?.upsell?.redirectUrl) {
+            window.location.href = origProduct.upsell.redirectUrl;
+            return; // Stop further execution
+        }
 
         if (origProduct?.upsell && !fetchedSale.upsellPushInPayTransactionId && fetchedSale.status === AppPaymentStatus.PAID) {
           setUpsellOffer(origProduct.upsell);

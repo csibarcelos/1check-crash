@@ -1,11 +1,45 @@
-
-import { Product, Coupon, TraditionalOrderBumpOffer, PostClickOffer, UpsellOffer, ProductCheckoutCustomization, UtmParams, PostPurchaseEmailConfig } from '@/types'; 
+import { Product, Coupon, TraditionalOrderBumpOffer, PostClickOffer, UpsellOffer, ProductCheckoutCustomization, UtmParams, PostPurchaseEmails, DeliveryEmailConfig, FollowUpEmailConfig } from '@/types'; 
 import { supabase, getSupabaseUserId } from '@/supabaseClient';  
 import { Database, Json } from '@/types/supabase'; 
 
 type ProductRow = Database['public']['Tables']['products']['Row'];
 type ProductInsert = Database['public']['Tables']['products']['Insert'];
 type ProductUpdate = Database['public']['Tables']['products']['Update'];
+
+// --- START: CACHE MANAGEMENT ---
+const productCache = new Map<string, { product: Product, timestamp: number }>();
+const CACHE_TTL = 2 * 1000; // Cache de 2 segundos para leituras rápidas, mas que permite atualizações.
+
+const getFromCache = (key: string): Product | null => {
+  const cached = productCache.get(key);
+  if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+    // console.log(`[productService] Cache HIT for key: ${key}`);
+    return cached.product;
+  }
+  // console.log(`[productService] Cache MISS or EXPIRED for key: ${key}`);
+  productCache.delete(key);
+  return null;
+}
+
+const setInCache = (key: string, product: Product) => {
+  // console.log(`[productService] Setting cache for key: ${key}`);
+  productCache.set(key, { product, timestamp: Date.now() });
+}
+
+const invalidateCache = (productId?: string, slug?: string) => {
+  // console.log(`[productService] Invalidating cache for productId: ${productId}, slug: ${slug}`);
+  if (productId) productCache.delete(`id_${productId}`);
+  if (slug) productCache.delete(`slug_${slug}`);
+  // Invalidate list cache on any write operation
+  productCache.delete('all_products');
+}
+
+const invalidateAllCache = () => {
+    // console.log('[productService] Clearing ALL product cache.');
+    productCache.clear();
+}
+// --- END: CACHE MANAGEMENT ---
+
 
 const generateSlugFromName = (name: string): string => {
   return name
@@ -20,6 +54,9 @@ const parseJsonField = <T>(field: Json | null | undefined, defaultValue: T): T =
   if (field === null || field === undefined) {
     return defaultValue;
   }
+  if (typeof field === 'object' && field !== null) {
+      return field as T;
+  }
   if (typeof field === 'string') {
     try {
       return JSON.parse(field) as T;
@@ -28,7 +65,7 @@ const parseJsonField = <T>(field: Json | null | undefined, defaultValue: T): T =
       return defaultValue;
     }
   }
-  return field as T; 
+  return defaultValue; 
 };
 
 export const defaultProductCheckoutCustomization: ProductCheckoutCustomization = {
@@ -48,6 +85,7 @@ export const defaultProductCheckoutCustomization: ProductCheckoutCustomization =
   },
   theme: 'light',
   showProductName: true,
+  showLogo: true, 
   animateTraditionalOrderBumps: true,
 };
 
@@ -55,17 +93,55 @@ export const defaultUtmParams: UtmParams = {
   source: '', medium: '', campaign: '', term: '', content: ''
 };
 
-const defaultPostPurchaseEmailConfig: PostPurchaseEmailConfig = {
+export const defaultDeliveryEmailConfig: DeliveryEmailConfig = {
+  enabled: true, // Delivery email is enabled by default.
+  subject: 'Seu produto: {{product_name}}',
+  bodyHtml: '<p>Olá {{customer_name}},</p><p>Obrigado por sua compra! Você pode acessar seu produto através do link abaixo:</p><p><a href="{{product_delivery_url}}">Acessar {{product_name}}</a></p><p>Atenciosamente,<br>Equipe {{shop_name}}</p>',
+};
+
+export const defaultFollowUpEmailConfig: FollowUpEmailConfig = {
   enabled: false,
-  delayDays: 1,
-  subject: 'Obrigado pela sua compra de {{product_name}}!',
-  bodyHtml: '<p>Olá {{customer_name}},</p><p>Agradecemos por adquirir {{product_name}}. Esperamos que aproveite!</p>',
+  delayDays: 3,
+  subject: 'O que você achou do {{product_name}}?',
+  bodyHtml: '<p>Olá {{customer_name}},</p><p>Esperamos que esteja aproveitando seu produto: {{product_name}}.</p><p>Seu feedback é muito importante para nós!</p><p>Atenciosamente,<br>Equipe {{shop_name}}</p>',
+};
+
+export const defaultPostPurchaseEmails: PostPurchaseEmails = {
+    delivery: defaultDeliveryEmailConfig,
+    followUp: defaultFollowUpEmailConfig,
 };
 
 
 const fromSupabaseRow = (row: ProductRow): Product => {
-  const checkoutCustomizationData = parseJsonField<ProductCheckoutCustomization | null>(row.checkout_customization, defaultProductCheckoutCustomization);
-  const postPurchaseEmailData = parseJsonField<PostPurchaseEmailConfig | undefined>(row.post_purchase_email_config, undefined);
+  const checkoutCustomizationData = parseJsonField<ProductCheckoutCustomization | null>(row.checkout_customization, null);
+
+  const postPurchaseJson = row.post_purchase_email_config;
+  
+  // Start with a fully-formed default object. This is the safe fallback.
+  const finalPostPurchaseConfig: PostPurchaseEmails = {
+      delivery: { ...defaultDeliveryEmailConfig },
+      followUp: { ...defaultFollowUpEmailConfig },
+  };
+
+  if (postPurchaseJson && typeof postPurchaseJson === 'object') {
+      // This is the new, correct format which has a 'delivery' or 'followUp' key.
+      if ('delivery' in postPurchaseJson || 'followUp' in postPurchaseJson) {
+          const parsed = postPurchaseJson as Partial<PostPurchaseEmails>;
+          // We merge the saved data over the defaults to ensure all fields are present.
+          // If `parsed.delivery` or `parsed.followUp` is null/undefined, it uses the default.
+          finalPostPurchaseConfig.delivery = { ...defaultDeliveryEmailConfig, ...(parsed.delivery || {}) };
+          finalPostPurchaseConfig.followUp = { ...defaultFollowUpEmailConfig, ...(parsed.followUp || {}) };
+      }
+      // This handles the legacy format, where the config object was stored directly.
+      // We check for a key unique to the old format, like 'delayDays'.
+      else if ('delayDays' in postPurchaseJson) {
+          // The old data is for the 'followUp' email.
+          // The 'delivery' email will be initialized with defaults from above.
+          finalPostPurchaseConfig.followUp = { ...defaultFollowUpEmailConfig, ...(postPurchaseJson as any) };
+      }
+      // If it's an empty object {} or some other unrecognized object, it will just use the defaults initialized above.
+  }
+  // If postPurchaseJson is null or not an object, the fully-formed default object will be used.
   
   return {
     id: row.id,
@@ -78,9 +154,12 @@ const fromSupabaseRow = (row: ProductRow): Product => {
     checkoutCustomization: {
         ...defaultProductCheckoutCustomization,
         ...(checkoutCustomizationData || {}),
+        showLogo: typeof checkoutCustomizationData?.showLogo === 'boolean'
+            ? checkoutCustomizationData.showLogo
+            : true, 
         animateTraditionalOrderBumps: typeof checkoutCustomizationData?.animateTraditionalOrderBumps === 'boolean' 
             ? checkoutCustomizationData.animateTraditionalOrderBumps 
-            : defaultProductCheckoutCustomization.animateTraditionalOrderBumps,
+            : true, 
     },
     deliveryUrl: row.delivery_url || undefined,
     totalSales: row.total_sales || 0,
@@ -93,10 +172,35 @@ const fromSupabaseRow = (row: ProductRow): Product => {
     upsell: parseJsonField<UpsellOffer | undefined>(row.upsell, undefined),
     coupons: parseJsonField<Coupon[]>(row.coupons, []),
     utmParams: parseJsonField<UtmParams | null>(row.utm_params, defaultUtmParams),
-    postPurchaseEmailConfig: postPurchaseEmailData 
-        ? { ...defaultPostPurchaseEmailConfig, ...postPurchaseEmailData } 
-        : undefined,
+    postPurchaseEmailConfig: finalPostPurchaseConfig,
   };
+};
+
+const toSupabaseRow = (productData: Partial<Product>): Partial<ProductUpdate> => {
+    // **CRITICAL FIX**: This logic ensures the `showLogo` field is correctly
+    // handled and saved, even when its value is `false`.
+    const checkoutCustomizationToSave = {
+      ...(productData.checkoutCustomization ?? defaultProductCheckoutCustomization),
+    };
+    if (typeof productData.checkoutCustomization?.showLogo !== 'boolean') {
+        checkoutCustomizationToSave.showLogo = true;
+    }
+
+    return {
+        name: productData.name,
+        description: productData.description,
+        price_in_cents: productData.priceInCents,
+        image_url: productData.imageUrl || null,
+        checkout_customization: checkoutCustomizationToSave as unknown as Json,
+        delivery_url: productData.deliveryUrl || null,
+        order_bumps: productData.orderBumps ? productData.orderBumps as unknown as Json : null,
+        order_bump: productData.postClickOffer ? productData.postClickOffer as unknown as Json : null,
+        upsell: productData.upsell ? productData.upsell as unknown as Json : null,
+        coupons: productData.coupons ? productData.coupons as unknown as Json : null,
+        utm_params: productData.utmParams ? productData.utmParams as unknown as Json : null,
+        post_purchase_email_config: productData.postPurchaseEmailConfig ? productData.postPurchaseEmailConfig as unknown as Json : null,
+        updated_at: new Date().toISOString(),
+    };
 };
 
 
@@ -108,14 +212,19 @@ export const productService = {
         return [];
     }
 
+    const cached = getFromCache('all_products');
+    if (cached) return cached as unknown as Product[];
+    
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, order_bumps, upsell, coupons, utm_params, post_purchase_email_config, created_at, updated_at')
+        .select('*')
         .eq('platform_user_id', userId); 
 
       if (error) throw error;
-      return data ? data.map(fromSupabaseRow) : [];
+      const products = data ? data.map(fromSupabaseRow) : [];
+      setInCache('all_products', products as any);
+      return products;
     } catch (error: any) {
       console.error('Supabase getProducts error:', error);
       throw new Error(error.message || 'Falha ao buscar produtos');
@@ -123,11 +232,14 @@ export const productService = {
   },
 
   getProductById: async (id: string, _token: string | null): Promise<Product | undefined> => {
+    const cachedProduct = getFromCache(`id_${id}`);
+    if (cachedProduct) return cachedProduct;
+
     const logPrefix = `[productService.getProductById(${id.substring(0,8)})]`;
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, order_bumps, upsell, coupons, utm_params, post_purchase_email_config, created_at, updated_at')
+        .select('*')
         .eq('id', id)
         .single<ProductRow>();
 
@@ -143,8 +255,11 @@ export const productService = {
         console.warn(`${logPrefix} Product data is null but no error reported.`);
         return undefined;
       }
-      console.log(`${logPrefix} Product data fetched successfully.`);
-      return fromSupabaseRow(data);
+      // console.log(`${logPrefix} Product data fetched successfully.`);
+      const product = fromSupabaseRow(data);
+      setInCache(`id_${id}`, product);
+      if (product.slug) setInCache(`slug_${product.slug}`, product);
+      return product;
     } catch (error: any) {
       console.error(`${logPrefix} General exception:`, error);
       throw new Error(error.message || 'Falha ao buscar produto');
@@ -152,208 +267,138 @@ export const productService = {
   },
 
   getProductBySlug: async (slug: string, _token: string | null): Promise<Product | undefined> => {
+    const cachedProduct = getFromCache(`slug_${slug}`);
+    if (cachedProduct) return cachedProduct;
+    
     const logPrefix = `[productService.getProductBySlug(${slug})]`;
-    const currentUserId = await getSupabaseUserId(); 
-    console.log(`${logPrefix} Attempting to fetch. Current auth user ID (for context): ${currentUserId || 'Anonymous'}`);
-
     try {
-      const { data, error, status } = await supabase
+      const { data, error } = await supabase
         .from('products')
-        .select('id, platform_user_id, slug, name, description, price_in_cents, image_url, checkout_customization, delivery_url, total_sales, clicks, checkout_views, conversion_rate, abandonment_rate, order_bump, order_bumps, upsell, coupons, utm_params, post_purchase_email_config, created_at, updated_at')
+        .select('*')
         .eq('slug', slug)
         .single<ProductRow>(); 
 
       if (error) {
-        console.error(`${logPrefix} Supabase error (Status: ${status}, Code: ${error.code}):`, error.message, error.details, error.hint);
-        if (error.code === 'PGRST116') { 
-          console.warn(`${logPrefix} Product not found or access denied by RLS (PGRST116). This is expected for anonymous users if RLS is restrictive or slug is wrong.`);
-          return undefined;
-        }
+        console.warn(`${logPrefix} Supabase error (Code: ${error.code}):`, error.message);
+        if (error.code === 'PGRST116') return undefined;
         throw error;
       }
       
-      if (!data) { 
-        console.warn(`${logPrefix} Product data is null/undefined but no specific Supabase error reported (Status: ${status}). This might indicate an RLS issue silently preventing row access.`);
-        return undefined;
-      }
+      if (!data) return undefined;
       
-      console.log(`${logPrefix} Product data fetched successfully for slug. Product ID: ${data.id}`);
-      return fromSupabaseRow(data);
+      const product = fromSupabaseRow(data);
+      setInCache(`id_${product.id}`, product);
+      setInCache(`slug_${slug}`, product);
+      return product;
     } catch (error: any) {
-      console.error(`${logPrefix} General exception:`, error.message, error.stack);
+      console.error(`${logPrefix} General exception:`, error.message);
       throw new Error(error.message || 'Falha ao buscar produto pelo slug');
     }
   },
 
   createProduct: async (
-    productData: Omit<Product, 'id' | 'platformUserId' | 'totalSales' | 'clicks' | 'checkoutViews' | 'conversionRate' | 'abandonmentRate' | 'slug'>,
+    productData: Omit<Product, 'id' | 'platformUserId' | 'slug' | 'totalSales' | 'clicks' | 'checkoutViews' | 'conversionRate' | 'abandonmentRate'>,
     _token: string | null
   ): Promise<Product> => {
     const userId = await getSupabaseUserId();
     if (!userId) throw new Error('Usuário não autenticado para criar produto.');
 
     const slug = generateSlugFromName(productData.name);
-    
-    const utmParamsToSave = productData.utmParams && Object.values(productData.utmParams).some(val => typeof val === 'string' && val.trim() !== '')
-      ? productData.utmParams
-      : null;
-    
-    const checkoutCustomizationToSave = {
-      ...defaultProductCheckoutCustomization,
-      ...(productData.checkoutCustomization || {}),
-      animateTraditionalOrderBumps: typeof productData.checkoutCustomization?.animateTraditionalOrderBumps === 'boolean' 
-        ? productData.checkoutCustomization.animateTraditionalOrderBumps 
-        : defaultProductCheckoutCustomization.animateTraditionalOrderBumps,
-    };
-    
-    const postPurchaseEmailToSave = productData.postPurchaseEmailConfig?.enabled
-        ? { ...defaultPostPurchaseEmailConfig, ...productData.postPurchaseEmailConfig }
-        : null;
-
-
     const newProductData: ProductInsert = {
-      platform_user_id: userId,
-      slug: slug,
-      name: productData.name,
-      description: productData.description,
-      price_in_cents: productData.priceInCents,
-      image_url: productData.imageUrl === '' ? null : productData.imageUrl,
-      checkout_customization: checkoutCustomizationToSave as unknown as Json, 
-      delivery_url: productData.deliveryUrl === '' ? null : productData.deliveryUrl,
-      order_bumps: productData.orderBumps as unknown as Json, 
-      order_bump: productData.postClickOffer as unknown as Json, 
-      upsell: productData.upsell as unknown as Json,
-      coupons: productData.coupons as unknown as Json,
-      utm_params: utmParamsToSave as unknown as Json,
-      post_purchase_email_config: postPurchaseEmailToSave as unknown as Json,
+        ...toSupabaseRow(productData),
+        name: productData.name,
+        description: productData.description,
+        price_in_cents: productData.priceInCents,
+        platform_user_id: userId,
+        slug: slug,
     };
+    delete (newProductData as any).updated_at; // Remove updated_at for insert
 
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .insert(newProductData)
-        .select()
-        .single<ProductRow>();
+    const { data, error } = await supabase
+      .from('products')
+      .insert(newProductData)
+      .select()
+      .single<ProductRow>();
 
-      if (error) throw error;
-      if (!data) throw new Error('Falha ao criar produto, dados não retornados.');
-      return fromSupabaseRow(data);
-    } catch (error: any) {
+    if (error) {
       console.error('Supabase createProduct error:', error);
       throw new Error(error.message || 'Falha ao criar produto');
     }
+    if (!data) throw new Error('Falha ao criar produto, dados não retornados.');
+    
+    invalidateAllCache();
+    return fromSupabaseRow(data);
   },
 
-  updateProduct: async (id: string, updates: Partial<Omit<Product, 'id' | 'platformUserId' | 'slug'>>, _token: string | null): Promise<Product | undefined> => {
+  updateProduct: async (
+    productId: string, 
+    productData: Omit<Product, 'id' | 'platformUserId' | 'slug' | 'totalSales' | 'clicks' | 'checkoutViews' | 'conversionRate' | 'abandonmentRate'>,
+    _token: string | null
+  ): Promise<Product> => {
     const userId = await getSupabaseUserId();
     if (!userId) throw new Error('Usuário não autenticado para atualizar produto.');
-    
-    const currentProduct = await productService.getProductById(id, _token); 
-    if (!currentProduct) {
-        throw new Error(`Produto com ID ${id} não encontrado para atualização.`);
-    }
 
-    const utmParamsToSave = updates.utmParams && Object.values(updates.utmParams).some(val => typeof val === 'string' && val.trim() !== '')
-      ? updates.utmParams
-      : (currentProduct.utmParams && Object.values(currentProduct.utmParams).some(val => typeof val === 'string' && val.trim() !== '') ? currentProduct.utmParams : null);
+    const updatedProductData = toSupabaseRow(productData);
 
+    const { data, error } = await supabase
+      .from('products')
+      .update(updatedProductData)
+      .eq('id', productId)
+      .eq('platform_user_id', userId)
+      .select()
+      .single<ProductRow>();
 
-    const checkoutCustomizationToSave = updates.checkoutCustomization 
-      ? {
-          ...defaultProductCheckoutCustomization,
-          ...(currentProduct.checkoutCustomization || {}), 
-          ...updates.checkoutCustomization, 
-          animateTraditionalOrderBumps: typeof updates.checkoutCustomization.animateTraditionalOrderBumps === 'boolean'
-            ? updates.checkoutCustomization.animateTraditionalOrderBumps
-            : (currentProduct.checkoutCustomization?.animateTraditionalOrderBumps ?? defaultProductCheckoutCustomization.animateTraditionalOrderBumps),
-        }
-      : currentProduct.checkoutCustomization;
-      
-    const postPurchaseEmailToSave = updates.postPurchaseEmailConfig
-      ? updates.postPurchaseEmailConfig.enabled
-        ? { ...defaultPostPurchaseEmailConfig, ...updates.postPurchaseEmailConfig }
-        : null // If toggled off, save null to clear it
-      : currentProduct.postPurchaseEmailConfig; // Keep existing if no update provided
-
-
-    const updatesForSupabase: ProductUpdate = {
-        ...(updates.name && { name: updates.name }),
-        ...(updates.description && { description: updates.description }),
-        ...(updates.priceInCents !== undefined && { price_in_cents: updates.priceInCents }),
-        ...(updates.imageUrl !== undefined && { image_url: updates.imageUrl === '' ? null : updates.imageUrl }),
-        ...(checkoutCustomizationToSave && { checkout_customization: checkoutCustomizationToSave as unknown as Json }),
-        ...(updates.deliveryUrl !== undefined && { delivery_url: updates.deliveryUrl === '' ? null : updates.deliveryUrl }),
-        ...(updates.orderBumps !== undefined && { order_bumps: updates.orderBumps as unknown as Json }), 
-        ...(updates.postClickOffer !== undefined && { order_bump: updates.postClickOffer as unknown as Json }), 
-        ...(updates.upsell !== undefined && { upsell: updates.upsell as unknown as Json }),
-        ...(updates.coupons !== undefined && { coupons: updates.coupons as unknown as Json }),
-        utm_params: utmParamsToSave as unknown as Json,
-        post_purchase_email_config: postPurchaseEmailToSave as unknown as Json,
-    };
-    
-    if (updates.name && currentProduct.name !== updates.name) {
-        updatesForSupabase.slug = generateSlugFromName(updates.name);
-    }
-
-    try {
-      const { data, error } = await supabase 
-        .from('products')
-        .update(updatesForSupabase)
-        .eq('id', id)
-        .select()
-        .single<ProductRow>();
-        
-      if (error) {
-        if (error.code === 'PGRST116') return undefined; 
-        throw error;
-      }
-      if (!data) throw new Error('Falha ao atualizar produto, dados não retornados.');
-      return fromSupabaseRow(data);
-    } catch (error: any) {
+    if (error) {
       console.error('Supabase updateProduct error:', error);
       throw new Error(error.message || 'Falha ao atualizar produto');
     }
+    if (!data) throw new Error('Produto não encontrado ou permissão negada para atualização.');
+    
+    invalidateCache(productId, data.slug);
+    return fromSupabaseRow(data);
   },
 
-  deleteProduct: async (id: string, _token: string | null): Promise<boolean> => {
+  cloneProduct: async (productId: string, token: string | null): Promise<Product | null> => {
+    const productToClone = await productService.getProductById(productId, token);
+    if (!productToClone) {
+      throw new Error("Produto a ser clonado não encontrado.");
+    }
+    const clonedName = `${productToClone.name} (Cópia)`;
+    
+    const productDataForCreation: Omit<Product, 'id' | 'platformUserId' | 'slug' | 'totalSales' | 'clicks' | 'checkoutViews' | 'conversionRate' | 'abandonmentRate'> = {
+        name: clonedName,
+        description: productToClone.description,
+        priceInCents: productToClone.priceInCents,
+        imageUrl: productToClone.imageUrl,
+        checkoutCustomization: productToClone.checkoutCustomization,
+        deliveryUrl: productToClone.deliveryUrl,
+        orderBumps: productToClone.orderBumps,
+        postClickOffer: productToClone.postClickOffer,
+        upsell: productToClone.upsell,
+        coupons: productToClone.coupons,
+        utmParams: productToClone.utmParams,
+        postPurchaseEmailConfig: productToClone.postPurchaseEmailConfig,
+    };
+    
+    invalidateAllCache();
+    return productService.createProduct(productDataForCreation, token);
+  },
+
+  deleteProduct: async (productId: string, _token: string | null): Promise<{ success: boolean }> => {
     const userId = await getSupabaseUserId();
-    if (!userId) throw new Error('Usuário não autenticado para deletar produto.');
-    try {
-      const { error, count } = await supabase
+    if (!userId) {
+      throw new Error('Usuário não autenticado para deletar produto.');
+    }
+    const { error, count } = await supabase
         .from('products')
-        .delete({ count: 'exact' }) 
-        .eq('id', id);
-        
-      if (error) throw error;
-      return count !== null && count > 0;
-    } catch (error: any) {
-      console.error('Supabase deleteProduct error:', error);
-      throw new Error(error.message || 'Falha ao deletar produto');
-    }
-  },
+        .delete({ count: 'exact' })
+        .eq('id', productId)
+        .eq('platform_user_id', userId);
 
-  cloneProduct: async (id: string, token: string | null): Promise<Product | undefined> => {
-    const userId = await getSupabaseUserId();
-    if (!userId || !token) throw new Error('Usuário não autenticado para clonar produto.');
+    if (error) throw new Error(error.message || 'Falha ao deletar produto.');
+    if (count === 0) throw new Error('Produto não encontrado ou permissão negada.');
 
-    try {
-      const originalProduct = await productService.getProductById(id, token); 
-      if (!originalProduct) throw new Error('Produto original não encontrado para clonar.');
-
-      const {
-        id: _id, platformUserId: _puid, slug: _slug, totalSales: _ts, clicks: _c,
-        checkoutViews: _cv, conversionRate: _cr, abandonmentRate: _ar,
-        ...clonableData
-      } = originalProduct;
-      
-      const clonedProductData: Omit<Product, 'id' | 'platformUserId' | 'totalSales' | 'clicks' | 'checkoutViews' | 'conversionRate' | 'abandonmentRate' | 'slug'> = {
-        ...clonableData, 
-        name: `${originalProduct.name} (Cópia)`,
-      };
-      return await productService.createProduct(clonedProductData, token); 
-    } catch (error: any) {
-      console.error('Supabase cloneProduct error:', error);
-      throw new Error(error.message || 'Falha ao clonar produto');
-    }
+    invalidateAllCache();
+    return { success: true };
   }
 };

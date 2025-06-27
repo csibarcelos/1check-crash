@@ -1,4 +1,3 @@
-
 // User Authentication
 export interface User {
   id: string;
@@ -72,13 +71,28 @@ export interface UpsellOffer { // Esta é a oferta na página de Obrigado
   name: string; 
   description: string; 
   imageUrl?: string; 
+  redirectUrl?: string; // New: For custom upsell redirect
 }
 
-export interface PostPurchaseEmailConfig {
+// This interface is for the instant email sent upon purchase confirmation.
+export interface DeliveryEmailConfig {
   enabled: boolean;
-  delayDays: number; 
   subject: string;
   bodyHtml: string;
+}
+
+// This is the interface for the delayed follow-up email.
+export interface FollowUpEmailConfig {
+  enabled: boolean;
+  delayDays: number; // Delay in days after purchase
+  subject: string;
+  bodyHtml: string;
+}
+
+// This is the new container object for both email configurations.
+export interface PostPurchaseEmails {
+  delivery: DeliveryEmailConfig;
+  followUp: FollowUpEmailConfig;
 }
 
 
@@ -100,6 +114,7 @@ export interface ProductCheckoutCustomization {
   };
   theme?: 'light' | 'dark'; 
   showProductName?: boolean; // Se o nome do produto deve ser exibido no header do checkout
+  showLogo?: boolean; // New: Controls logo visibility
   animateTraditionalOrderBumps?: boolean; // Para controlar a animação dos order bumps tradicionais
 }
 
@@ -139,7 +154,7 @@ export interface Product {
   upsell?: UpsellOffer;                    // Oferta na página de Obrigado
   coupons?: Coupon[];
   utmParams?: UtmParams | null; 
-  postPurchaseEmailConfig?: PostPurchaseEmailConfig;
+  postPurchaseEmailConfig?: PostPurchaseEmails; // UPDATED
 }
 
 // Buyer <<-- NEW INTERFACE
@@ -432,7 +447,6 @@ export interface UtmifyCustomer {
   phone: string | null; 
   document: string | null; 
   ip?: string;
-  country?: string;
 }
 
 export interface UtmifyProduct {

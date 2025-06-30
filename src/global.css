@@ -1,0 +1,495 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Tema Dark "Potência Tecnológica Sofisticada" (Área Interna) */
+  --color-bg-main: #0f1419;
+  --color-bg-surface-opaque: #1A1A1E;
+  --color-bg-surface: rgba(26, 26, 30, 0.65);
+  --color-border-subtle: rgba(0, 255, 255, 0.08);
+  --color-border-interactive: rgba(0, 255, 255, 0.65);
+
+  --color-accent-gold: #FFD700;
+  --color-accent-blue-neon: #00FFFF;
+
+  --color-text-strong: #FFFFFF;
+  --color-text-default: #E0E0E0;
+  --color-text-muted: #A0A0B0;
+
+  --color-status-success: #22C55E;
+  --color-status-error: #EF4444;
+  --color-status-warning: #EAB308;
+
+  --color-primary-DEFAULT: var(--color-accent-blue-neon);
+  --color-primary-light: #8CFEFF;
+  --color-primary-dark: #00B8B8;
+  --color-primary-cta-text: #0F0F0F;
+
+  --color-secondary-DEFAULT: var(--color-accent-gold);
+  --color-secondary-light: #FFEE75;
+  --color-secondary-dark: #D4AF37;
+  --color-secondary-cta-text: #0F0F0F;
+
+  --color-neutral-50: #141418;
+  --color-neutral-100: var(--color-bg-surface-opaque);
+  --color-neutral-200: #222228;
+  --color-neutral-300: #303038;
+  --color-neutral-400: #454550;
+  --color-neutral-500: var(--color-text-muted);
+  --color-neutral-600: var(--color-text-default);
+  --color-neutral-700: var(--color-text-strong);
+  --color-neutral-800: #F3F4F6;
+  --color-neutral-900: #F9FAFB;
+  --color-neutral-950: #FFFFFF;
+
+  /* Variáveis para Checkout "Reimagined" Theme (Dark) - Usado em CheckoutPage.tsx */
+  --reimagined-bg-main: #0C111D;
+  --reimagined-bg-gradient-start: #0F0F0F;
+  --reimagined-bg-gradient-end: #0C111D;
+  --reimagined-text-strong: #FFFFFF;
+  --reimagined-text-default: #E0E0E0;
+  --reimagined-text-muted: #A0A0A0;
+  --reimagined-accent-gold: #D4AF3F;
+  --reimagined-accent-cta: #FDE047; /* Amarelo vibrante para CTAs no tema escuro */
+  --reimagined-cta-text: #1F2937; /* Texto escuro para contraste no CTA amarelo */
+  --reimagined-card-bg: rgba(20, 27, 45, 0.65);
+  --reimagined-card-border: rgba(126, 159, 241, 0.2);
+  --reimagined-input-bg: rgba(30, 41, 59, 0.55);
+  --reimagined-input-border: rgba(71, 85, 105, 0.7);
+  --reimagined-input-focus-border: var(--reimagined-accent-cta);
+
+  /* Variáveis para Auth Page "Reimagined" Theme */
+  --auth-bg-main-start: #1a1f2e;
+  --auth-bg-main-mid: #0f1419;
+  --auth-bg-main-end: #000000;
+  --auth-aurora-gold-start: rgba(255, 193, 7, 0.25);
+  --auth-aurora-gold-mid: rgba(255, 193, 7, 0.1);
+  --auth-aurora-gold-end: transparent;
+  --auth-aurora-green-start: rgba(16, 185, 129, 0.15);
+  --auth-aurora-green-mid: rgba(16, 185, 129, 0.05);
+  --auth-aurora-green-end: transparent;
+  --auth-card-bg: rgba(30, 35, 50, 0.6); 
+  --auth-card-border: rgba(255, 193, 7, 0.2); 
+  --auth-input-bg: rgba(40, 45, 60, 0.5);
+  --auth-input-border: rgba(136, 146, 176, 0.3); 
+  --auth-input-focus-border: var(--auth-accent-gold);
+  --auth-text-primary: #e5e7eb; 
+  --auth-text-secondary: #9ca3af; 
+  --auth-accent-gold: #ffc107;
+  --auth-accent-gold-darker: #ff8f00;
+  --auth-cta-text-dark: #0a0c10;
+
+  /* Variáveis para Checkout Padrão (Light Theme) - REFINADAS */
+  --checkout-color-bg-main: #F9FAFB; /* Cinza muito claro, quase branco */
+  --checkout-color-bg-surface: #FFFFFF; /* Branco puro para cards */
+  --checkout-color-border-subtle: #E5E7EB; /* Cinza 200 Tailwind, para bordas sutis */
+  --checkout-color-text-strong: #111827; /* Cinza 900 Tailwind, para títulos e texto forte */
+  --checkout-color-text-default: #374151; /* Cinza 700 Tailwind, para texto normal */
+  --checkout-color-text-muted: #6B7280; /* Cinza 500 Tailwind, para texto secundário */
+  --checkout-color-primary-DEFAULT: #0D9488; /* Cor primária padrão para o tema light (ex: Teal) */
+  --checkout-color-primary-cta-text: #FFFFFF; /* Texto branco para CTAs com fundo escuro/colorido */
+  --checkout-color-accent-gold: #FFD700; /* Dourado para acentos, se necessário */
+
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --font-family-base: 'Inter', sans-serif;
+  --font-family-display: 'Plus Jakarta Sans', 'Inter', sans-serif;
+
+  /* react-day-picker custom properties */
+  --rdp-cell-size: 40px;
+  --rdp-accent-color: var(--color-accent-blue-neon);
+  --rdp-accent-color-dark: var(--color-primary-dark);
+  --rdp-background-color: transparent; 
+  --rdp-background-color-dark: var(--color-bg-surface-opaque);
+  --rdp-selected-color: var(--color-text-strong); 
+  --rdp-selected-color-dark: var(--color-primary-cta-text);
+  --rdp-outline: 2px solid var(--color-accent-blue-neon);
+  --rdp-outline-selected: 2px solid var(--color-accent-blue-neon);
+  --rdp-caption-font-weight: 600;
+  --rdp-button-font-weight: 500;
+}
+
+body {
+  font-family: var(--font-family-base);
+  color: var(--color-text-default);
+}
+
+/* Estilos base para o tema escuro da aplicação (Área Interna) */
+.app-dark-theme {
+  background-color: var(--color-bg-main);
+  color: var(--color-text-default);
+}
+
+.app-dark-theme h1, .app-dark-theme h2, .app-dark-theme h3, .app-dark-theme h4, .app-dark-theme h5, .app-dark-theme h6,
+.app-dark-theme .font-display {
+  font-family: var(--font-family-display);
+  color: var(--color-text-strong);
+}
+
+/* Estilos para a Auth Page (Reimagined) */
+.auth-page-reimagined-theme {
+  background: linear-gradient(135deg, var(--auth-bg-main-start) 0%, var(--auth-bg-main-mid) 50%, var(--auth-bg-main-end) 100%);
+  color: var(--auth-text-primary);
+  font-family: var(--font-family-base);
+  min-height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-page-reimagined-theme h1, .auth-page-reimagined-theme h2, .auth-page-reimagined-theme h3,
+.auth-page-reimagined-theme .font-display {
+  font-family: var(--font-family-display);
+  color: var(--auth-text-primary);
+}
+
+.auth-page-reimagined-theme .aurora-effect {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px); 
+  pointer-events: none;
+  opacity: 0.7; 
+}
+
+.auth-page-reimagined-theme .gold-aurora {
+  top: -150px;
+  left: -200px;
+  width: 500px; 
+  height: 500px;
+  background: radial-gradient(circle, var(--auth-aurora-gold-start) 0%, var(--auth-aurora-gold-mid) 35%, var(--auth-aurora-gold-end) 70%);
+  animation: goldFloat 12s ease-in-out infinite; 
+}
+
+.auth-page-reimagined-theme .green-aurora {
+  bottom: -100px;
+  right: -150px;
+  width: 450px;
+  height: 450px;
+  background: radial-gradient(circle, var(--auth-aurora-green-start) 0%, var(--auth-aurora-green-mid) 40%, var(--auth-aurora-green-end) 75%);
+  animation: greenFloat 15s ease-in-out infinite alternate;
+}
+
+@keyframes goldFloat {
+  0%, 100% { transform: scale(1) translate(0, 0) rotate(0deg); opacity: 0.6; }
+  33% { transform: scale(1.3) translate(40px, -30px) rotate(20deg); opacity: 0.8; }
+  66% { transform: scale(0.9) translate(-20px, 50px) rotate(-15deg); opacity: 0.5; }
+}
+
+@keyframes greenFloat {
+  0%, 100% { transform: scale(1) translate(0px, 0px) rotate(0deg); opacity: 0.5; }
+  50% { transform: scale(1.4) translate(-50px, 30px) rotate(25deg); opacity: 0.7; }
+}
+
+
+/* Estilos de scrollbar para tema dark (Unificado) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg-main);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-neutral-300);
+  border-radius: 10px;
+  border: 2px solid var(--color-bg-main);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent-blue-neon);
+}
+
+/* MiniEditor placeholder (Unificado) */
+div[contenteditable="true"][data-placeholder].is-empty-placeholder::before {
+    content: attr(data-placeholder);
+    position: absolute;
+    left: 0.75rem;
+    top: 0.625rem;
+    font-style: normal;
+    color: var(--color-text-muted);
+    pointer-events: none;
+    opacity: 0.7;
+    max-width: calc(100% - 1.5rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+/* Checkout Page Themes */
+/* Base comum para os dois temas de checkout */
+.checkout-page-theme {
+  font-family: 'Inter', sans-serif;
+}
+.checkout-page-theme h1,
+.checkout-page-theme h2,
+.checkout-page-theme h3,
+.checkout-page-theme h4,
+.checkout-page-theme .font-display {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+/* Checkout "Reimagined" Theme (Dark) */
+.checkout-reimagined-theme {
+  background-color: var(--reimagined-bg-main);
+  background-image: linear-gradient(to bottom right, var(--reimagined-bg-gradient-start), var(--reimagined-bg-gradient-end));
+  color: var(--reimagined-text-default);
+}
+.checkout-reimagined-theme h1,
+.checkout-reimagined-theme h2,
+.checkout-reimagined-theme h3,
+.checkout-reimagined-theme h4,
+.checkout-reimagined-theme .font-display {
+  color: var(--reimagined-text-strong);
+}
+.checkout-reimagined-theme p,
+.checkout-reimagined-theme span,
+.checkout-reimagined-theme div:not([class*="bg-"]):not([style*="background-color"]) {
+  color: var(--reimagined-text-default);
+}
+.checkout-reimagined-theme label {
+  color: var(--reimagined-text-muted);
+}
+.checkout-reimagined-theme .prose { color: var(--reimagined-text-default); }
+.checkout-reimagined-theme .prose h1, .checkout-reimagined-theme .prose h2,
+.checkout-reimagined-theme .prose h3, .checkout-reimagined-theme .prose strong { color: var(--reimagined-text-strong); }
+.checkout-reimagined-theme .prose a { color: var(--reimagined-accent-cta); }
+.checkout-reimagined-theme .prose code { color: var(--reimagined-text-default); }
+
+.checkout-reimagined-theme .card-checkout-reimagined {
+  background-color: var(--reimagined-card-bg);
+  border: 1px solid var(--reimagined-card-border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: var(--reimagined-text-default);
+  border-radius: 1.25rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2), 0 0 0 1px var(--reimagined-card-border);
+}
+.checkout-reimagined-theme .card-checkout-reimagined h3 { color: var(--reimagined-text-strong); }
+
+.checkout-reimagined-theme .input-checkout-reimagined {
+   background-color: var(--reimagined-input-bg);
+   border: 1px solid var(--reimagined-input-border);
+   color: var(--reimagined-text-strong);
+}
+.checkout-reimagined-theme .input-checkout-reimagined::placeholder { color: var(--reimagined-text-muted); opacity: 0.7; }
+.checkout-reimagined-theme .input-checkout-reimagined:focus {
+  border-color: var(--reimagined-input-focus-border);
+  box-shadow: 0 0 0 2px var(--reimagined-input-focus-border);
+  background-color: rgba(45, 58, 80, 0.7);
+}
+
+.checkout-reimagined-theme .button-checkout-reimagined.primary {
+  background-color: var(--reimagined-accent-cta); /* Esta cor é para o tema dark */
+  color: var(--reimagined-cta-text); /* Texto escuro para o CTA amarelo */
+  border-radius: 0.75rem;
+  font-weight: 700;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  box-shadow: 0 4px 15px rgba(253, 224, 71, 0.2);
+}
+.checkout-reimagined-theme .button-checkout-reimagined.primary:hover { filter: brightness(1.1); }
+.checkout-reimagined-theme .button-checkout-reimagined.outline {
+  border: 1px solid var(--reimagined-input-border);
+  color: var(--reimagined-text-default);
+  border-radius: 0.75rem;
+}
+.checkout-reimagined-theme .button-checkout-reimagined.outline:hover {
+  border-color: var(--reimagined-accent-cta);
+  color: var(--reimagined-accent-cta);
+  background-color: rgba(253, 224, 71, 0.05);
+}
+
+.checkout-reimagined-theme .select-checkout-reimagined {
+  background-color: var(--reimagined-input-bg);
+  border: 1px solid var(--reimagined-input-border);
+  color: var(--reimagined-text-strong);
+  border-radius: 0.75rem;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23A0A0A0' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+}
+.checkout-reimagined-theme .select-checkout-reimagined:focus {
+  border-color: var(--reimagined-input-focus-border);
+  box-shadow: 0 0 0 2px var(--reimagined-input-focus-border);
+}
+
+
+/* Checkout Light Theme (Público) - REFINADO */
+.checkout-light-theme {
+  background-color: var(--checkout-color-bg-main); 
+  color: var(--checkout-color-text-default); 
+}
+.checkout-light-theme h1, .checkout-light-theme h2, .checkout-light-theme h3, .checkout-light-theme h4 {
+  color: var(--checkout-color-text-strong); 
+}
+.checkout-light-theme .card-checkout-specific {
+  background-color: var(--checkout-color-bg-surface); 
+  border: 1px solid var(--checkout-color-border-subtle); 
+  color: var(--checkout-color-text-default); 
+  border-radius: 1.25rem; /* Aumentado para consistência */
+  box-shadow: 0 6px 16px rgba(0,0,0,0.07); /* Sombra mais suave */
+}
+.checkout-light-theme .card-checkout-specific h3 { color: var(--checkout-color-text-strong); }
+
+.checkout-light-theme .input-checkout-specific {
+   background-color: var(--checkout-color-bg-surface);
+   border: 1px solid var(--checkout-color-border-subtle);
+   color: var(--checkout-color-text-strong); 
+}
+.checkout-light-theme .input-checkout-specific::placeholder { color: var(--checkout-color-text-muted); opacity: 0.7; }
+.checkout-light-theme .input-checkout-specific:focus {
+  border-color: var(--checkout-color-primary-DEFAULT); 
+  box-shadow: 0 0 0 2px var(--checkout-color-primary-DEFAULT); 
+  background-color: rgba(249,250,251,0.5); /* Levemente mais escuro no foco */
+}
+
+/* O background-color e color do .primary será definido inline no CheckoutPage.tsx */
+.checkout-light-theme .button-checkout-specific.primary {
+  border-radius: 0.75rem;
+  font-weight: 600;
+  /* Removido background-color e color !important daqui */
+}
+.checkout-light-theme .button-checkout-specific.primary:hover { filter: brightness(1.05); } /* Leve brilho no hover */
+
+.checkout-light-theme .button-checkout-specific.outline {
+  border: 1px solid var(--checkout-color-border-subtle); 
+  color: var(--checkout-color-text-default); 
+  border-radius: 0.75rem;
+}
+.checkout-light-theme .button-checkout-specific.outline:hover {
+  border-color: var(--checkout-color-primary-DEFAULT); 
+  color: var(--checkout-color-primary-DEFAULT); 
+  background-color: rgba(13, 148, 136, 0.03); /* Leve fundo da cor primária no hover */
+}
+
+.checkout-light-theme .select-checkout-specific {
+  background-color: var(--checkout-color-bg-surface); 
+  border: 1px solid var(--checkout-color-border-subtle); 
+  color: var(--checkout-color-text-strong); 
+  border-radius: 0.75rem;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e"); 
+}
+.checkout-light-theme .select-checkout-specific:focus {
+  border-color: var(--checkout-color-primary-DEFAULT); 
+  box-shadow: 0 0 0 2px var(--checkout-color-primary-DEFAULT); 
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+@keyframes pulse-subtle {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.02); opacity: 0.97; }
+}
+.animate-pulse-subtle { animation: pulse-subtle 2.2s infinite ease-in-out; }
+
+.select-trigger-checkout-light {
+  background-color: var(--checkout-color-bg-surface); 
+  border: 1px solid var(--checkout-color-border-subtle); 
+  color: var(--checkout-color-text-strong); 
+  backdrop-filter: none !important;
+}
+
+/* React Day Picker Custom Styles */
+.rdp {
+  --rdp-accent-color: var(--color-accent-blue-neon) !important;
+  --rdp-background-color: var(--color-bg-surface-opaque) !important;
+  --rdp-accent-color-dark: var(--color-primary-dark) !important;
+  --rdp-selected-color: var(--color-primary-cta-text) !important;
+
+  margin: 1em 0;
+  color: var(--color-text-default);
+}
+.rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
+  background-color: var(--color-accent-blue-neon) !important;
+  opacity: 0.2;
+  color: var(--color-text-strong) !important;
+}
+.rdp-button:focus-visible:not([disabled]) {
+  border:none;
+  background-color: var(--color-accent-blue-neon) !important;
+  opacity: 0.3;
+  color: var(--color-text-strong) !important;
+  outline: 2px solid var(--color-accent-blue-neon);
+  outline-offset: 1px;
+}
+.rdp-day_selected, .rdp-day_selected:hover, .rdp-day_selected:focus-visible {
+  background-color: var(--color-accent-blue-neon) !important;
+  color: var(--color-primary-cta-text) !important;
+  opacity: 1;
+  font-weight: bold;
+}
+.rdp-day_today {
+  font-weight: bold;
+  color: var(--color-accent-gold) !important;
+}
+.rdp-day_today:not(.rdp-day_selected) {
+  background-color: var(--color-accent-gold) !important;
+  opacity: 0.1;
+}
+.rdp-caption_label {
+  color: var(--color-text-strong);
+  font-weight: var(--rdp-caption-font-weight);
+}
+.rdp-head_cell {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+.rdp-nav_button {
+  color: var(--color-text-muted);
+}
+.rdp-nav_button:hover {
+  color: var(--color-text-strong);
+  background-color: var(--color-accent-blue-neon) !important;
+  opacity: 0.1;
+}
+
+.rdp-day_range_middle {
+  background-color: var(--color-accent-blue-neon) !important;
+  opacity: 0.3 !important;
+  color: var(--color-text-default) !important;
+}
+.rdp-day_range_start, .rdp-day_range_end { 
+  background-color: var(--color-accent-blue-neon) !important; 
+  color: var(--color-primary-cta-text) !important;
+}
+.rdp-day_outside {
+    color: var(--color-text-muted) !important;
+    opacity: 0.5 !important;
+}
+.rdp-day_outside.rdp-day_range_middle {
+    background-color: var(--color-accent-blue-neon) !important;
+    opacity: 0.15 !important; 
+    color: var(--color-text-muted) !important;
+}
+.rdp-day_disabled {
+    color: var(--color-text-muted) !important;
+    opacity: 0.3 !important;
+}
+/* Ensure popover content for DayPicker has the correct background */
+.rdp-popover-content {
+    background-color: var(--color-bg-surface-opaque);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 0.75rem; 
+}
+
+.day-outside.aria-selected:not(.rdp-day_range_end):not(.rdp-day_range_start),
+.day-outside.aria-selected.rdp-day_range_middle {
+  background-color: var(--color-accent-blue-neon) !important;
+  opacity: 0.2 !important; 
+  color: var(--color-text-muted) !important; 
+}
+
+/* Classe para forçar texto escuro no título do modal em tema claro */
+.modal-title-light-theme-text-force-dark {
+  color: #111827 !important; /* Cinza 900 Tailwind (escuro) */
+}

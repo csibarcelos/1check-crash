@@ -1,0 +1,14 @@
+{
+  "name": "1Checkout: Checkout de Alta Conversão com Taxa Justa",
+  "description": "Transforme seu processo de vendas com o 1Checkout. Ofereça uma experiência de pagamento otimizada, recupere carrinhos abandonados e pague a menor taxa do mercado: apenas R$1 + 1% por transação bem-sucedida. Sem mensalidade e sem surpresas.",
+  "keywords": "checkout transparente, pagamento online, recuperação de carrinho, aumentar vendas, taxas baixas, e-commerce, plataforma de vendas, sem mensalidade",
+  "features": [
+    "Checkout de Alta Conversão",
+    "Recuperação de Carrinhos Abandonados",
+    "Taxas Transparentes (R$1 + 1%)",
+    "Checkout Personalizável",
+    "Rastreamento de Vendas Completo"
+  ],
+  "requestFramePermissions": [],
+  "prompt": "Crie seu primeiro checkout e comece a vender em minutos."
+}

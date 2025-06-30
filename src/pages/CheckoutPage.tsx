@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback, useRef, useMemo, startTransition } from 'react';
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Product, PaymentStatus, Coupon, PushInPayPixResponseData, AppSettings, SaleProductItem } from '@/types';
@@ -9,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
-import { CheckIcon, PHONE_COUNTRY_CODES, DocumentDuplicateIcon, LockClosedIcon } from '../constants.tsx'; 
+import { CheckIcon, PHONE_COUNTRY_CODES, DocumentDuplicateIcon, AppLogoIcon, LockClosedIcon } from '../constants.tsx'; 
 import { settingsService } from '@/services/settingsService';
 import { supabase } from '@/supabaseClient';
 import { useAuth } from '@/contexts/AuthContext';
@@ -650,22 +649,49 @@ useEffect(() => {
     setPrices({ finalPrice: Math.max(0, finalPrice), originalPriceBeforeDiscount: originalPrice, discountApplied: discount, });
   }, [product, appliedCoupon, selectedTraditionalOrderBumps, postClickOfferDecision]);
 
-  const checkPaymentStatus = useCallback(async (txId: string) => {
-    if (!product?.platformUserId || !currentSaleId) return;
+  const checkPaymentStatus = useCallback(async (txId: string, saleIdToCheck: string) => {
+    if (!product?.platformUserId || !saleIdToCheck) return;
     let mappedStatus: PaymentStatus | null = null;
     try {
-      const { data: pixFuncRes, error: funcErr } = await supabase.functions.invoke('verificar-status-pix', { body: { transactionId: txId, productOwnerUserId: product.platformUserId, saleId: currentSaleId } });
+      const { data: pixFuncRes, error: funcErr } = await supabase.functions.invoke('verificar-status-pix', { body: { transactionId: txId, productOwnerUserId: product.platformUserId, saleId: saleIdToCheck } });
       if (funcErr || !pixFuncRes || !pixFuncRes.success || !pixFuncRes.data) throw new Error(pixFuncRes?.message || funcErr?.message || "Falha ao verificar status do PIX.");
       const rawStatus = pixFuncRes.data.status.toLowerCase();
       switch (rawStatus) { case 'paid': case 'approved': mappedStatus = PaymentStatus.PAID; break; case 'created': case 'waiting_payment': case 'pending': case 'processing': mappedStatus = PaymentStatus.WAITING_PAYMENT; break; case 'expired': mappedStatus = PaymentStatus.EXPIRED; break; case 'cancelled': mappedStatus = PaymentStatus.CANCELLED; break; default: mappedStatus = PaymentStatus.FAILED; }
       setPaymentStatus(mappedStatus);
-      if (mappedStatus === PaymentStatus.PAID) { if (pollingIntervalTimerIdRef.current) clearTimeout(pollingIntervalTimerIdRef.current); setIsPollingPayment(false); setIsReadyToRedirect(true); setTimeout(() => navigate(`/thank-you/${currentSaleId}?origProdId=${product.id}&csid=${checkoutSessionId}`), 2000); } 
+      if (mappedStatus === PaymentStatus.PAID) { if (pollingIntervalTimerIdRef.current) clearTimeout(pollingIntervalTimerIdRef.current); setIsPollingPayment(false); setIsReadyToRedirect(true); setTimeout(() => navigate(`/thank-you/${saleIdToCheck}?origProdId=${product.id}&csid=${checkoutSessionId}`), 2000); } 
             else if (mappedStatus !== PaymentStatus.WAITING_PAYMENT) { if (pollingIntervalTimerIdRef.current) clearTimeout(pollingIntervalTimerIdRef.current); setIsPollingPayment(false); setError("Payment failed."); }
     } catch (statusErr: any) { console.error("[CheckoutPage.checkPaymentStatus] Erro:", statusErr.message); if (paymentStatusRef.current !== PaymentStatus.PAID) setError("Erro ao verificar status do pagamento."); }
-  }, [product, currentSaleId, navigate, checkoutSessionId, user?.id ]);
+  }, [product, navigate, checkoutSessionId ]);
 
-  const startPaymentPolling = useCallback((txId: string) => { setIsPollingPayment(true); pollingAttemptRef.current = 0; pollingStartTimeRef.current = Date.now(); const poll = async () => { if (Date.now() - pollingStartTimeRef.current > POLLING_TIMEOUT_DURATION) { setIsPollingPayment(false); if (paymentStatusRef.current !== PaymentStatus.PAID) { setError("Tempo para verificar PIX excedido."); } return; } await checkPaymentStatus(txId); if (paymentStatusRef.current === PaymentStatus.WAITING_PAYMENT || paymentStatusRef.current === null) { pollingAttemptRef.current++; const nextInterval = Math.min(POLLING_INITIAL_INTERVAL * Math.pow(1.5, pollingAttemptRef.current), POLLING_MAX_INTERVAL); pollingIntervalTimerIdRef.current = window.setTimeout(poll, nextInterval); } else { setIsPollingPayment(false); } }; poll(); }, [checkPaymentStatus, user?.id, checkoutSessionId ]);
-  const handleManualCheck = useCallback(async () => { if (!pixData?.id || !canManuallyCheck || isManualChecking) return; setIsManualChecking(true); setCanManuallyCheck(false); await checkPaymentStatus(pixData.id); setIsManualChecking(false); if (manualCheckTimeoutRef.current) clearTimeout(manualCheckTimeoutRef.current); manualCheckTimeoutRef.current = window.setTimeout(() => setCanManuallyCheck(true), MANUAL_CHECK_COOLDOWN_MS); }, [pixData, canManuallyCheck, isManualChecking, checkPaymentStatus]);
+  const startPaymentPolling = useCallback((txId: string, saleIdToPoll: string) => { 
+    setIsPollingPayment(true); pollingAttemptRef.current = 0; pollingStartTimeRef.current = Date.now(); 
+    const poll = async () => { 
+      if (Date.now() - pollingStartTimeRef.current > POLLING_TIMEOUT_DURATION) { 
+        setIsPollingPayment(false); 
+        if (paymentStatusRef.current !== PaymentStatus.PAID) { setError("Tempo para verificar PIX excedido."); } return; 
+      } 
+      await checkPaymentStatus(txId, saleIdToPoll); 
+      if (paymentStatusRef.current === PaymentStatus.WAITING_PAYMENT || paymentStatusRef.current === null) { 
+        pollingAttemptRef.current++; 
+        const nextInterval = Math.min(POLLING_INITIAL_INTERVAL * Math.pow(1.5, pollingAttemptRef.current), POLLING_MAX_INTERVAL); 
+        pollingIntervalTimerIdRef.current = window.setTimeout(poll, nextInterval); 
+      } else { 
+        setIsPollingPayment(false); 
+      } 
+    }; 
+    poll(); 
+  }, [checkPaymentStatus]);
+  
+  const handleManualCheck = useCallback(async () => { 
+    if (!pixData?.id || !currentSaleId || !canManuallyCheck || isManualChecking) return; 
+    setIsManualChecking(true); 
+    setCanManuallyCheck(false); 
+    await checkPaymentStatus(pixData.id, currentSaleId); 
+    setIsManualChecking(false); 
+    if (manualCheckTimeoutRef.current) clearTimeout(manualCheckTimeoutRef.current); 
+    manualCheckTimeoutRef.current = window.setTimeout(() => setCanManuallyCheck(true), MANUAL_CHECK_COOLDOWN_MS); 
+  }, [pixData, canManuallyCheck, isManualChecking, checkPaymentStatus, currentSaleId]);
+  
   const handleProceedToThankYou = useCallback(() => { if (currentSaleId && product?.id) { navigate(`/thank-you/${currentSaleId}?origProdId=${product.id}&csid=${checkoutSessionId}`); } }, [currentSaleId, product, navigate, checkoutSessionId]);
 
   useEffect(() => { 
@@ -776,19 +802,19 @@ useEffect(() => {
     try {
       await buyerService.createBuyer({ id: buyerId, sessionId: checkoutSessionId, authUserId: user?.id, email: formState.customerEmail.trim(), name: formState.customerName.trim(), whatsapp: `${formState.customerWhatsappCountryCode}${formState.rawWhatsappNumber.replace(/\D/g, '')}`, });
 
-      
-
       const { data: pixFuncRes, error: funcErr } = await supabase.functions.invoke('gerar-pix', { body: { payload: { value: finalPriceForPix, originalValueBeforeDiscount: originalPriceForPixCalculation, customerName: formState.customerName.trim(), customerEmail: formState.customerEmail.trim(), customerWhatsapp: `${formState.customerWhatsappCountryCode}${formState.rawWhatsappNumber.replace(/\D/g, '')}`, products: saleProducts, trackingParameters: utms, couponCodeUsed: appliedCoupon?.code, discountAppliedInCents: discountForPixCalculation, buyerId, }, productOwnerUserId: product.platformUserId } });
 
       if (funcErr) { let msg = "Falha ao gerar PIX."; if (typeof funcErr.message === 'string') { try { const parsed = JSON.parse(funcErr.message); msg = parsed?.error || parsed?.message || funcErr.message; } catch (e) { msg = funcErr.message; } } throw new Error(msg); }
-      if (!pixFuncRes || !pixFuncRes.success || !pixFuncRes.data) { throw new Error(pixFuncRes?.message || "Resposta inválida do servidor PIX."); }
+      if (!pixFuncRes || !pixFuncRes.success || !pixFuncRes.data || !pixFuncRes.saleId) { throw new Error(pixFuncRes?.message || "Resposta inválida do servidor PIX (dados ou saleId ausentes)."); }
       
+      const saleId = pixFuncRes.saleId;
+
       startTransition(() => { 
         setPixData(pixFuncRes.data || null); 
-        setCurrentSaleId(pixFuncRes.saleId || null);
+        setCurrentSaleId(saleId);
         setPaymentStatus(PaymentStatus.WAITING_PAYMENT); 
       });
-      startPaymentPolling(pixFuncRes.data.id);
+      startPaymentPolling(pixFuncRes.data.id, saleId);
     } catch (paymentError: any) { setError(paymentError.message || "Erro desconhecido ao processar PIX."); console.error("[proceedToPixGeneration] Error:", paymentError);
     } finally { 
       if (!product.postClickOffer || currentDecisionForPostClickOffer !== null) {

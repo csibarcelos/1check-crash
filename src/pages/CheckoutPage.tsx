@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
-import { CheckIcon, PHONE_COUNTRY_CODES, DocumentDuplicateIcon, AppLogoIcon, LockClosedIcon } from '../constants.tsx'; 
+import { CheckIcon, PHONE_COUNTRY_CODES, DocumentDuplicateIcon, LockClosedIcon } from '../constants.tsx'; 
 import { settingsService } from '@/services/settingsService';
 import { supabase } from '@/supabaseClient';
 import { useAuth } from '@/contexts/AuthContext';

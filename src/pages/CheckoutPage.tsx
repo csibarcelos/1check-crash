@@ -761,12 +761,14 @@ useEffect(() => {
 
     const saleProducts: SaleProductItem[] = [{ productId: product.id, name: product.name, quantity: 1, priceInCents: product.priceInCents, originalPriceInCents: product.priceInCents, slug: product.slug, deliveryUrl: product.deliveryUrl }];
     
-    product.orderBumps?.forEach(ob => {
+    if (product.orderBumps) {
+      for (const ob of product.orderBumps) {
         if (selectedTraditionalOrderBumps.includes(ob.id)) {
-            const obProductInfo = product.orderBumps?.find(p => p.id === ob.id); 
-            saleProducts.push({ productId: ob.productId, name: ob.name, quantity: 1, priceInCents: ob.customPriceInCents || 0, originalPriceInCents: ob.customPriceInCents || 0, isTraditionalOrderBump: true, deliveryUrl: obProductInfo?.imageUrl, slug: obProductInfo?.name.toLowerCase().replace(/\s+/g, '-') });
+          const orderBumpFullProduct = await productService.getProductById(ob.productId); 
+          saleProducts.push({ productId: ob.productId, name: ob.name, quantity: 1, priceInCents: ob.customPriceInCents || 0, originalPriceInCents: ob.customPriceInCents || 0, isTraditionalOrderBump: true, deliveryUrl: orderBumpFullProduct?.deliveryUrl, slug: orderBumpFullProduct?.slug });
         }
-    });
+      }
+    }
 
     if (currentDecisionForPostClickOffer === 'accepted' && product.postClickOffer) {
         const pcoProduct = product.postClickOffer;

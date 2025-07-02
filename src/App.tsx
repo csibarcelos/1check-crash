@@ -93,37 +93,15 @@ import { ToastProvider } from './contexts/ToastContext';
 import { Toaster } from './components/ui/Toast';
 
 const App: React.FC = () => {
-  const audioRef = React.useRef<HTMLAudioElement>(null);
-
-  React.useEffect(() => {
-    const playSound = () => {
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0; 
-        audioRef.current.play().catch(error => {
-          console.warn("Audio playback failed. User interaction might be required.", error);
-        });
-      }
-    };
-
-    window.addEventListener('playSaleSound', playSound);
-
-    return () => {
-      window.removeEventListener('playSaleSound', playSound);
-    };
-  }, []);
-  
   return (
     <AuthProvider>
       <ToastProvider>
         <DataProvider>
           <RouterProvider router={router} />
           <Toaster />
-          <audio 
-            ref={audioRef} 
-            src="/assets/sounds/cash-register.mp3" 
-            preload="auto" 
-            className="hidden"
-          ></audio>
+          <audio id="cash-register-sound" preload="auto">
+            <source src="/assets/sounds/cash-register.mp3" type="audio/mpeg" />
+          </audio>
         </DataProvider>
       </ToastProvider>
     </AuthProvider>

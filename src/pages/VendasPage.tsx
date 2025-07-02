@@ -12,10 +12,13 @@ import {
   generateWhatsAppLink,
   DocumentDuplicateIcon,
   ClipboardDocumentIcon,
+  
+  ExternalLinkIconHero,
 } from '../constants.tsx';
 import { useData } from '@/contexts/DataContext';
 import { Table, TableHeader } from '@/components/ui/Table';
 import { useToast } from '@/contexts/ToastContext';
+import { getTranslatedPaymentStatusLabel, getPaymentStatusOptions } from '../utils/paymentStatusUtils';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -166,7 +169,7 @@ const VendasPage: React.FC = () => {
     { key: 'totalAmountInCents', label: 'Valor', renderCell: (sale) => <span className="text-accent-blue-neon font-semibold">{formatCurrency(sale.totalAmountInCents)}</span> },
     {
       key: 'status', label: 'Status',
-      renderCell: (sale) => <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusClass(sale.status)}`}>{(sale.status as string).replace(/_/g, ' ').toUpperCase()}</span>,
+      renderCell: (sale) => <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusClass(sale.status)}`}>{getTranslatedPaymentStatusLabel(sale.status)}</span>,
     },
     { key: 'paymentMethod', label: 'Método', renderCell: (sale) => getPaymentMethodLabel(sale.paymentMethod as PaymentMethod) },
     { key: 'createdAt', label: 'Data', renderCell: (sale) => formatDateTime(sale.createdAt) },
@@ -225,7 +228,7 @@ const VendasPage: React.FC = () => {
                 <label htmlFor="statusFilter" className="block text-sm font-medium text-text-default mb-1.5">Status</label>
                 <select id="statusFilter" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as PaymentStatus | '')} className={selectClasses}>
                     <option value="">Todos Status</option>
-                    {Object.values(PaymentStatus).map((status) => <option key={status} value={status}>{(status as string).replace(/_/g, ' ').toUpperCase()}</option>)}
+                    {getPaymentStatusOptions().map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
             </div>
             <div>
@@ -259,8 +262,8 @@ const VendasPage: React.FC = () => {
                         <InfoItem label="ID da Venda" value={selectedSale.id} />
                         <InfoItem label="Data" value={formatDateTime(selectedSale.createdAt)} />
                         <InfoItem label="Valor Total" value={<span className="font-bold text-accent-blue-neon text-lg">{formatCurrency(selectedSale.totalAmountInCents)}</span>} />
-                        <InfoItem label="Método" value={getPaymentMethodLabel(selectedSale.paymentMethod)} />
-                        <InfoItem label="Status" value={<span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusClass(selectedSale.status)}`}>{(selectedSale.status).replace(/_/g, ' ').toUpperCase()}</span>} />
+                        <InfoItem label="Método" value={getPaymentMethodLabel(selectedSale.paymentMethod as PaymentMethod)} />
+                        <InfoItem label="Status" value={<span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusClass(selectedSale.status)}`}>{getTranslatedPaymentStatusLabel(selectedSale.status)}</span>} />
                         {selectedSale.paidAt && <InfoItem label="Pago em" value={formatDateTime(selectedSale.paidAt)} />}
                     </div>
                 </section>
@@ -309,8 +312,8 @@ const VendasPage: React.FC = () => {
 
                 <section>
                     <h3 className="text-lg font-semibold text-accent-gold border-b border-border-subtle pb-2 mb-3">Produtos Adquiridos</h3>
-                    {Array.isArray(selectedSale.products) && selectedSale.products.map((item: SaleProductItem, idx: number) => (
-                        <div key={idx} className="mb-1 p-2 bg-neutral-700/30 rounded-sm text-sm border border-border-subtle">
+                    {Array.isArray(selectedSale.products) && selectedSale.products.filter(Boolean).map((item: SaleProductItem, idx: number) => (
+                        <div key={`${item.productId}-${idx}`} className="mb-1 p-2 bg-neutral-700/30 rounded-sm text-sm border border-border-subtle">
                             <p className="font-medium text-text-default">{String(item.name)} {item.isTraditionalOrderBump ? '(Order Bump)' : item.isUpsell ? '(Upsell)' : ''}</p>
                             <div className="grid grid-cols-2 gap-x-4 text-xs text-text-muted">
                                 <span>Quantidade: {Number(item.quantity)}</span>
@@ -320,15 +323,21 @@ const VendasPage: React.FC = () => {
                     ))}
                 </section>
 
-                {selectedSale.status === PaymentStatus.PAID && selectedSale.products.some(p => p.deliveryUrl) && (
+                {selectedSale.status === PaymentStatus.PAID && selectedSale.products.some(p => p && p.deliveryUrl) && (
                     <section>
                         <h3 className="text-lg font-semibold text-accent-gold border-b border-border-subtle pb-2 mb-3">Acessar Produtos</h3>
-                        <div className="space-y-2">
-                            {selectedSale.products.filter(p => p.deliveryUrl).map((item, idx) => (
-                                <a key={`${item.productId}-${idx}-link`} href={item.deliveryUrl!} target="_blank" rel="noopener noreferrer" className="block w-full text-center px-4 py-2.5 rounded-lg transition-colors duration-200 ease-in-out font-medium group border border-blue-500 text-blue-500 hover:bg-blue-50">
-                                    Acessar: {item.name}
-                                </a>
-                            ))}
+                        <div className="space-y-3">
+                            {selectedSale.products.filter((p): p is SaleProductItem & { deliveryUrl: string } => !!p && !!p.deliveryUrl).map((item, idx) => {
+                                const productNameDisplay = item.isTraditionalOrderBump ? `${item.name} (Oferta Adicional)` : item.isUpsell ? `${item.name} (Oferta Pós-Compra)` : item.name;
+                                return (
+                                  <a key={`${item.productId}-${idx}-link`} href={item.deliveryUrl} target="_blank" rel="noopener noreferrer"
+                                    className="block w-full text-center px-4 py-2.5 rounded-lg transition-colors duration-200 ease-in-out font-medium group border border-accent-blue-neon text-accent-blue-neon hover:bg-accent-blue-neon/10"
+                                  >
+                                    Acessar: {productNameDisplay}
+                                    <ExternalLinkIconHero className="inline-block h-4 w-4 ml-1.5 opacity-70 group-hover:opacity-100 transition-opacity" />
+                                  </a>
+                                );
+                              })}
                         </div>
                     </section>
                 )}

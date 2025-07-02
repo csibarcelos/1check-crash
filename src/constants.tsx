@@ -47,7 +47,14 @@ import {
   SparklesIcon as HeroSparklesIcon,
   FaceSmileIcon as HeroFaceSmileIcon, 
   EnvelopeIcon as HeroEnvelopeIcon,
-  ArrowTrendingUpIcon as HeroArrowTrendingUpIcon, // New Icon
+  ArrowTrendingUpIcon as HeroArrowTrendingUpIcon,
+  FireIcon as HeroFireIcon,
+  StarIcon as HeroStarIcon,
+  TrophyIcon as HeroTrophyIcon,
+  RocketLaunchIcon as HeroRocketLaunchIcon,
+  BoltIcon as HeroBoltIcon,
+  CalendarIcon as HeroCalendarIcon,
+  ChartBarIcon as HeroChartBarIcon,
 } from '@heroicons/react/24/outline';
 
 // Re-export Heroicons with consistent naming and explicit React.FC typing
@@ -97,6 +104,13 @@ export const SparklesIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroSparkle
 export const FaceSmileIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroFaceSmileIcon;
 export const EnvelopeIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroEnvelopeIcon;
 export const ArrowTrendingUpIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroArrowTrendingUpIcon;
+export const FireIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroFireIcon;
+export const StarIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroStarIcon;
+export const TrophyIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroTrophyIcon;
+export const RocketLaunchIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroRocketLaunchIcon;
+export const BoltIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroBoltIcon;
+export const CalendarIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroCalendarIcon;
+export const ChartBarIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroChartBarIcon;
 
 
 export const HomeIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -173,18 +187,7 @@ export const ClearFormatIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) 
 );
 
 // App Logo
-export const AppLogoIcon: React.FC<React.ImgHTMLAttributes<HTMLImageElement>> = (props) => {
-  const { className: incomingClassName,alt, ...otherProps } = props;
-  const finalClassName = `object-contain ${incomingClassName || 'h-10 w-auto'}`;
-  return (
-    <img
-      src="https://i.imgur.com/kdm9n4P.png"
-      alt={alt || "1Checkout Logo"}
-      className={finalClassName}
-      {...otherProps}
-    />
-  );
-};
+
 
 // WhatsApp Icon
 export const WhatsAppIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (

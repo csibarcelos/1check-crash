@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { BanknotesIcon } from '@heroicons/react/24/outline';
 import { superAdminService } from '@/services/superAdminService';
 import { Table, TableHeader } from '@/components/ui/Table'; // Import Table
+import { getTranslatedPaymentStatusLabel } from '../../utils/paymentStatusUtils';
 
 const formatCurrency = (valueInCents: number): string => {
     return `R\$ ${(valueInCents / 100).toFixed(2).replace('.', ',')}`;
@@ -81,7 +82,7 @@ const SuperAdminSalesPage: React.FC = () => {
       label: 'Status',
       renderCell: (sale) => (
         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusClass(sale.status)}`}>
-          {sale.status.replace(/_/g, ' ').toUpperCase()}
+          {getTranslatedPaymentStatusLabel(sale.status)}
         </span>
       ),
     },
@@ -134,7 +135,7 @@ const SuperAdminSalesPage: React.FC = () => {
               {selectedSale.upsellAmountInCents && <InfoItem label="Valor Upsell" value={formatCurrency(selectedSale.upsellAmountInCents)} />}
                <InfoItem label="Comissão da Plataforma" value={<span className="text-accent-blue-neon">{formatCurrency(selectedSale.platformCommissionInCents || 0)}</span>} />
               <InfoItem label="Data" value={new Date(selectedSale.createdAt).toLocaleString()} />
-              <InfoItem label="Status" value={<span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${getStatusClass(selectedSale.status)}`}>{selectedSale.status.replace(/_/g, ' ').toUpperCase()}</span>} />
+              <InfoItem label="Status" value={<span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${getStatusClass(selectedSale.status)}`}>{getTranslatedPaymentStatusLabel(selectedSale.status)}</span>} />
              </section>
              <section>
                 <h3 className="text-md font-semibold text-accent-gold border-b border-border-subtle pb-1 mb-2">Cliente</h3>

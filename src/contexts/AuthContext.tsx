@@ -202,18 +202,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         window.clearTimeout(timeoutId);
         
         if (error) {
+          console.error(`❌ Erro ao buscar perfil para ${userId}:`, error);
           if (error.code === 'PGRST116') { 
+            console.warn(`⚠️ Perfil não encontrado (PGRST116) para ${userId}. Criando perfil fallback.`);
             const fallback = createFallbackProfile(supabaseUser, 'NOT_FOUND'); 
             profileCache!.set(userId, fallback, PROFILE_CACHE_DURATION); 
             return fallback; 
           }
           if (error.name === 'AbortError') { 
+            console.warn(`⏰ Timeout ao buscar perfil para ${userId}. Tentativa ${currentRetries + 1}/${MAX_RETRIES}.`);
             retryCount.set(userId, currentRetries + 1); 
             return createFallbackProfile(supabaseUser, 'TIMEOUT'); 
           }
+          console.error(`❌ Erro desconhecido ao buscar perfil para ${userId}:`, error);
           return createFallbackProfile(supabaseUser, `ERROR_${error.code || 'UNKNOWN'}`);
         }
         
+        if (!profileData) {
+          console.warn(`⚠️ Dados de perfil vazios para ${userId}. Criando perfil fallback.`);
+          return createFallbackProfile(supabaseUser, 'EMPTY_DATA');
+        }
+
+        console.log(`✅ Perfil encontrado para ${userId}:`, profileData);
         retryCount.delete(userId);
         const fetchedUser: AppUser = {
           id: userId,
@@ -232,6 +242,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return fetchedUser;
       } catch (error: any) {
         window.clearTimeout(timeoutId);
+        console.error(`❌ Exceção na função fetchUserProfile para ${userId}:`, error);
         if (error.name === 'AbortError') { 
           retryCount.set(userId, currentRetries + 1); 
           return createFallbackProfile(supabaseUser, 'ABORT_ERROR'); 

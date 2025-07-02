@@ -8,13 +8,19 @@ import { NotificationSettings, Sale, AbandonedCart, PaymentStatus } from '../typ
 import { fromSupabaseSaleRow } from '../services/salesService';
 import { fromSupabaseAbandonedCartRow } from '../services/abandonedCartService';
 
+
 // Helper to play sound
-const playSound = (soundUrl: string) => {
+const playSound = (soundId: string) => {
   try {
-    const audio = new Audio(soundUrl);
-    audio.play().catch(error => console.error("Audio play failed", error));
+    const audio = document.getElementById(soundId) as HTMLAudioElement;
+    if (audio) {
+      audio.currentTime = 0; // Reinicia o som caso já esteja tocando
+      audio.play().catch(error => console.error("Audio play failed", error));
+    } else {
+      console.error(`Audio element with id ${soundId} not found`);
+    }
   } catch (error) {
-    console.error("Failed to create audio element", error);
+    console.error("Failed to play sound", error);
   }
 };
 
@@ -52,7 +58,7 @@ export const useRealtimeNotifications = () => {
         variant: 'success',
       });
       if (settings.playSaleSound) {
-        playSound('/assets/sounds/cash-register.mp3');
+        playSound('cash-register-sound');
       }
     }
   };
@@ -74,7 +80,14 @@ export const useRealtimeNotifications = () => {
 
     // Also handle if a sale is inserted as already 'approved'
     if (settings.notifyOnSaleApproved && newSale.status === PaymentStatus.PAID) {
-        handleSaleUpdate(newSaleRow);
+        showToast({
+            title: 'Venda Aprovada!',
+            description: `Cliente: ${newSale.customer.name} - Valor: ${formatCurrency(newSale.totalAmountInCents)}`,
+            variant: 'success',
+        });
+        if (settings.playSaleSound) {
+            playSound('cash-register-sound');
+        }
     }
   };
 

@@ -3,7 +3,7 @@ import React from 'react';
 import { useRouteError } from 'react-router-dom'; 
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { AppLogoIcon } from './constants'; 
+import { AppLogoIcon } from './components/AppLogoIcon'; 
 
 interface RouterError {
   statusText?: string;

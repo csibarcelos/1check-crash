@@ -115,6 +115,21 @@ const ProductsPage: React.FC = () => {
 
   const productTableHeaders: TableHeader<Product>[] = [
     {
+      key: 'productImageUrl',
+      label: 'Thumb',
+      renderCell: (product) => (
+        <div className="w-12 h-12 bg-gray-200 rounded-md overflow-hidden">
+          {product.productImageUrl ? (
+            <img src={product.productImageUrl} alt={product.name} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-gray-400">
+              <CubeIcon className="w-6 h-6" />
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
       key: 'name',
       label: 'Nome',
       renderCell: (product) => (

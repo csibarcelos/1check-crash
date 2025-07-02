@@ -1,6 +1,24 @@
 
-import { Sale, Customer, Product, PaymentStatus } from '@/types'; // Ajustado para alias @
+import { Sale, Customer, Product, PaymentStatus } from '@/types';
 import { DateRange } from 'react-day-picker';
+
+export type AchievementId = 
+  | 'first_sale' 
+  | 'revenue_1k' 
+  | 'revenue_10k' 
+  | 'revenue_100k' 
+  | 'first_order_bump' 
+  | 'first_upsell' 
+  | 'first_coupon'
+  | 'five_sales_one_day'
+  | 'ten_products'
+  | 'perfect_week';
+
+export interface PersonalBests {
+  bestDay: { date: string; amount: number };
+  bestMonth: { date: string; amount: number };
+  biggestSale: { id: string; amount: number };
+}
 
 export interface DashboardData {
   totalRevenue: number;
@@ -9,6 +27,10 @@ export interface DashboardData {
   newCustomers: number;
   salesTrend: { periodLabel: string; amount: number }[];
   topSellingProducts: { id: string; name: string; quantitySold: number; revenueGenerated: number }[];
+  personalBests: PersonalBests;
+  todayRevenue: number;
+  unlockedAchievements: AchievementId[];
+  dailyRecordBreaks: number;
 }
 
 const getStartOfDate = (date: Date): Date => {
@@ -23,7 +45,6 @@ const getEndOfDate = (date: Date): Date => {
   return newDate;
 };
 
-// Helper to filter sales or customers based on a date field and range
 const filterItemsByDateRange = <T extends { createdAt?: string | null; paidAt?: string | null; firstPurchaseDate?: string | null }>(
   items: T[],
   dateRange: string,
@@ -62,7 +83,6 @@ const filterItemsByDateRange = <T extends { createdAt?: string | null; paidAt?: 
   });
 };
 
-
 const filterSalesByProduct = (sales: Sale[], productId: string): Sale[] => {
   if (productId === 'all') {
     return sales;
@@ -70,26 +90,116 @@ const filterSalesByProduct = (sales: Sale[], productId: string): Sale[] => {
   return sales.filter(sale => Array.isArray(sale.products) && sale.products.some(p => p.productId === productId));
 };
 
+const calculatePersonalBests = (allPaidSales: Sale[]): PersonalBests => {
+  const initialBests: PersonalBests = {
+    bestDay: { date: 'N/A', amount: 0 },
+    bestMonth: { date: 'N/A', amount: 0 },
+    biggestSale: { id: 'N/A', amount: 0 },
+  };
+
+  if (allPaidSales.length === 0) {
+    return initialBests;
+  }
+
+  const biggestSale = allPaidSales.reduce((max, sale) => 
+    sale.totalAmountInCents > max.totalAmountInCents ? sale : max, 
+    allPaidSales[0]
+  );
+
+  const salesByDay: { [key: string]: number } = {};
+  allPaidSales.forEach(sale => {
+    if (sale.paidAt) {
+      const dayKey = new Date(sale.paidAt).toLocaleDateString('pt-BR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+      salesByDay[dayKey] = (salesByDay[dayKey] || 0) + sale.totalAmountInCents;
+    }
+  });
+
+  const bestDayEntry = Object.entries(salesByDay).reduce((max, entry) => 
+    entry[1] > max[1] ? entry : max, 
+    ['N/A', 0]
+  );
+
+  const salesByMonth: { [key: string]: number } = {};
+  allPaidSales.forEach(sale => {
+    if (sale.paidAt) {
+      const monthKey = new Date(sale.paidAt).toLocaleDateString('pt-BR', { year: 'numeric', month: 'long' });
+      salesByMonth[monthKey] = (salesByMonth[monthKey] || 0) + sale.totalAmountInCents;
+    }
+  });
+
+  const bestMonthEntry = Object.entries(salesByMonth).reduce((max, entry) => 
+    entry[1] > max[1] ? entry : max, 
+    ['N/A', 0]
+  );
+
+  return {
+    bestDay: { date: bestDayEntry[0], amount: bestDayEntry[1] },
+    bestMonth: { date: bestMonthEntry[0].charAt(0).toUpperCase() + bestMonthEntry[0].slice(1), amount: bestMonthEntry[1] },
+    biggestSale: { id: biggestSale.id, amount: biggestSale.totalAmountInCents },
+  };
+};
+
+const calculateAchievements = (allPaidSales: Sale[], allProducts: Product[]): AchievementId[] => {
+  const unlocked: AchievementId[] = [];
+  if (allPaidSales.length > 0) {
+    unlocked.push('first_sale');
+  }
+
+  const totalRevenue = allPaidSales.reduce((sum, sale) => sum + sale.totalAmountInCents, 0);
+  if (totalRevenue >= 100000) unlocked.push('revenue_1k');
+  if (totalRevenue >= 1000000) unlocked.push('revenue_10k');
+  if (totalRevenue >= 10000000) unlocked.push('revenue_100k');
+
+  if (allPaidSales.some(sale => sale.products.some(p => p.isTraditionalOrderBump))) {
+    unlocked.push('first_order_bump');
+  }
+  if (allPaidSales.some(sale => sale.products.some(p => p.isUpsell))) {
+    unlocked.push('first_upsell');
+  }
+  if (allPaidSales.some(sale => sale.couponCodeUsed)) {
+    unlocked.push('first_coupon');
+  }
+  
+  const salesByDay: { [key: string]: number } = {};
+  allPaidSales.forEach(sale => {
+    if (sale.paidAt) {
+      const dayKey = new Date(sale.paidAt).toISOString().split('T')[0];
+      salesByDay[dayKey] = (salesByDay[dayKey] || 0) + 1;
+    }
+  });
+  if (Object.values(salesByDay).some(count => count >= 5)) {
+    unlocked.push('five_sales_one_day');
+  }
+
+  if (allProducts.length >= 10) {
+    unlocked.push('ten_products');
+  }
+
+  const saleDays = new Set(Object.keys(salesByDay));
+  if (saleDays.size > 0) {
+    const sortedSaleDays = Array.from(saleDays).sort();
+    let consecutiveDays = 1;
+    for (let i = 1; i < sortedSaleDays.length; i++) {
+      const prevDate = new Date(sortedSaleDays[i-1]);
+      const currDate = new Date(sortedSaleDays[i]);
+      const diffTime = currDate.getTime() - prevDate.getTime();
+      const diffDays = diffTime / (1000 * 60 * 60 * 24);
+      if (diffDays === 1) {
+        consecutiveDays++;
+      } else {
+        consecutiveDays = 1;
+      }
+      if (consecutiveDays >= 7) {
+        unlocked.push('perfect_week');
+        break;
+      }
+    }
+  }
+
+  return unlocked;
+};
 
 export const dashboardService = {
-  getSalesByStatus: (
-    sales: Sale[],
-    dateRange: string,
-    productId: string,
-    customRange?: DateRange
-  ): Record<PaymentStatus, number> => {
-    const productFilteredSales = filterSalesByProduct(sales, productId);
-    const salesInPeriod = filterItemsByDateRange(productFilteredSales, dateRange, 'createdAt', customRange);
-    
-    const statusCounts = salesInPeriod.reduce((acc, sale) => {
-        const status = sale.status;
-        acc[status] = (acc[status] || 0) + 1;
-        return acc;
-    }, {} as Record<PaymentStatus, number>);
-
-    return statusCounts;
-  },
-
   getDashboardData: (params: {
     sales: Sale[];
     customers: Customer[];
@@ -97,13 +207,16 @@ export const dashboardService = {
     dateRange: string;
     productId: string;
     customRange?: DateRange;
+    dailyRecordBreaks?: number;
   }): DashboardData => {
-    const { sales, customers, products, dateRange, productId, customRange } = params;
+    const { sales, customers, products, dateRange, productId, customRange, dailyRecordBreaks = 0 } = params;
 
-    // 1. Filter sales by product first (applies to all subsequent calculations)
+    const allPaidSales = sales.filter(s => s.status === PaymentStatus.PAID && s.paidAt);
+    const personalBests = calculatePersonalBests(allPaidSales);
+    const unlockedAchievements = calculateAchievements(allPaidSales, products);
+
     const productFilteredSales = filterSalesByProduct(sales, productId);
 
-    // 2. Filter PAID sales by date range using 'paid_at'
     const paidSalesInPeriod = filterItemsByDateRange(
         productFilteredSales.filter(s => s.status === PaymentStatus.PAID && s.paidAt), 
         dateRange, 
@@ -115,22 +228,17 @@ export const dashboardService = {
     const numberOfSales = paidSalesInPeriod.length; 
     const averageTicket = numberOfSales > 0 ? totalRevenue / numberOfSales : 0;
     
-    // 3. Filter new customers by date range using 'firstPurchaseDate'
-    // And also ensure they bought the selected product (if not 'all')
     const newCustomersInPeriod = filterItemsByDateRange(customers, dateRange, 'firstPurchaseDate', customRange)
       .filter(customer => {
         if (productId === 'all') return true;
-        // Check if one of the customer's sale IDs corresponds to a sale of the selected product
         return customer.saleIds.some((saleId: string) => {
           const sale = productFilteredSales.find(s => s.id === saleId);
-          return sale && sale.status === PaymentStatus.PAID; // Ensure it's a paid sale for the product
+          return sale && sale.status === PaymentStatus.PAID;
         });
       });
     const newCustomers = newCustomersInPeriod.length;
 
-    // 4. Calculate Top Selling Products
     const productPerformance: { [key: string]: { quantitySold: number; revenueGenerated: number } } = {};
-
     paidSalesInPeriod.forEach(sale => {
       if (Array.isArray(sale.products)) {
         sale.products.forEach(item => {
@@ -153,21 +261,26 @@ export const dashboardService = {
         };
       })
       .sort((a, b) => b.revenueGenerated - a.revenueGenerated)
-      .slice(0, 5); // Top 5
+      .slice(0, 5);
 
-    // 5. Sales Trend (based on PAID sales in period)
     const salesTrend: { periodLabel: string; amount: number }[] = [];
     const now = new Date();
 
-    if (dateRange === 'today') {
+    if (dateRange === 'today' || dateRange === 'yesterday') {
       const hourlySales: { [hour: string]: number } = {};
       for (let i = 0; i < 24; i++) { hourlySales[String(i).padStart(2, '0') + 'h'] = 0; }
+      
+      const targetDate = new Date(now);
+      if (dateRange === 'yesterday') {
+        targetDate.setDate(now.getDate() - 1);
+      }
+      const startOfTargetDate = getStartOfDate(targetDate);
+      const endOfTargetDate = getEndOfDate(targetDate);
+
       paidSalesInPeriod.forEach(sale => { 
         if (sale.paidAt) { 
             const saleDate = new Date(sale.paidAt);
-            const startOfToday = getStartOfDate(now);
-            const endOfToday = getEndOfDate(now);
-            if (!isNaN(saleDate.getTime()) && saleDate >= startOfToday && saleDate <= endOfToday) { 
+            if (!isNaN(saleDate.getTime()) && saleDate >= startOfTargetDate && saleDate <= endOfTargetDate) { 
                 const hour = String(saleDate.getHours()).padStart(2, '0') + 'h';
                 hourlySales[hour] = (hourlySales[hour] || 0) + Number(sale.totalAmountInCents || 0);
             }
@@ -195,8 +308,8 @@ export const dashboardService = {
           const diffTime = Math.abs(loopEndDate.getTime() - loopStartDate.getTime());
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-          if (diffDays === 0 && paidSalesInPeriod.length > 0) { // Handle all sales on a single day
-              granularity = 'day'; // Default to day, will be overridden by 'today' logic if dateRange is today
+          if (diffDays === 0 && paidSalesInPeriod.length > 0) {
+              granularity = 'day';
               loopStartDate = getStartOfDate(firstSaleDate);
               loopEndDate = getEndOfDate(firstSaleDate);
           } else if (diffDays > 90) { 
@@ -206,12 +319,11 @@ export const dashboardService = {
           }
       } else {
           switch(dateRange) {
-              case 'yesterday': const y = new Date(now); y.setDate(now.getDate() - 1); loopStartDate = getStartOfDate(y); loopEndDate = getEndOfDate(y); break;
               case 'last7days': loopStartDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)); break;
               case 'last30days': loopStartDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29)); break;
               case 'thisMonth': loopStartDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), 1)); break;
               case 'lastMonth': loopStartDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth() - 1, 1)); loopEndDate = getEndOfDate(new Date(now.getFullYear(), now.getMonth(), 0)); break;
-              default: loopStartDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)); // Default to last 7 days if range not 'all' or 'custom'
+              default: loopStartDate = getStartOfDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6));
           }
       }
       
@@ -246,7 +358,7 @@ export const dashboardService = {
 
       for (const period in aggregatedSales) { salesTrend.push({ periodLabel: period, amount: aggregatedSales[period] }); }
       
-      if (dateRange !== 'today' && salesTrend.length > 0) { // Keep original order for 'today' (hourly)
+      if (dateRange !== 'today' && salesTrend.length > 0) {
         salesTrend.sort((a, b) => {
           let dateA: Date, dateB: Date;
           if (granularity === 'day') {
@@ -254,7 +366,7 @@ export const dashboardService = {
             const [dayB, monthB] = b.periodLabel.split('/').map(Number);
             const year = (dateRange === 'all' && loopEndDate.getFullYear() !== loopStartDate.getFullYear()) 
                          ? (monthA > monthB ? loopStartDate.getFullYear() : loopEndDate.getFullYear()) 
-                         : now.getFullYear(); // Assume current year if not 'all' with year span
+                         : now.getFullYear();
             dateA = new Date(year, monthA - 1, dayA); 
             dateB = new Date(year, monthB - 1, dayB);
           } else { 
@@ -269,6 +381,8 @@ export const dashboardService = {
       }
     }
 
-    return { totalRevenue, numberOfSales, averageTicket, newCustomers, salesTrend, topSellingProducts };
+    const todayRevenue = filterItemsByDateRange(allPaidSales, 'today', 'paidAt').reduce((sum, sale) => sum + Number(sale.totalAmountInCents || 0), 0);
+
+    return { totalRevenue, numberOfSales, averageTicket, newCustomers, salesTrend, topSellingProducts, personalBests, todayRevenue, unlockedAchievements, dailyRecordBreaks };
   },
 };

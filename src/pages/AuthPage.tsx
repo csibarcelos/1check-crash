@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from '../contexts/AuthContext';
-import { AppLogoIcon } from '../constants'; 
+import { AppLogoIcon } from '../components/AppLogoIcon'; 
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { motion, AnimatePresence } from 'framer-motion';
 

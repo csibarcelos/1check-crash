@@ -1,5 +1,3 @@
-
-
 import React from 'react';
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
 import { useAuth } from '../../contexts/AuthContext'; 
@@ -8,9 +6,10 @@ import { CogIcon, LogoutIcon, Bars3IconHero, cn, UserCircleIcon } from '../../co
 
 interface HeaderProps {
   setSidebarOpen: (open: boolean) => void;
+  isSidebarCompact: boolean; // Adicionado
 }
 
-export const Header: React.FC<HeaderProps> = ({ setSidebarOpen }) => {
+export const Header: React.FC<HeaderProps> = ({ setSidebarOpen, isSidebarCompact }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -22,9 +21,13 @@ export const Header: React.FC<HeaderProps> = ({ setSidebarOpen }) => {
   const userInitial = user?.name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || '?';
 
   return (
-    <header className="relative bg-bg-surface backdrop-blur-md shadow-lg flex-shrink-0 border-b border-border-subtle z-30">
+    <header className={cn(
+      "fixed top-0 right-0 z-30 transition-all duration-300 w-full",
+      isSidebarCompact ? "md:left-24" : "md:left-72",
+      "bg-bg-surface/50 backdrop-blur-lg shadow-lg flex-shrink-0 border-b border-border-subtle"
+    )}>
       <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-20"> 
+        <div className="flex items-center justify-between h-24"> 
           <div className="flex items-center md:hidden">
             <button
               type="button"

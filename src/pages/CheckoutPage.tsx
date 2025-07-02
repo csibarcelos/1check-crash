@@ -19,6 +19,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { default as debounce } from 'https://esm.sh/lodash@4.17.21/debounce';
 import { Modal } from '@/components/ui/Modal';
 import { getOptimalTextColor, calculateEffectiveBg } from '@/utils/colorUtils.ts';
+import { getTranslatedPaymentStatusLabel } from '../utils/paymentStatusUtils';
 
 // Local cn utility
 const cn = (...classes: (string | undefined | null | false)[]): string => classes.filter(Boolean).join(' ');
@@ -359,7 +360,7 @@ const CheckoutPageUI: React.FC<CheckoutPageUIProps> = React.memo(({
                   {(paymentStatus && [PaymentStatus.CANCELLED, PaymentStatus.EXPIRED, PaymentStatus.FAILED].includes(paymentStatus)) && (
                     <div className="p-5 bg-status-error/10 text-status-error rounded-2xl border border-status-error/30 text-center">
                       <h3 className="text-lg font-semibold mb-2">Pagamento Falhou</h3>
-                      <p className="text-sm mb-3">Ocorreu um problema com seu pagamento (status: {paymentStatus}). Por favor, tente novamente.</p>
+                      <p className="text-sm mb-3">Ocorreu um problema com seu pagamento (status: {getTranslatedPaymentStatusLabel(paymentStatus)}). Por favor, tente novamente.</p>
                       <Button onClick={() => handleInitiatePayment()} isLoading={isSubmitting} className={cn(buttonThemeClass, "primary w-full")} style={{backgroundColor: resolvedPrimaryHex, color: ctaButtonTextColor }}>
                         Tentar Novamente com PIX
                       </Button>

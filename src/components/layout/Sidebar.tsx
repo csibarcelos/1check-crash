@@ -1,9 +1,9 @@
-
-
 import React, { Fragment } from 'react';
-import { NavLink, useNavigate } from "react-router-dom"; 
+import { NavLink, useNavigate } from "react-router-dom";
 import { Dialog, Transition } from '@headlessui/react';
-import { NAV_ITEMS, NAV_ITEMS_SUPER_ADMIN, AppLogoIcon, LogoutIcon, XMarkIcon } from '../../constants'; 
+import { NAV_ITEMS, NAV_ITEMS_SUPER_ADMIN, LogoutIcon, XMarkIcon, cn } from '../../constants';
+import { AppLogoIcon } from '../AppLogoIcon';
+import AppLogoSvg from '@/assets/images/logo.svg?react'; // Importação do SVG para o modo compacto
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../ui/Button';
 import { NavItemConfig } from '../../types';
@@ -11,9 +11,11 @@ import { NavItemConfig } from '../../types';
 interface SidebarProps {
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
+  isCompact: boolean;
+  toggleCompact: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen, isCompact, toggleCompact }) => {
   const { user, logout, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
 
@@ -27,24 +29,33 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
 
   const navigationContent = (
     <>
-      <div className="flex items-center justify-center h-24 border-b border-border-subtle px-4 shadow-md">
+      <div className={cn(
+        "flex items-center justify-center h-24 border-b border-border-subtle px-4 shadow-md",
+        isCompact ? 'px-2' : 'px-4'
+      )}>
         <NavLink to={dashboardPath} className="flex items-center group p-2 rounded-xl hover:bg-white/5 transition-colors duration-300 ease-in-out transform hover:scale-105">
-          <AppLogoIcon className="h-12 w-auto text-accent-gold group-hover:opacity-90 transition-opacity" />
-           {/* <span className="ml-3 text-2xl font-display font-bold text-accent-gold group-hover:text-opacity-90 transition-opacity">1Checkout</span> */}
+          {isCompact 
+            ? <AppLogoSvg className="h-10 w-10 text-accent-gold group-hover:opacity-90 transition-opacity" />
+            : <AppLogoIcon className="h-12 w-auto text-accent-gold group-hover:opacity-90 transition-opacity" />
+          }
+           {/* Removido o span de texto "1Checkout" */}
         </NavLink>
       </div>
-      <nav className="mt-6 flex-1 px-3 space-y-1.5"> {/* Diminuído space-y */}
+      <nav className="mt-6 flex-1 px-3 space-y-1.5">
         {currentNavItems.map((item: NavItemConfig) => (
           <NavLink
             key={item.name}
             to={item.href}
             end={item.href === dashboardPath || item.href === '/dashboard'} 
             className={({ isActive }) =>
-              `group flex items-center px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 ease-in-out relative transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-accent-blue-neon/50 focus:ring-offset-1 focus:ring-offset-bg-main
-              ${isActive 
-                ? 'bg-accent-blue-neon/10 text-accent-blue-neon shadow-lg' 
-                : 'text-text-default hover:bg-white/5 hover:text-text-strong'}
-              ${item.soon ? 'opacity-60 cursor-not-allowed pointer-events-none' : ''}`
+              cn(
+                `group flex items-center px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 ease-in-out relative transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-accent-blue-neon/50 focus:ring-offset-1 focus:ring-offset-bg-main`,
+                isActive 
+                  ? 'bg-accent-blue-neon/10 text-accent-blue-neon shadow-lg' 
+                  : 'text-text-default hover:bg-white/5 hover:text-text-strong',
+                item.soon ? 'opacity-60 cursor-not-allowed pointer-events-none' : '',
+                isCompact && 'justify-center'
+              )
             }
             onClick={(e) => {
               if (item.soon) e.preventDefault();
@@ -57,33 +68,46 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
           >
             {({ isActive: iconIsActive }) => (
               <>
-                {iconIsActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 h-3/4 w-1 bg-accent-blue-neon rounded-r-md shadow-glow-blue-neon/30"></div>}
-                <item.icon className={`mr-3 ml-0.5 flex-shrink-0 h-5 w-5 transition-colors duration-200 ${iconIsActive ? 'text-accent-blue-neon' : 'text-text-muted group-hover:text-text-default'}`} aria-hidden="true" />
-                <span className="truncate">{item.name}</span>
-                {item.soon && <span className="ml-auto text-xs bg-neutral-400 text-bg-main px-1.5 py-0.5 rounded-full font-semibold">EM BREVE</span>}
+                {iconIsActive && !isCompact && <div className="absolute left-0 top-1/2 -translate-y-1/2 h-3/4 w-1 bg-accent-blue-neon rounded-r-md shadow-glow-blue-neon/30"></div>}
+                <item.icon className={cn(
+                  `flex-shrink-0 h-5 w-5 transition-colors duration-200`,
+                  iconIsActive ? 'text-accent-blue-neon' : 'text-text-muted group-hover:text-text-default',
+                  isCompact ? 'mx-auto' : 'mr-3 ml-0.5'
+                )} aria-hidden="true" />
+                {!isCompact && <span className="truncate">{item.name}</span>}
+                {!isCompact && item.soon && <span className="ml-auto text-xs bg-neutral-400 text-bg-main px-1.5 py-0.5 rounded-full font-semibold">EM BREVE</span>}
               </>
             )}
           </NavLink>
         ))}
       </nav>
-      <div className="mt-auto p-4 border-t border-border-subtle">
-        <div className="flex items-center mb-4 p-3 rounded-xl bg-white/5">
+      <div className={cn("mt-auto p-4 border-t border-border-subtle", isCompact && "p-2")}>
+        <div 
+          className={cn(
+            "flex items-center mb-4 p-3 rounded-xl bg-white/5 cursor-pointer",
+            isCompact ? "p-2 justify-center" : "",
+            "transition-colors duration-200 hover:bg-white/10"
+          )}
+          onClick={toggleCompact}
+        >
           <div className="h-10 w-10 rounded-full bg-accent-gold flex items-center justify-center text-bg-main font-bold text-lg shadow-sm">
             {user?.name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || '?'}
           </div>
-          <div className="ml-3 overflow-hidden">
-            <p className="text-sm font-semibold text-text-strong truncate font-display">{user?.name || 'Usuário'}</p>
-            <p className="text-xs text-text-muted truncate">{user?.email}</p>
-          </div>
+          {!isCompact && (
+            <div className="ml-3 overflow-hidden">
+              <p className="text-sm font-semibold text-text-strong truncate font-display">{user?.name || 'Usuário'}</p>
+              <p className="text-xs text-text-muted truncate">{user?.email}</p>
+            </div>
+          )}
         </div>
         <Button 
           variant="outline" 
           onClick={handleLogout} 
           className="w-full border-accent-blue-neon/60 text-accent-blue-neon hover:bg-accent-blue-neon/10 hover:border-accent-blue-neon hover:text-accent-blue-neon"
-          leftIcon={<LogoutIcon className="h-5 w-5"/>}
+          leftIcon={isCompact ? undefined : <LogoutIcon className="h-5 w-5"/>}
           isFullWidth={true}
         >
-          Sair
+          {isCompact ? <LogoutIcon className="h-5 w-5 mx-auto" /> : "Sair"}
         </Button>
       </div>
     </>
@@ -146,8 +170,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
       </Transition.Root>
 
       {/* Static sidebar for desktop */}
-      <div className="hidden md:flex md:flex-shrink-0">
-        <div className="flex flex-col w-72 bg-bg-main border-r border-border-subtle">
+      <div className={cn(
+        "hidden md:fixed md:inset-y-0 md:z-40 md:flex md:flex-col transition-all duration-300 ease-in-out",
+        isCompact ? "w-24" : "w-72"
+      )}>
+        <div className="flex min-h-0 flex-1 flex-col bg-bg-main border-r border-border-subtle">
           {navigationContent}
         </div>
       </div>

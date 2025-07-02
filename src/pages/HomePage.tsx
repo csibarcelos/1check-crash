@@ -2,7 +2,8 @@
 import React from 'react';
 import { Link } from "react-router-dom"; 
 import { Button } from '@/components/ui/Button';
-import { AppLogoIcon, CheckIcon } from '../constants.tsx'; 
+import { CheckIcon } from '../constants.tsx';
+import { AppLogoIcon } from '../components/AppLogoIcon'; 
 
 const HomePage: React.FC = () => {
   const testimonials = [

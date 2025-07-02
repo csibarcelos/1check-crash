@@ -24,7 +24,7 @@ const getEndOfDate = (date: Date): Date => {
 };
 
 // Helper to filter sales or customers based on a date field and range
-const filterItemsByDateRange = <T extends { createdAt?: string; paidAt?: string; firstPurchaseDate?: string }>(
+const filterItemsByDateRange = <T extends { createdAt?: string | null; paidAt?: string | null; firstPurchaseDate?: string | null }>(
   items: T[],
   dateRange: string,
   dateField: 'createdAt' | 'paidAt' | 'firstPurchaseDate',
@@ -121,7 +121,7 @@ export const dashboardService = {
       .filter(customer => {
         if (productId === 'all') return true;
         // Check if one of the customer's sale IDs corresponds to a sale of the selected product
-        return customer.saleIds.some(saleId => {
+        return customer.saleIds.some((saleId: string) => {
           const sale = productFilteredSales.find(s => s.id === saleId);
           return sale && sale.status === PaymentStatus.PAID; // Ensure it's a paid sale for the product
         });

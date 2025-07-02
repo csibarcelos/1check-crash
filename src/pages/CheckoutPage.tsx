@@ -256,7 +256,7 @@ const CheckoutPageUI: React.FC<CheckoutPageUIProps> = React.memo(({
                   <span className={`font-semibold pb-1`} style={{color: orderBumpContentTextColor}}>{formatCurrency(product.priceInCents)}</span>
                 </div>
                 
-                {product.orderBumps?.filter(ob => selectedTraditionalOrderBumps.includes(ob.id)).map(ob => (
+                {(Array.isArray(product.orderBumps) ? product.orderBumps : []).filter(ob => selectedTraditionalOrderBumps.includes(ob.id)).map(ob => (
                   <div key={`summary-ob-${ob.id}`} className={`flex justify-between items-center text-sm py-2.5 border-t border-dashed ${currentTheme === 'dark' ? 'border-[var(--reimagined-input-border)]' : 'border-slate-200'}`}>
                     <span style={{color: orderBumpContentTextColor}}>{ob.name} <span className={`text-xs font-medium`} style={{color: resolvedPrimaryHex}}>(+ Adicional)</span></span>
                     <span className={`font-medium`} style={{color: orderBumpContentTextColor}}>{formatCurrency(ob.customPriceInCents || 0)}</span>
@@ -287,10 +287,10 @@ const CheckoutPageUI: React.FC<CheckoutPageUIProps> = React.memo(({
                 </div>
               </div>
              
-              {product.orderBumps && product.orderBumps.length > 0 && !pixData && (
+              {(Array.isArray(product.orderBumps) ? product.orderBumps : []).length > 0 && !pixData && (
                 <div className="my-6 space-y-4">
                   <h3 className={`text-lg font-semibold ${strongTextColorClass}`}>Ofertas Especiais para Você:</h3>
-                  {product.orderBumps.map((ob) => (
+                  {(Array.isArray(product.orderBumps) ? product.orderBumps : []).map((ob) => (
                      <div key={`select-ob-${ob.id}`} 
                          className={cn(
                             `mt-6 p-4 border-2 rounded-lg transition-all duration-200 ease-in-out`,
@@ -626,7 +626,7 @@ useEffect(() => {
     let originalPrice = product.priceInCents; 
     let discount = 0;
 
-    product.orderBumps?.forEach(ob => {
+    (Array.isArray(product.orderBumps) ? product.orderBumps : []).forEach(ob => {
         if (selectedTraditionalOrderBumps.includes(ob.id)) {
             const obPrice = ob.customPriceInCents ?? 0; 
             currentPrice += obPrice;
@@ -761,7 +761,7 @@ useEffect(() => {
 
     const saleProducts: SaleProductItem[] = [{ productId: product.id, name: product.name, quantity: 1, priceInCents: product.priceInCents, originalPriceInCents: product.priceInCents, slug: product.slug, deliveryUrl: product.deliveryUrl }];
     
-    if (product.orderBumps) {
+    if (Array.isArray(product.orderBumps) && product.orderBumps.length > 0) {
       for (const ob of product.orderBumps) {
         if (selectedTraditionalOrderBumps.includes(ob.id)) {
           const orderBumpFullProduct = await productService.getProductById(ob.productId); 
@@ -778,7 +778,7 @@ useEffect(() => {
     let priceForPixCalculation = product.priceInCents;
     let originalPriceForPixCalculation = product.priceInCents;
 
-    product.orderBumps?.forEach(ob => {
+    (Array.isArray(product.orderBumps) ? product.orderBumps : []).forEach(ob => {
       if (selectedTraditionalOrderBumps.includes(ob.id)) {
         const obPrice = ob.customPriceInCents ?? 0;
         priceForPixCalculation += obPrice;

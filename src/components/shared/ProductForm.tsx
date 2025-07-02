@@ -130,7 +130,12 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
     setDescription(initialData?.description || '');
     setPrice(initialData?.priceInCents ? (initialData.priceInCents / 100).toFixed(2).replace('.', ',') : '');
     
-    
+    setMainImageUrl(initialData?.imageUrl || '');
+    setMainImagePreview(initialData?.imageUrl || null);
+
+    setProductImageUrl(initialData?.productImageUrl || '');
+    setProductImagePreview(initialData?.productImageUrl || null);
+
     setDeliveryUrl(initialData?.deliveryUrl || '');
     
     const initialCheckoutCustomization = initialData?.checkoutCustomization 
@@ -216,8 +221,6 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
         }
     }
 
-    
-
     let finalLogoUrl = logoUrl;
     if (logoInputMode === 'upload' && logoFile) {
       setIsUploadingLogo(true);
@@ -237,7 +240,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
     const formData: Omit<Product, 'id' | 'platformUserId' | 'slug' | 'totalSales' | 'clicks' | 'checkoutViews' | 'conversionRate' | 'abandonmentRate'> = {
       name: productName, description, priceInCents: priceInCentsNum,
       imageUrl: finalMainImageUrl.trim() || undefined,
-      productImageUrl: finalProductImageUrl.trim() || undefined,
+      productImageUrl: finalProductImageUrl.trim() || undefined, // Adicionado
       deliveryUrl: deliveryUrl.trim() || undefined,
       checkoutCustomization: finalCheckoutCustomization,
       orderBumps: traditionalOrderBumps.length > 0 ? traditionalOrderBumps.filter(ob => ob.productId) : undefined,
@@ -260,8 +263,6 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
     }
   };
 
-  
-  
   const handleProductImageFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
@@ -289,7 +290,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
   ];
 
   const productImageInputTabs = [
-    { value: 'url', label: 'URL da Imagem', content: <Input type="url" value={productImageUrl} onChange={(e) => { setProductImageUrl(e.target.value); setProductImageFile(null); setProductImagePreview(e.target.value || null); notifyChange(); }} placeholder="https://exemplo.com/imagem.jpg" disabled={isSaving || isUploadingProductImage} icon={<LinkIcon className="h-5 w-5"/>}/> },
+    { value: 'url', label: 'URL da Imagem', content: <Input type="url" value={productImageUrl} onChange={(e) => { setProductImageUrl(e.target.value); setProductImageFile(null); setProductImagePreview(e.target.value || null); notifyChange(); }} placeholder="https://exemplo.com/imagem-pequena.jpg" disabled={isSaving || isUploadingProductImage} icon={<LinkIcon className="h-5 w-5"/>}/> },
     { value: 'upload', label: 'Enviar Arquivo', content: <Input type="file" accept="image/*" onChange={handleProductImageFileChange} disabled={isSaving || isUploadingProductImage} icon={<UploadIcon className="h-5 w-5"/>} /> },
   ];
 
@@ -325,7 +326,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
             productId: value,
             name: selectedProd?.name || '',
             description: selectedProd?.description.substring(0,100) || '',
-            customPriceInCents: selectedProd?.priceInCents,
+            customPriceInCents: bump.customPriceInCents !== undefined ? bump.customPriceInCents : selectedProd?.priceInCents,
             imageUrl: selectedProd?.imageUrl || ''
           };
         }
@@ -466,20 +467,20 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
 
 
   const traditionalOrderBumpProductOptions = (currentIndex: number) => {
-    const selectedProductIds = traditionalOrderBumps.map((bump, idx) => (idx !== currentIndex ? bump.productId : null)).filter(id => id !== null && id !== '');
+    const selectedProductIds = (Array.isArray(traditionalOrderBumps) ? traditionalOrderBumps : []).map((bump, idx) => (idx !== currentIndex ? bump.productId : null)).filter(id => id !== null && id !== '');
     if (postClickOffer?.productId) selectedProductIds.push(postClickOffer.productId);
     if (upsell?.productId) selectedProductIds.push(upsell.productId);
     return availableProductsForOffers.filter(p => !selectedProductIds.includes(p.id)).map(p => ({ value: p.id, label: `${p.name} (R$ ${(p.priceInCents / 100).toFixed(2).replace('.', ',')})` }));
   };
   
   const postClickOfferProductOptions = () => {
-      const selectedProductIds = traditionalOrderBumps.map(bump => bump.productId).filter(id => id !== null && id !== '');
+      const selectedProductIds = (Array.isArray(traditionalOrderBumps) ? traditionalOrderBumps : []).map(bump => bump.productId).filter(id => id !== null && id !== '');
       if (upsell?.productId) selectedProductIds.push(upsell.productId);
       return availableProductsForOffers.filter(p => !selectedProductIds.includes(p.id)).map(p => ({ value: p.id, label: `${p.name} (R$ ${(p.priceInCents / 100).toFixed(2).replace('.', ',')})` }));
   };
 
   const upsellProductOptions = () => {
-      const selectedProductIds = traditionalOrderBumps.map(bump => bump.productId).filter(id => id !== null && id !== '');
+      const selectedProductIds = (Array.isArray(traditionalOrderBumps) ? traditionalOrderBumps : []).map(bump => bump.productId).filter(id => id !== null && id !== '');
       if (postClickOffer?.productId) selectedProductIds.push(postClickOffer.productId);
       return availableProductsForOffers.filter(p => !selectedProductIds.includes(p.id)).map(p => ({ value: p.id, label: `${p.name} (R$ ${(p.priceInCents / 100).toFixed(2).replace('.', ',')})` }));
   };
@@ -489,8 +490,8 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
   const wrappedSetPrice = (val: string) => { setPrice(val); notifyChange(); };
   const wrappedSetDeliveryUrl = (val: string) => { setDeliveryUrl(val); notifyChange(); };
   const wrappedSetMainImageInputMode = (val: 'url' | 'upload') => { setMainImageInputMode(val); notifyChange(); };
-  const wrappedSetProductImageInputMode = (val: 'url' | 'upload') => { setProductImageInputMode(val); notifyChange(); };
   const wrappedSetLogoInputMode = (val: 'url' | 'upload') => { setLogoInputMode(val); notifyChange(); };
+  const wrappedSetProductImageInputMode = (val: 'url' | 'upload') => { setProductImageInputMode(val); notifyChange(); };
 
   const formatCurrencyForInput = (valueInCents?: number) => {
     if (valueInCents === undefined || isNaN(valueInCents)) return '';
@@ -516,11 +517,12 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
                   {isUploadingMainImage && <div className="flex items-center text-sm text-accent-blue-neon"><LoadingSpinner size="sm" className="mr-2"/>Enviando imagem...</div>}
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-text-default">Imagem do Produto (Thumbnail na Lista)</label>
+                  <label className="block text-sm font-medium text-text-default">Imagem do Produto (Thumbnail)</label>
                   <Tabs tabs={productImageInputTabs} defaultValue={productImageInputMode} onValueChange={(val) => wrappedSetProductImageInputMode(val as 'url' | 'upload')} />
                   {productImagePreview && <img src={productImagePreview} alt="Prévia da Imagem do Produto" className="mt-2 max-h-48 w-auto rounded-lg border border-border-subtle shadow-sm"/>}
                   {isUploadingProductImage && <div className="flex items-center text-sm text-accent-blue-neon"><LoadingSpinner size="sm" className="mr-2"/>Enviando imagem...</div>}
                 </div>
+                
                 <Input label="Preço (R$)" name="price" type="text" value={price} onChange={(e) => wrappedSetPrice(e.target.value)} required placeholder="Ex: 197,00" disabled={isSaving}/>
                 <Input label="URL de Entrega (Opcional)" name="deliveryUrl" type="url" value={deliveryUrl} onChange={(e) => wrappedSetDeliveryUrl(e.target.value)} placeholder="https://areademembros.com/acesso-curso" icon={<OpenLockIcon className="h-5 w-5 text-text-muted"/>} disabled={isSaving}/>
                 <Textarea label="Descrição (Controle Interno)" name="description" value={description} onChange={(e) => wrappedSetDescription(e.target.value)} placeholder="Descreva seu produto para seu controle interno..." rows={3} disabled={isSaving}/>
@@ -607,7 +609,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ initialData, onSubmit,
           <Accordion title="Order Bumps (Checkbox - até 5)" defaultOpen={true}>
             <ToggleSwitch label="Habilitar animação de destaque nos Order Bumps?" enabled={checkoutCustomization.animateTraditionalOrderBumps ?? true} onEnabledChange={(isEnabled) => handleCustomizationChange('animateTraditionalOrderBumps', isEnabled)} disabled={isSaving} className="mb-4"/>
             <AnimatePresence>
-              {traditionalOrderBumps.map((bump, index) => (
+              {(Array.isArray(traditionalOrderBumps) ? traditionalOrderBumps : []).map((bump, index) => (
                 <MotionDiv key={bump.id} variants={listItemVariants} initial="initial" animate="animate" exit="exit" layout className="space-y-3 p-4 border border-border-subtle rounded-xl bg-bg-surface-opaque mb-4">
                   <h4 className="text-sm font-semibold text-text-strong">Order Bump {index + 1}</h4>
                   <Combobox label="Selecionar Produto:" options={traditionalOrderBumpProductOptions(index)} value={bump.productId} onValueChange={(value) => updateTraditionalOrderBump(index, 'productId', value)} placeholder="Escolha um produto" emptyMessage="Nenhum produto disponível." disabled={isSaving}/>

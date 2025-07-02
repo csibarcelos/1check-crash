@@ -132,7 +132,7 @@ const ClientesPage: React.FC = () => {
         </span>
       ),
     },
-    { key: 'lastPurchaseDate', label: 'Última Compra', renderCell: (customer) => new Date(customer.lastPurchaseDate).toLocaleDateString() },
+    { key: 'lastPurchaseDate', label: 'Última Compra', renderCell: (customer) => customer.lastPurchaseDate ? new Date(customer.lastPurchaseDate).toLocaleDateString() : 'N/A' },
     {
       key: 'actions',
       label: 'Ações',
@@ -229,8 +229,8 @@ const ClientesPage: React.FC = () => {
               <h3 className="text-md font-semibold text-neutral-100 border-b border-neutral-600 pb-1 mb-2">Histórico de Compras</h3>
               <InfoItem label="Total Gasto" value={<span className="font-bold text-primary">{formatCurrency(selectedCustomer.totalSpentInCents)}</span>} />
               <InfoItem label="Total de Pedidos" value={selectedCustomer.totalOrders} />
-              <InfoItem label="Primeira Compra" value={new Date(selectedCustomer.firstPurchaseDate).toLocaleDateString()} />
-              <InfoItem label="Última Compra" value={new Date(selectedCustomer.lastPurchaseDate).toLocaleDateString()} />
+              <InfoItem label="Primeira Compra" value={selectedCustomer.firstPurchaseDate ? new Date(selectedCustomer.firstPurchaseDate).toLocaleDateString() : 'N/A'} />
+              <InfoItem label="Última Compra" value={selectedCustomer.lastPurchaseDate ? new Date(selectedCustomer.lastPurchaseDate).toLocaleDateString() : 'N/A'} />
               <InfoItem label="Estágio no Funil" value={<span className={`px-1.5 py-0.5 text-xs font-semibold rounded-full ${getFunnelStageClass(selectedCustomer.funnelStage as FunnelStage)}`}>{getFunnelStageLabel(selectedCustomer.funnelStage as FunnelStage)}</span>} />
             </section>
             <section>

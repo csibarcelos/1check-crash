@@ -304,6 +304,34 @@ port = 54327
 backend = "postgres"
 
 # Experimental features may be deprecated any time
+[functions]
+# Local functions that are deployed to Supabase Edge Functions.
+# Example: functions/hello-world
+# Example: functions/hello-world/index.ts
+# Example: functions/hello-world/main.ts
+# Example: functions/hello-world/func.ts
+# Example: functions/hello-world/function.ts
+# Example: functions/hello-world/mod.ts
+# Example: functions/hello-world/src/index.ts
+# Example: functions/hello-world/src/main.ts
+# Example: functions/hello-world/src/func.ts
+# Example: functions/hello-world/src/function.ts
+# Example: functions/hello-world/src/mod.ts
+# Example: functions/hello-world/deno.json
+# Example: functions/hello-world/package.json
+# Example: functions/hello-world/tsconfig.json
+# Example: functions/hello-world/src/deno.json
+# Example: functions/hello-world/src/package.json
+# Example: functions/hello-world/src/tsconfig.json
+
+[functions.check-pending-pix-sales]
+import_map = "./functions/check-pending-pix-sales/deno.json"
+entrypoint = "./functions/check-pending-pix-sales/index.ts"
+
+[functions.send-whatsapp-message]
+import_map = "./functions/send-whatsapp-message/deno.json"
+entrypoint = "./functions/send-whatsapp-message/index.ts"
+
 [experimental]
 # Configures Postgres storage engine to use OrioleDB (S3)
 orioledb_version = ""

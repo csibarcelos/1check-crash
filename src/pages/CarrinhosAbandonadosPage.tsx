@@ -63,6 +63,11 @@ const CarrinhosAbandonadosPage: React.FC = () => {
   const { abandonedCarts: allCarts, isLoading, error: dataError } = useData();
   const [localError, setLocalError] = useState<string|null>(null);
 
+  const generateAbandonedCartWhatsAppMessage = (cart: AbandonedCart): string => {
+    const customerName = cart.customerName?.split(' ')[0] || 'cliente';
+    return `Olá ${customerName}! Percebemos que você deixou um item no seu carrinho. Gostaria de finalizar a compra?`;
+  };
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<AbandonedCartStatus | ''>( '');
 
@@ -138,7 +143,7 @@ const CarrinhosAbandonadosPage: React.FC = () => {
           <div className="text-xs text-text-muted">{cart.customerEmail}</div>
           {cart.customerWhatsapp && (
             <a
-              href={generateWhatsAppLink(cart.customerWhatsapp, `Olá ${cart.customerName || 'Cliente'}, vi que você demonstrou interesse em nosso produto "${cart.productName}" e não finalizou a compra. Gostaria de ajuda?`)}
+              href={generateWhatsAppLink(cart.customerWhatsapp, generateAbandonedCartWhatsAppMessage(cart))}
               target="_blank"
               rel="noopener noreferrer"
               title="Contactar via WhatsApp"
@@ -238,28 +243,32 @@ const CarrinhosAbandonadosPage: React.FC = () => {
         <Modal
           isOpen={isDetailsModalOpen}
           onClose={handleCloseDetailsModal}
-          title={`Detalhes do Carrinho: ${selectedCart.id.substring(0,8)}...`}
-          size="lg"
+          title={`Detalhes do Carrinho: #${selectedCart.id}`}
+          size="xl"
         >
-          <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 text-sm">
+          <div className="space-y-6 max-h-[75vh] overflow-y-auto pr-3 text-sm">
             <section>
-              <h3 className="text-md font-semibold text-neutral-100 border-b border-neutral-600 pb-1 mb-2">Informações do Cliente</h3>
-              <InfoItem label="Nome" value={selectedCart.customerName || 'N/A'} />
-              <InfoItem label="Email" value={selectedCart.customerEmail} />
-              <InfoItem
-                label="WhatsApp"
-                value={selectedCart.customerWhatsapp || 'N/A'}
-                isWhatsApp={!!selectedCart.customerWhatsapp}
-                whatsAppUrl={selectedCart.customerWhatsapp ? generateWhatsAppLink(selectedCart.customerWhatsapp, `Olá ${selectedCart.customerName || 'Cliente'}, sobre seu carrinho...`) : undefined}
-              />
+              <h3 className="text-lg font-semibold text-accent-gold border-b border-border-subtle pb-2 mb-3">Informações do Cliente</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+                <InfoItem label="Nome" value={selectedCart.customerName || 'N/A'} />
+                <InfoItem label="Email" value={selectedCart.customerEmail} />
+                <InfoItem
+                  label="WhatsApp"
+                  value={selectedCart.customerWhatsapp || 'N/A'}
+                  isWhatsApp={!!selectedCart.customerWhatsapp}
+                  whatsAppUrl={selectedCart.customerWhatsapp ? generateWhatsAppLink(selectedCart.customerWhatsapp, generateAbandonedCartWhatsAppMessage(selectedCart)) : undefined}
+                />
+              </div>
             </section>
             <section>
-              <h3 className="text-md font-semibold text-neutral-100 border-b border-neutral-600 pb-1 mb-2">Detalhes do Carrinho</h3>
-              <InfoItem label="Produto" value={selectedCart.productName} />
-              <InfoItem label="Valor Potencial" value={<span className="font-bold text-primary">{formatCurrency(selectedCart.potentialValueInCents)}</span>} />
-              <InfoItem label="Status Atual" value={<span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${getStatusClass(selectedCart.status as AbandonedCartStatus)}`}>{getStatusLabel(selectedCart.status as AbandonedCartStatus)}</span>} />
-              <InfoItem label="Criado em" value={new Date(selectedCart.date).toLocaleString()} />
-              <InfoItem label="Última Interação" value={new Date(selectedCart.lastInteractionAt).toLocaleString()} />
+              <h3 className="text-lg font-semibold text-accent-gold border-b border-border-subtle pb-2 mb-3">Detalhes do Carrinho</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+                <InfoItem label="Produto" value={selectedCart.productName} />
+                <InfoItem label="Valor Potencial" value={<span className="font-bold text-primary">{formatCurrency(selectedCart.potentialValueInCents)}</span>} />
+                <InfoItem label="Status Atual" value={<span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${getStatusClass(selectedCart.status as AbandonedCartStatus)}`}>{getStatusLabel(selectedCart.status as AbandonedCartStatus)}</span>} />
+                <InfoItem label="Criado em" value={new Date(selectedCart.date).toLocaleString()} />
+                <InfoItem label="Última Interação" value={new Date(selectedCart.lastInteractionAt).toLocaleString()} />
+              </div>
             </section>
              {selectedCart.trackingParameters && Object.keys(selectedCart.trackingParameters).length > 0 && (
                 <section>
@@ -272,8 +281,8 @@ const CarrinhosAbandonadosPage: React.FC = () => {
                 </section>
              )}
             <section>
-              <h3 className="text-md font-semibold text-neutral-100 border-b border-neutral-600 pb-1 mb-2">Atualizar Status</h3>
-              <div className="flex flex-wrap gap-2">
+              <h3 className="text-lg font-semibold text-accent-gold border-b border-border-subtle pb-2 mb-3">Atualizar Status</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {(Object.values(AbandonedCartStatus) as AbandonedCartStatus[]).map(statusValue => (
                   <Button
                     key={statusValue}

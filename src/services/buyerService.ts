@@ -13,8 +13,8 @@ const fromSupabaseBuyerRow = (row: BuyerRow): Buyer => ({
     email: row.email || undefined,
     name: row.name || undefined,
     whatsapp: row.whatsapp || undefined,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
+    created_at: row.created_at || undefined,
+    updated_at: row.updated_at || undefined,
 });
 
 

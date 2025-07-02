@@ -55,7 +55,6 @@ const ProductEditPage: React.FC = () => {
     if (productId) {
       const productData = products.find(p => p.id === productId);
       setInitialProductData(productData);
-      
       if (productData) {
         setUserProductsForOffers(products.filter(p => p.id !== productId));
       } else if (!isDataLoading) {

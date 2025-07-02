@@ -8,6 +8,7 @@ interface UseRealtimeProps<T> {
   onInsert?: (newRecord: T) => void;
   onUpdate?: (updatedRecord: T) => void;
   onDelete?: (deletedRecord: T) => void;
+  accessToken?: string;
 }
 
 export function useRealtime<T extends { [key: string]: any; }>({ 
@@ -15,7 +16,8 @@ export function useRealtime<T extends { [key: string]: any; }>({
   enabled = true, 
   onInsert, 
   onUpdate, 
-  onDelete 
+  onDelete,
+  accessToken // Adicionado accessToken como prop
 }: UseRealtimeProps<T>) {
   const channelRef = useRef<RealtimeChannel | null>(null);
 
@@ -54,5 +56,5 @@ export function useRealtime<T extends { [key: string]: any; }>({
         channelRef.current.unsubscribe();
       }
     };
-  }, [table, enabled, onInsert, onUpdate, onDelete]);
+  }, [table, enabled, onInsert, onUpdate, onDelete, accessToken]);
 }

@@ -91,20 +91,73 @@ export const defaultUtmParams: UtmParams = {
 
 export const defaultDeliveryEmailConfig: DeliveryEmailConfig = {
   enabled: true, // Delivery email is enabled by default.
-  subject: 'Seu produto: {{product_name}}',
-  bodyHtml: '<p>Olá {{customer_name}},</p><p>Obrigado por sua compra! Você pode acessar seu produto através do link abaixo:</p><p><a href="{{product_delivery_url}}">Acessar {{product_name}}</a></p><p>Atenciosamente,<br>Equipe {{shop_name}}</p>',
+  subject: 'Seu acesso aos produtos de {{shop_name}} chegou! (Pedido #{{order_id}})',
+  bodyHtml: `
+    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="color: #0D9488;">Acesso Liberado!</h1>
+      </div>
+      <p>Olá <strong>{{customer_name}}</strong>,</p>
+      <p>Seu pedido <strong>#{{order_id}}</strong> em <strong>{{shop_name}}</strong> foi confirmado e seus acessos estão liberados!</p>
+      <p>Abaixo estão os links para você acessar seus produtos:</p>
+      <div style="margin: 20px 0; padding: 15px; background-color: #f9f9f9; border-left: 4px solid #0D9488; border-radius: 4px;">
+        <h3 style="color: #0D9488; margin-top: 0;">Seus Produtos:</h3>
+        <ul style="list-style: none; padding: 0;">
+          {{product_list_html}}
+        </ul>
+      </div>
+      <p>Se tiver qualquer dúvida ou precisar de ajuda, entre em contato conosco. Estamos à disposição para ajudar!</p>
+      <p>Atenciosamente,<br>Equipe <strong>{{shop_name}}</strong></p>
+      <div style="text-align: center; margin-top: 30px; font-size: 12px; color: #999;">
+        <p>&copy; ${new Date().getFullYear()} {{shop_name}}. Todos os direitos reservados.</p>
+      </div>
+    </div>
+  `,
 };
 
 export const defaultFollowUpEmailConfig: FollowUpEmailConfig = {
   enabled: false,
   delayDays: 3,
-  subject: 'O que você achou do {{product_name}}?',
-  bodyHtml: '<p>Olá {{customer_name}},</p><p>Esperamos que esteja aproveitando seu produto: {{product_name}}.</p><p>Seu feedback é muito importante para nós!</p><p>Atenciosamente,<br>Equipe {{shop_name}}</p>',
+  subject: 'O que você achou dos produtos de {{shop_name}}? (Pedido #{{order_id}})',
+  bodyHtml: `
+    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="color: #0D9488;">Seu Feedback é Importante!</h1>
+      </div>
+      <p>Olá <strong>{{customer_name}}</strong>,</p>
+      <p>Esperamos que esteja aproveitando seus produtos de <strong>{{shop_name}}</strong> (Pedido <strong>#{{order_id}}</strong>):</p>
+      <div style="margin: 20px 0; padding: 15px; background-color: #f9f9f9; border-left: 4px solid #0D9488; border-radius: 4px;">
+        <h3 style="color: #0D9488; margin-top: 0;">Seus Produtos:</h3>
+        <ul style="list-style: none; padding: 0;">
+          {{product_list_html}}
+        </ul>
+      </div>
+      <p>Gostaríamos muito de saber sua opinião sobre sua experiência e sobre os produtos que você adquiriu.</p>
+      <p>Seu feedback nos ajuda a melhorar e a oferecer sempre o melhor para você!</p>
+      <p>Atenciosamente,<br>Equipe <strong>{{shop_name}}</strong></p>
+      <div style="text-align: center; margin-top: 30px; font-size: 12px; color: #999;">
+        <p>&copy; ${new Date().getFullYear()} {{shop_name}}. Todos os direitos reservados.</p>
+      </div>
+    </div>
+  `,
 };
 
 export const defaultPostPurchaseEmails: PostPurchaseEmails = {
     delivery: defaultDeliveryEmailConfig,
     followUp: defaultFollowUpEmailConfig,
+};
+
+export const defaultWhatsappTemplates = {
+  saleApproved: {
+    enabled: true,
+    message: "Olá {{customer_name}}! Seu pedido #{{order_id}} foi aprovado! Acesse seus produtos aqui: {{product_delivery_links_whatsapp}}. Qualquer dúvida, estamos à disposição!",
+    placeholders: ["{{customer_name}}", "{{order_id}}", "{{product_delivery_links_whatsapp}}", "{{shop_name}}", "{{pix_copy_paste_code}}", "{{pix_qr_code_image_url}}"]
+  },
+  abandonedCart: {
+    enabled: true,
+    message: "Olá {{customer_name}}! Notamos que você deixou alguns itens no seu carrinho em {{shop_name}}. Que tal finalizar sua compra agora? {{abandoned_checkout_link}}",
+    placeholders: ["{{customer_name}}", "{{shop_name}}", "{{abandoned_checkout_link}}", "{{product_names}}"]
+  }
 };
 
 
@@ -147,7 +200,7 @@ export const fromSupabaseProductRow = (row: ProductRow): Product => {
     description: row.description,
     priceInCents: row.price_in_cents,
     imageUrl: row.image_url || undefined,
-    productImageUrl: row.product_image_url || undefined,
+    productImageUrl: row.product_image_url || undefined, // Mapeamento adicionado para a imagem do produto (thumbnail)
     checkoutCustomization: {
         ...defaultProductCheckoutCustomization,
         ...(checkoutCustomizationData || {}),
@@ -180,7 +233,7 @@ const toSupabaseRow = (productData: Partial<Product>): Partial<ProductUpdate> =>
         description: productData.description,
         price_in_cents: productData.priceInCents,
         image_url: productData.imageUrl || null,
-        product_image_url: productData.productImageUrl || null,
+        product_image_url: productData.productImageUrl || null, // Adicionado para salvar a URL da imagem do produto (thumbnail)
         checkout_customization: checkoutCustomizationToSave as unknown as Json,
         delivery_url: productData.deliveryUrl || null,
         order_bumps: productData.orderBumps ? productData.orderBumps as unknown as Json : null,
@@ -358,15 +411,14 @@ export const productService = {
         description: productToClone.description,
         priceInCents: productToClone.priceInCents,
         imageUrl: productToClone.imageUrl,
-        productImageUrl: productToClone.productImageUrl,
+        productImageUrl: productToClone.productImageUrl, // Adicionado para clonar a URL da imagem do produto (thumbnail)
         checkoutCustomization: productToClone.checkoutCustomization,
         deliveryUrl: productToClone.deliveryUrl,
-        orderBumps: productToClone.orderBumps,
         postClickOffer: productToClone.postClickOffer,
         upsell: productToClone.upsell,
-        coupons: productToClone.coupons,
         utmParams: productToClone.utmParams,
         postPurchaseEmailConfig: productToClone.postPurchaseEmailConfig,
+        whatsappTemplates: productToClone.whatsappTemplates,
     };
     
     invalidateCache(productToClone.id, productToClone.slug);

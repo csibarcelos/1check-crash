@@ -70,7 +70,7 @@ const fromSupabaseSaleRow = (row: SaleRow): Sale => {
   return {
     id: row.id,
     platformUserId: row.platform_user_id,
-    pushInPayTransactionId: row.push_in_pay_transaction_id,
+    pushInPayTransactionId: row.push_in_pay_transaction_id || '',
     upsellPushInPayTransactionId: row.upsell_push_in_pay_transaction_id || undefined,
     orderIdUrmify: row.order_id_urmify || undefined,
     products: parseJsonField<SaleProductItem[]>(row.products, []),
@@ -110,7 +110,6 @@ const fromSupabaseProductRow = (row: ProductRow): AppProduct => {
     description: row.description,
     priceInCents: row.price_in_cents,
     imageUrl: row.image_url || undefined,
-    productImageUrl: row.product_image_url || undefined,
     checkoutCustomization: parseJsonField<ProductCheckoutCustomization>(row.checkout_customization, defaultCheckoutCustomizationForSuperAdmin),
     deliveryUrl: row.delivery_url || undefined,
     totalSales: row.total_sales || 0,
@@ -195,7 +194,7 @@ export const superAdminService = {
                     isSuperAdmin: profileData?.is_super_admin || false,
                     isActive: profileData?.is_active === null || profileData?.is_active === undefined ? true : profileData.is_active,
                     createdAt: user.created_at,
-                };
+                } as User;
             });
 
             setCachedData(cacheKey, users);

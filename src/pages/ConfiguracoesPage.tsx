@@ -5,12 +5,13 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { settingsService } from '@/services/settingsService';
-import { AppSettings, NotificationSettings } from '@/types';
+import { AppSettings, NotificationSettings, WhatsappTemplates } from '@/types';
 import { CogIcon, COLOR_PALETTE_OPTIONS, InformationCircleIcon } from '../constants.tsx';
 import { useData } from '@/contexts/DataContext';
 import { useToast } from '@/contexts/ToastContext';
 import { Tabs, TabConfig } from '@/components/ui/Tabs'; 
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
+import { Accordion } from '@/components/ui/Accordion';
 
 const initialAppSettings: AppSettings = {
   checkoutIdentity: {
@@ -38,6 +39,18 @@ const initialAppSettings: AppSettings = {
     subject: 'Você esqueceu algo no seu carrinho!',
     bodyHtml: '<p>Recupere seu carrinho.</p>'
   },
+  whatsappTemplates: { // Default WhatsApp templates
+    saleApproved: {
+      enabled: true,
+      message: "Olá {{customer_name}}! Seu pedido #{{order_id}} foi aprovado! Acesse seus produtos aqui: {{product_delivery_links_whatsapp}}. Qualquer dúvida, estamos à disposição!",
+      placeholders: ["{{customer_name}}", "{{order_id}}", "{{product_delivery_links_whatsapp}}", "{{shop_name}}", "{{pix_copy_paste_code}}", "{{pix_qr_code_image_url}}"]
+    },
+    abandonedCart: {
+      enabled: true,
+      message: "Olá {{customer_name}}! Notamos que você deixou alguns itens no seu carrinho em {{shop_name}}. Que tal finalizar sua compra agora? {{abandoned_checkout_link}}",
+      placeholders: ["{{customer_name}}", "{{shop_name}}", "{{abandoned_checkout_link}}", "{{product_names}}"]
+    }
+  } as WhatsappTemplates, // Explicitly cast to WhatsappTemplates
   notificationSettings: {
     notifyOnAbandonedCart: true,
     notifyOnOrderPlaced: true,
@@ -49,12 +62,14 @@ const initialAppSettings: AppSettings = {
 const ConfiguracoesPage: React.FC = () => {
   const { appSettings, isLoading: isDataLoading, error: dataError, refreshData } = useData();
   const [settings, setSettings] = useState<AppSettings>(initialAppSettings);
+  const [whatsappTemplates, setWhatsappTemplates] = useState<WhatsappTemplates>(initialAppSettings.whatsappTemplates || { saleApproved: { enabled: false, message: "", placeholders: [] }, abandonedCart: { enabled: false, message: "", placeholders: [] } });
   const [isSaving, setIsSaving] = useState(false);
   const { showToast } = useToast();
 
   useEffect(() => {
     if (appSettings) {
         setSettings({ ...initialAppSettings, ...appSettings });
+        setWhatsappTemplates(appSettings.whatsappTemplates || { saleApproved: { enabled: false, message: "", placeholders: [] }, abandonedCart: { enabled: false, message: "", placeholders: [] } });
     }
     if (dataError) {
         showToast({ title: "Erro ao Carregar", description: dataError, variant: "error" });
@@ -64,17 +79,14 @@ const ConfiguracoesPage: React.FC = () => {
 
   const handleInputChange = (section: keyof AppSettings, field: string, value: any) => {
     setSettings(prev => {
-      const sectionObject = prev[section] as Record<string, any> | undefined;
-      if (typeof sectionObject === 'object' && sectionObject !== null) {
-        return {
-          ...prev,
-          [section]: {
-            ...sectionObject,
-            [field]: value,
-          },
-        };
-      }
-      return { ...prev, [field as keyof AppSettings]: value };
+      const sectionObject = prev[section] as Record<string, any>;
+      return {
+        ...prev,
+        [section]: {
+          ...sectionObject,
+          [field]: value,
+        },
+      };
     });
   };
 
@@ -92,6 +104,71 @@ const ConfiguracoesPage: React.FC = () => {
     }));
   };
 
+  const handleWhatsappTemplateChange = (type: keyof WhatsappTemplates, field: 'enabled' | 'message', value: boolean | string) => {
+    setWhatsappTemplates((prev: WhatsappTemplates) => ({
+      ...prev,
+      [type]: {
+        ...(prev[type] || {}),
+        [field]: value,
+      },
+    }));
+  };
+
+  const renderWhatsappTemplatesTab = () => {
+    return (
+      <Card title="Mensagens Padrão de WhatsApp">
+        <div className="space-y-6">
+          <p className="text-sm text-text-muted">
+            Configure as mensagens automáticas de WhatsApp que serão enviadas em diferentes eventos.
+            Use os placeholders disponíveis para personalizar as mensagens.
+          </p>
+
+          <Accordion title="Mensagem de Venda Aprovada">
+            <div className="space-y-4">
+              <ToggleSwitch
+                label="Habilitar mensagem de venda aprovada"
+                enabled={whatsappTemplates.saleApproved.enabled}
+                onEnabledChange={(val) => handleWhatsappTemplateChange('saleApproved', 'enabled', val)}
+                disabled={isSaving}
+              />
+              <Input
+                label="Mensagem"
+                value={whatsappTemplates.saleApproved.message}
+                onChange={(e) => handleWhatsappTemplateChange('saleApproved', 'message', e.target.value)}
+                placeholder="Sua mensagem de venda aprovada"
+                disabled={isSaving}
+              />
+              <p className="text-xs text-text-muted mt-2">
+                Placeholders disponíveis: {whatsappTemplates.saleApproved.placeholders.join(', ')}
+              </p>
+            </div>
+          </Accordion>
+
+          <Accordion title="Mensagem de Carrinho Abandonado">
+            <div className="space-y-4">
+              <ToggleSwitch
+                label="Habilitar mensagem de carrinho abandonado"
+                enabled={whatsappTemplates.abandonedCart.enabled}
+                onEnabledChange={(val) => handleWhatsappTemplateChange('abandonedCart', 'enabled', val)}
+                disabled={isSaving}
+              />
+              <Input
+                label="Mensagem"
+                value={whatsappTemplates.abandonedCart.message}
+                onChange={(e) => handleWhatsappTemplateChange('abandonedCart', 'message', e.target.value)}
+                placeholder="Sua mensagem de carrinho abandonado"
+                disabled={isSaving}
+              />
+              <p className="text-xs text-text-muted mt-2">
+                Placeholders disponíveis: {whatsappTemplates.abandonedCart.placeholders.join(', ')}
+              </p>
+            </div>
+          </Accordion>
+        </div>
+      </Card>
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
@@ -102,6 +179,7 @@ const ConfiguracoesPage: React.FC = () => {
         checkoutIdentity: settings.checkoutIdentity,
         smtpSettings: settings.smtpSettings,
         notificationSettings: settings.notificationSettings,
+        whatsappTemplates: whatsappTemplates,
       };
 
       await settingsService.saveAppSettings(settingsToSave);
@@ -300,6 +378,11 @@ const ConfiguracoesPage: React.FC = () => {
           </div>
         </Card>
       )
+    },
+    {
+      value: 'whatsapp',
+      label: 'WhatsApp',
+      content: renderWhatsappTemplatesTab()
     }
   ];
 

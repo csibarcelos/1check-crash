@@ -41,13 +41,13 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 
 const defaultAppSettings: AppSettings = {
     checkoutIdentity: { logoUrl: '', faviconUrl: '', brandColor: '#0D9488' },
-    apiTokens: { pushinPay: '', utmify: '', pushinPayEnabled: false, utmifyEnabled: false },
+    apiTokens: { pushinPay: '', utmify: '', pushinPayEnabled: false, utmifyEnabled: false, pushinPayApiToken: '', pushinPayWebhookToken: '' },
     notificationSettings: { notifyOnAbandonedCart: true, notifyOnOrderPlaced: true, notifyOnSaleApproved: true, playSaleSound: true },
     abandonedCartRecoveryConfig: { enabled: false, delayMinutes: 360, subject: '', bodyHtml: '' },
 };
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { isAuthenticated, isLoading: isAuthLoading, accessToken } = useAuth();
   const { showToast } = useToast();
   const [appSettings, setAppSettings] = useState<AppSettings | null>(defaultAppSettings);
   const [products, setProducts] = useState<Product[]>([]);
@@ -81,7 +81,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setAppSettings(settingsData);
       setProducts(productsData.sort((a, b) => (a.name.toLowerCase() > b.name.toLowerCase() ? 1 : -1)));
       setSales(salesData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-      setCustomers(customersData.sort((a,b) => new Date(b.lastPurchaseDate || 0).getTime() - new Date(a.lastPurchaseDate || 0).getTime()));
+      setCustomers(customersData.sort((a,b) => new Date(b.lastPurchaseDate || '').getTime() - new Date(a.lastPurchaseDate || '').getTime()));
       setAbandonedCarts(cartsData.sort((a,b) => new Date(b.lastInteractionAt).getTime() - new Date(a.lastInteractionAt).getTime()));
     } catch (err: any) {
       console.error('[DataContext] Error fetching initial data:', err);
@@ -175,7 +175,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const handleCustomerInsert = useCallback((newRecord: any) => {
     console.log('[DataContext] Realtime: New Customer Inserted', newRecord.id);
     const newCustomer = fromSupabaseCustomerRow(newRecord);
-    setCustomers(prev => [newCustomer, ...prev].sort((a,b) => new Date(b.lastPurchaseDate || 0).getTime() - new Date(a.lastPurchaseDate || 0).getTime()));
+    setCustomers(prev => [newCustomer, ...prev].sort((a,b) => new Date(b.lastPurchaseDate || '').getTime() - new Date(a.lastPurchaseDate || '').getTime()));
   }, []);
   
   const handleCustomerUpdate = useCallback((updatedRecord: any) => {
@@ -186,7 +186,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (exists) {
         return prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c);
       }
-      return [updatedCustomer, ...prev].sort((a,b) => new Date(b.lastPurchaseDate || 0).getTime() - new Date(a.lastPurchaseDate || 0).getTime());
+      return [updatedCustomer, ...prev].sort((a,b) => new Date(b.lastPurchaseDate || '').getTime() - new Date(a.lastPurchaseDate || '').getTime());
     });
   }, []);
 
@@ -224,36 +224,40 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
 
   // Realtime Listeners
-  useRealtime<any>({
+  useRealtime<Sale>({
     table: 'sales',
     enabled: isAuthenticated,
     onInsert: handleSaleInsert,
     onUpdate: handleSaleUpdate,
-    onDelete: handleSaleDelete
+    onDelete: handleSaleDelete,
+    accessToken: accessToken || undefined // Passando o accessToken, ou undefined se for null
   });
 
-  useRealtime<any>({
+  useRealtime<Product>({
     table: 'products',
     enabled: isAuthenticated,
     onInsert: handleProductInsert,
     onUpdate: handleProductUpdate,
-    onDelete: handleProductDelete
+    onDelete: handleProductDelete,
+    accessToken: accessToken || undefined // Passando o accessToken, ou undefined se for null
   });
   
-  useRealtime<any>({
+  useRealtime<AbandonedCart>({
     table: 'abandoned_carts',
     enabled: isAuthenticated,
     onInsert: handleAbandonedCartInsert,
     onUpdate: handleAbandonedCartUpdate,
     onDelete: handleAbandonedCartDelete,
+    accessToken: accessToken || undefined // Passando o accessToken, ou undefined se for null
   });
   
-   useRealtime<any>({
+   useRealtime<Customer>({
     table: 'customers',
     enabled: isAuthenticated,
     onInsert: handleCustomerInsert,
     onUpdate: handleCustomerUpdate,
     onDelete: handleCustomerDelete,
+    accessToken: accessToken || undefined // Passando o accessToken, ou undefined se for null
   });
 
   const value = {

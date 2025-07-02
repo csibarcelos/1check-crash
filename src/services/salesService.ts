@@ -1,7 +1,10 @@
 
-import { Sale, SaleProductItem, PaymentMethod, PaymentStatus } from '@/types'; 
-import { supabase, getSupabaseUserId } from '@/supabaseClient'; 
-import { Database, Json } from '@/types/supabase'; 
+import { Sale, SaleProductItem, PaymentMethod, PaymentStatus, SaleTransaction } from '@/types';
+import { supabase, getSupabaseUserId } from '@/supabaseClient';
+import { Database, Json } from '@/types/supabase';
+
+type SaleRow = Database['public']['Tables']['sales']['Row'];
+
 
 // --- START: CACHE MANAGEMENT ---
 const salesCache = new Map<string, { sales: Sale[], timestamp: number }>();
@@ -45,8 +48,6 @@ const invalidateSaleByIdCache = (saleId: string) => {
 
 // --- END: CACHE MANAGEMENT ---
 
-type SaleRow = Database['public']['Tables']['sales']['Row'];
-
 const parseJsonField = <T>(field: Json | null | undefined, defaultValue: T): T => {
   if (field === null || field === undefined) {
     return defaultValue;
@@ -68,8 +69,9 @@ const parseJsonField = <T>(field: Json | null | undefined, defaultValue: T): T =
 export const fromSupabaseSaleRow = (row: SaleRow): Sale => { 
   return {
     id: row.id,
-    buyerId: row.buyer_id || undefined, 
-    platformUserId: row.platform_user_id, pushInPayTransactionId: row.push_in_pay_transaction_id,
+    platformUserId: row.platform_user_id,
+    pushInPayTransactionId: row.push_in_pay_transaction_id || '', // Assuming it's always present or can be empty string
+    buyerId: row.buyer_id || undefined,
     upsellPushInPayTransactionId: row.upsell_push_in_pay_transaction_id || undefined,
     orderIdUrmify: row.order_id_urmify || undefined,
     products: parseJsonField<SaleProductItem[]>(row.products, []),
@@ -86,6 +88,8 @@ export const fromSupabaseSaleRow = (row: SaleRow): Sale => {
       userCommissionInCents: row.commission_user_commission_in_cents, currency: row.commission_currency,
     } : undefined,
     platformCommissionInCents: row.platform_commission_in_cents || undefined,
+    pixQrCode: row.pix_qr_code || undefined,
+    pixQrCodeBase64: row.pix_qr_code_base64 || undefined,
   };
 };
 
@@ -141,6 +145,26 @@ export const salesService = {
     }
   },
 
+  getSaleTransactionById: async (transactionId: string, productOwnerUserId: string, saleId: string): Promise<SaleTransaction | undefined> => {
+    try {
+      const { data, error } = await supabase.functions.invoke('verificar-status-pix', {
+        body: { transactionId, productOwnerUserId, saleId },
+      });
+
+      if (error) {
+        console.error(`Supabase function call 'verificar-status-pix' error for transaction ${transactionId}:`, error);
+        throw new Error(error.message || 'Falha ao buscar detalhes da transação via função.');
+      }
+
+      // A resposta da função já deve vir no formato SaleTransaction
+      return data as SaleTransaction;
+
+    } catch (genericError: any) {
+      console.error(`Exception in getSaleTransactionById for transaction ${transactionId}:`, genericError);
+      throw new Error(genericError.message || `Falha geral ao buscar detalhes da transação ${transactionId}.`);
+    }
+  },
+
   updateSaleFields: async (
     saleId: string,
     updates: Partial<Pick<Sale, 'status' | 'paidAt' | 'upsellPushInPayTransactionId' | 'upsellStatus' | 'totalAmountInCents' | 'upsellAmountInCents' | 'products'>>
@@ -184,7 +208,7 @@ export const salesService = {
       return fromSupabaseSaleRow(data);
     } catch (genericError: any) {
       console.error(`[salesService.ts] Exception in updateSaleFields for sale ${saleId}:`, genericError);
-      throw new Error(genericError.message || `Falha geral ao atualizar campos da venda ${saleId}.`);
+      throw new Error(genericError.message || `Falha geral ao buscar dados da venda ${saleId}.`);
     }
   },
 };

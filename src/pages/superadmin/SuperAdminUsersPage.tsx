@@ -77,7 +77,7 @@ const SuperAdminUsersPage: React.FC = () => {
       );
       
       // Otimização: só atualiza se os dados realmente mudaram
-      const sortedUsers = usersData.sort((a, b) => (a.email > b.email) ? 1 : -1);
+      const sortedUsers = usersData.sort((a, b) => (a.email || '').localeCompare(b.email || ''));
       
       if (JSON.stringify(usersCacheRef.current) !== JSON.stringify(sortedUsers)) {
         usersCacheRef.current = sortedUsers;
@@ -182,7 +182,7 @@ const SuperAdminUsersPage: React.FC = () => {
       setUsers(prevUsers => 
         prevUsers.map(user => 
           user.id === selectedUser.id ? updatedUser : user
-        ).sort((a, b) => (a.email > b.email) ? 1 : -1)
+        ).sort((a, b) => (a.email || '').localeCompare(b.email || ''))
       );
 
       const result = await superAdminService.updateUserProfileAsSuperAdmin(

@@ -260,6 +260,53 @@ serve(async (req: Request) => {
                   }
               }
 
+              // --- INÍCIO: Lógica para enviar WhatsApp de venda aprovada ---
+              try {
+                console.log("[verificar-status-pix] Verificando templates de WhatsApp para venda principal...");
+                const { data: appSettingsWithWhatsapp, error: appSettingsError } = await adminClient
+                  .from('app_settings')
+                  .select('whatsapp_templates')
+                  .eq('platform_user_id', updatedSaleData.platform_user_id)
+                  .single();
+
+                if (appSettingsError || !appSettingsWithWhatsapp) {
+                  console.warn(`[verificar-status-pix] Não foi possível buscar app_settings para WhatsApp para o usuário ${updatedSaleData.platform_user_id}. Erro: ${appSettingsError?.message}`);
+                } else {
+                  const whatsappTemplates = appSettingsWithWhatsapp.whatsapp_templates as any;
+                  const saleApprovedTemplate = whatsappTemplates?.sale_approved;
+
+                  if (saleApprovedTemplate?.enabled && saleApprovedTemplate?.message) {
+                    console.log(`[verificar-status-pix] Template de WhatsApp 'sale_approved' habilitado. Preparando para enviar.`);
+
+                    const productNames = (updatedSaleData.products as any[]).map(p => p.name).join(', ');
+                    const formattedTotalAmount = (updatedSaleData.total_amount_in_cents / 100).toFixed(2).replace('.', ',');
+
+                    const whatsappPayload = {
+                      userId: updatedSaleData.platform_user_id,
+                      to: updatedSaleData.customer_whatsapp,
+                      templateName: 'sale_approved',
+                      templateVariables: {
+                        customer_name: updatedSaleData.customer_name,
+                        product_name: productNames,
+                        order_id: updatedSaleData.id,
+                        total_amount: formattedTotalAmount,
+                      },
+                    };
+
+                    adminClient.functions.invoke('send-whatsapp-message', { body: whatsappPayload })
+                      .then(({ data, error }) => {
+                        if (error) console.error(`[verificar-status-pix] ERRO ao invocar 'send-whatsapp-message' para ${updatedSaleData.customer_whatsapp}:`, error);
+                        else console.log(`[verificar-status-pix] 'send-whatsapp-message' invocado com sucesso para ${updatedSaleData.customer_whatsapp}. Resposta:`, data);
+                      });
+                  } else {
+                    console.log(`[verificar-status-pix] Template de WhatsApp 'sale_approved' não habilitado ou configurado para o usuário ${updatedSaleData.platform_user_id}.`);
+                  }
+                }
+              } catch (whatsappError: any) {
+                console.error(`[verificar-status-pix] ERRO (não bloqueante) durante o envio de WhatsApp:`, whatsappError.message);
+              }
+              // --- FIM: Lógica para enviar WhatsApp de venda aprovada ---
+
               // --- INÍCIO: Lógica para criar/atualizar cliente ---
               try {
                 console.log(`[verificar-status-pix] Iniciando upsert do cliente para a venda ${saleId}.`);

@@ -2,7 +2,7 @@
 // User Authentication
 export interface User {
   id: string;
-  email: string; // Made non-optional
+  email?: string | null; // Made non-optional
   name?: string;
   isSuperAdmin?: boolean;
   isActive?: boolean; // Adicionado para status da conta
@@ -116,6 +116,7 @@ export interface ProductCheckoutCustomization {
   theme?: 'light' | 'dark'; 
   showProductName?: boolean; // Se o nome do produto deve ser exibido no header do checkout
   animateTraditionalOrderBumps?: boolean; // Para controlar a animação dos order bumps tradicionais
+  brandName?: string; // Adicionado brandName
 }
 
 export type Json =
@@ -157,9 +158,8 @@ export interface Product {
   coupons?: Coupon[];
   utmParams?: UtmParams | null; 
   postPurchaseEmailConfig?: PostPurchaseEmails; // UPDATED
+  whatsappTemplates?: WhatsappTemplates; // NEW: WhatsApp message templates
 }
-
-// Buyer <<-- NEW INTERFACE
 export interface Buyer {
   id: string;
   session_id?: string;
@@ -231,10 +231,11 @@ export interface Sale {
     currency: string;
   };
   platformCommissionInCents?: number; 
+  pixQrCode?: string; // NEW
+  pixQrCodeBase64?: string; // NEW
   pix_recovery_emails_sent?: Json | null; // NEW
 }
-
-export interface SaleTransaction {
+    export interface SaleTransaction {
     id: string;
     platformUserId: string;
     valueInCents: number; 
@@ -273,8 +274,8 @@ export interface Customer {
   whatsapp: string;
   productsPurchased: string[]; 
   funnelStage: FunnelStage;
-  firstPurchaseDate: string;
-  lastPurchaseDate: string;
+  firstPurchaseDate: string | null;
+  lastPurchaseDate: string | null;
   totalOrders: number;
   totalSpentInCents: number;
   saleIds: string[]; 
@@ -291,7 +292,7 @@ export enum AbandonedCartStatus {
 export interface AbandonedCart {
   id: string;
   platformUserId: string;
-  customerName: string;
+  customerName: string | null;
   customerEmail: string;
   customerWhatsapp: string;
   productId: string;
@@ -339,6 +340,9 @@ export interface PixGeneratedEmailConfig {
   enabled: boolean;
   subject: string;
   bodyHtml: string;
+  // New placeholders for email templates
+  // {{all_product_names}}: comma-separated list of all product names in the sale
+  // {{product_list_html}}: HTML unordered list of all products with their prices
 }
 
 export interface PixRecoveryEmail {
@@ -354,6 +358,18 @@ export interface PixRecoveryConfig {
   email3: PixRecoveryEmail;
 }
 
+export interface WhatsappMessageConfig {
+  enabled: boolean;
+  message: string;
+  placeholders: string[]; // List of available placeholders for this message
+}
+
+export interface WhatsappTemplates {
+  saleApproved: WhatsappMessageConfig;
+  abandonedCart: WhatsappMessageConfig;
+  // Add other WhatsApp message types here as needed
+}
+
 export interface NotificationSettings {
   notifyOnAbandonedCart: boolean;
   notifyOnOrderPlaced: boolean;
@@ -367,6 +383,7 @@ export interface AppSettings {
     logoUrl?: string;
     faviconUrl?: string;
     brandColor?: string;
+    brandName?: string; // Added brandName
   };
   smtpSettings?: {
     host: string;
@@ -379,15 +396,17 @@ export interface AppSettings {
     utmify: string;
     pushinPayEnabled: boolean; 
     utmifyEnabled: boolean;
+    pushinPayApiToken?: string; // Adicionado
+    pushinPayWebhookToken?: string; // Adicionado
   };
   pixelIntegrations?: PixelIntegration[]; 
   abandonedCartRecoveryConfig?: AbandonedCartEmailConfig;
   pixGeneratedEmailConfig?: PixGeneratedEmailConfig; // NEW
   pixRecoveryConfig?: PixRecoveryConfig; // NEW
+  whatsappTemplates?: WhatsappTemplates; // NEW: WhatsApp message templates
   notificationSettings?: NotificationSettings;
 }
-
-export interface PlatformSettings {
+  export interface PlatformSettings {
   id: 'global'; 
   platformCommissionPercentage: number; 
   platformFixedFeeInCents: number; 

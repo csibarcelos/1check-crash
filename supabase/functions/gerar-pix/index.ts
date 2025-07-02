@@ -1,4 +1,5 @@
 
+
 // Caminho: supabase/functions/gerar-pix/index.ts
 
 // @ts-ignore
@@ -110,13 +111,20 @@ serve(async (req: Request) => {
     const actualWebhookUrl = `${supabaseUrl}/functions/v1/webhook-pushinpay`;
 
     const initialSaleRecord: Database['public']['Tables']['sales']['Insert'] = {
-        buyer_id: payload.buyerId, platform_user_id: productOwnerUserId,
-        push_in_pay_transaction_id: `PENDING_${crypto.randomUUID()}`, products: payload.products as unknown as Json,
-        customer_name: payload.customerName, customer_email: payload.customerEmail,
+        buyer_id: payload.buyerId, 
+        platform_user_id: productOwnerUserId,
+        push_in_pay_transaction_id: null,
+        products: payload.products as unknown as Json,
+        customer_name: payload.customerName, 
+        customer_email: payload.customerEmail,
         customer_ip: req.headers.get("x-forwarded-for")?.split(',')[0].trim() || req.headers.get("x-real-ip") || null,
-        customer_whatsapp: payload.customerWhatsapp, payment_method: 'pix', status: 'waiting_payment',
-        total_amount_in_cents: payload.value, original_amount_before_discount_in_cents: payload.originalValueBeforeDiscount,
-        discount_applied_in_cents: payload.discountAppliedInCents, coupon_code_used: payload.couponCodeUsed,
+        customer_whatsapp: payload.customerWhatsapp, 
+        payment_method: 'pix', 
+        status: 'waiting_payment',
+        total_amount_in_cents: payload.value, 
+        original_amount_before_discount_in_cents: payload.originalValueBeforeDiscount,
+        discount_applied_in_cents: payload.discountAppliedInCents, 
+        coupon_code_used: payload.couponCodeUsed,
         tracking_parameters: payload.trackingParameters as unknown as Json,
     };
     
@@ -176,6 +184,8 @@ serve(async (req: Request) => {
     
     const saleUpdatePayload: Partial<Database['public']['Tables']['sales']['Update']> = {
       push_in_pay_transaction_id: txIdToSave,
+      pix_qr_code: extractedPixData.qr_code,
+      pix_qr_code_base64: rawBase64String,
       platform_commission_in_cents: totalPlatformShareForPushInPay,
       updated_at: new Date().toISOString(),
     };
@@ -253,12 +263,17 @@ serve(async (req: Request) => {
         if (pixGeneratedEmailConfig?.enabled) {
             console.log(`[gerar-pix EF] E-mail de PIX Gerado habilitado para vendedor ${productOwnerUserId}. Preparando para enviar.`);
             const checkoutIdentity = sellerSettingsData.checkout_identity as { brandName?: string } | null;
-            const shopName = checkoutIdentity?.brandName || "Nossa Loja";
+            const allProductNames = payload.products.map(p => p.name).join(', ');
             const mainProductName = payload.products[0]?.name || 'seu produto';
+            const shopName = checkoutIdentity?.brandName || mainProductName;
+
+            const productListHtml = payload.products.map(p => `<li>${p.name} - R$ ${(p.priceInCents / 100).toFixed(2).replace('.', ',')}</li>`).join('');
 
             const emailBody = pixGeneratedEmailConfig.bodyHtml
               .replace(/{{customer_name}}/g, payload.customerName || 'Cliente')
               .replace(/{{product_name}}/g, mainProductName)
+              .replace(/{{all_product_names}}/g, allProductNames)
+              .replace(/{{product_list_html}}/g, `<ul>${productListHtml}</ul>`)
               .replace(/{{order_id}}/g, saleId)
               .replace(/{{pix_copy_paste_code}}/g, extractedPixData.qr_code)
               .replace(/{{pix_qr_code_image_url}}/g, `data:image/png;base64,${rawBase64String}`)
@@ -267,6 +282,7 @@ serve(async (req: Request) => {
             const emailSubject = pixGeneratedEmailConfig.subject
               .replace(/{{customer_name}}/g, payload.customerName || 'Cliente')
               .replace(/{{product_name}}/g, mainProductName)
+              .replace(/{{all_product_names}}/g, allProductNames)
               .replace(/{{order_id}}/g, saleId)
               .replace(/{{shop_name}}/g, shopName);
 

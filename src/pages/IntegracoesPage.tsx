@@ -17,7 +17,8 @@ const PIXEL_TYPES: PixelType[] = ['Facebook Pixel', 'Google Ads', 'GTM', 'TikTok
 const IntegracoesPage: React.FC = () => {
   const { appSettings, isLoading, error: dataError, refreshData } = useData();
   
-  const [pushinPayToken, setPushinPayToken] = useState('');
+  const [pushinPayApiToken, setPushinPayApiToken] = useState('');
+  const [pushinPayWebhookToken, setPushinPayWebhookToken] = useState('');
   const [utmifyToken, setUtmifyToken] = useState('');
   const [pushinPayEnabled, setPushinPayEnabled] = useState(false);
   const [utmifyEnabled, setUtmifyEnabled] = useState(false);
@@ -36,7 +37,8 @@ const IntegracoesPage: React.FC = () => {
 
   useEffect(() => {
     if (appSettings) {
-      setPushinPayToken(appSettings.apiTokens?.pushinPay || '');
+      setPushinPayApiToken(appSettings.apiTokens?.pushinPay || '');
+      setPushinPayWebhookToken(appSettings.apiTokens?.pushinPayWebhookToken || '');
       setUtmifyToken(appSettings.apiTokens?.utmify || '');
       setPushinPayEnabled(appSettings.apiTokens?.pushinPayEnabled || false);
       setUtmifyEnabled(appSettings.apiTokens?.utmifyEnabled || false);
@@ -58,13 +60,14 @@ const IntegracoesPage: React.FC = () => {
       const settingsToSave: AppSettings = {
         ...appSettings,
         apiTokens: {
-            pushinPay: pushinPayToken.trim(),
+            pushinPay: pushinPayApiToken.trim(),
+            pushinPayWebhookToken: pushinPayWebhookToken.trim(),
             utmify: utmifyToken.trim(),
             pushinPayEnabled: pushinPayEnabled,
             utmifyEnabled: utmifyEnabled,
         },
       };
-      
+
       await settingsService.saveAppSettings(settingsToSave);
       await refreshData();
       showToast({ title: "Sucesso!", description: 'Configurações de API salvas com sucesso!', variant: "success" });
@@ -206,16 +209,33 @@ const IntegracoesPage: React.FC = () => {
                     </div>
                     <Input
                         label="Token da API PushInPay"
-                        name="pushinPayToken"
+                        name="pushinPayApiToken"
                         type="password"
-                        value={pushinPayToken}
-                        onChange={(e) => setPushinPayToken(e.target.value)}
+                        value={pushinPayApiToken}
+                        onChange={(e) => setPushinPayApiToken(e.target.value)}
                         placeholder="Cole seu token da API PushInPay aqui"
                         icon={<KeyIcon className="h-5 w-5 text-text-muted" />}
                         disabled={isSaving || !pushinPayEnabled}
                         autoComplete="new-password"
                     />
-                     <p className="text-xs text-text-muted">Integração para processamento de pagamentos PIX.</p>
+                    <p className="text-xs text-text-muted">Usado para criar cobranças PIX. Encontrado no painel do PushInPay.</p>
+                    
+                    <div className="pt-2">
+                        <Input
+                            label="Token de Verificação do Webhook"
+                            name="pushinPayWebhookToken"
+                            type="password"
+                            value={pushinPayWebhookToken}
+                            onChange={(e) => setPushinPayWebhookToken(e.target.value)}
+                            placeholder="Cole o token de segurança do webhook aqui"
+                            icon={<KeyIcon className="h-5 w-5 text-text-muted" />}
+                            disabled={isSaving || !pushinPayEnabled}
+                            autoComplete="new-password"
+                        />
+                        <p className="text-xs text-text-muted">
+                            Usado para validar as notificações de pagamento. Você cria este token e o insere no painel do PushInPay.
+                        </p>
+                    </div>
                 </div>
 
                  <div className="space-y-3 p-4 border border-border-subtle rounded-lg bg-bg-surface">

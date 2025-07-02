@@ -52,7 +52,7 @@ export const useRealtimeNotifications = () => {
         variant: 'success',
       });
       if (settings.playSaleSound) {
-        playSound('/assets/sounds/cha-ching.mp3');
+        playSound('/assets/sounds/cash-register.mp3');
       }
     }
   };

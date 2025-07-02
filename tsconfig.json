@@ -27,6 +27,7 @@
   "include": ["src"], 
   "references": [{ "path": "./tsconfig.node.json" }],
   "exclude": [
-    "supabase/functions"
+    "supabase/functions",
+    "github_repo_ref"
   ]
 }

@@ -3,6 +3,7 @@ import { AppSettings, PlatformSettings, PixelIntegration, AbandonedCartEmailConf
 import { supabase, getSupabaseUserId } from '@/supabaseClient'; 
 import { Database, Json } from '@/types/supabase'; 
 import { COLOR_PALETTE_OPTIONS } from '../constants.tsx'; 
+import { defaultWhatsappTemplates } from './productService'; 
 
 // --- START: CACHE MANAGEMENT ---
 const appSettingsCache = new Map<string, { settings: AppSettings, timestamp: number }>();
@@ -101,8 +102,12 @@ const fromSupabaseAppSettingsRow = (row: AppSettingsRow | null): AppSettings => 
     pixGeneratedEmailConfig: defaultPixGeneratedEmailConfig,
     pixRecoveryConfig: defaultPixRecoveryConfig,
     notificationSettings: defaultNotificationSettings,
+    whatsappTemplates: defaultWhatsappTemplates,
   };
+
   if (!row) return defaults;
+
+  const storedWhatsappTemplates = parseJsonField(row.whatsapp_templates, defaults.whatsappTemplates);
 
   const storedCheckoutIdentity = parseJsonField(row.checkout_identity, defaults.checkoutIdentity);
   const storedSmtpSettings = parseJsonField(row.smtp_settings, defaults.smtpSettings);
@@ -131,6 +136,7 @@ const fromSupabaseAppSettingsRow = (row: AppSettingsRow | null): AppSettings => 
         utmify: storedApiTokens?.utmify ?? defaults.apiTokens.utmify,
         pushinPayEnabled: storedApiTokens?.pushinPayEnabled ?? defaults.apiTokens.pushinPayEnabled,
         utmifyEnabled: storedApiTokens?.utmifyEnabled ?? defaults.apiTokens.utmifyEnabled,
+        pushinPayWebhookToken: storedApiTokens?.pushinPayWebhookToken ?? defaults.apiTokens.pushinPayWebhookToken, // Adicionado
     },
     pixelIntegrations: storedPixelIntegrations ?? [],
     abandonedCartRecoveryConfig: {
@@ -150,7 +156,8 @@ const fromSupabaseAppSettingsRow = (row: AppSettingsRow | null): AppSettings => 
     notificationSettings: {
       ...defaultNotificationSettings,
       ...(storedNotificationSettings || {}),
-    }
+    },
+    whatsappTemplates: storedWhatsappTemplates,
   };
 };
 

@@ -27,8 +27,37 @@ const defaultAbandonedCartConfig: AbandonedCartEmailConfig = {
 
 const defaultPixGeneratedEmailConfig: PixGeneratedEmailConfig = {
   enabled: false,
-  subject: 'Seu código PIX para o pedido {{order_id}}',
-  bodyHtml: `<p>Olá {{customer_name}},</p><p>Seu código PIX para comprar {{product_name}} foi gerado! Escaneie a imagem ou copie o código abaixo para pagar.</p><p>Código: {{pix_copy_paste_code}}</p><img src="{{pix_qr_code_image_url}}" alt="PIX QR Code"/>`,
+  subject: 'Seu código PIX para o pedido {{order_id}} - {{shop_name}}',
+  bodyHtml: `
+    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="color: #0D9488;">Confirmação de Pedido</h1>
+      </div>
+      <p>Olá <strong>{{customer_name}}</strong>,</p>
+      <p>Seu pedido <strong>#{{order_id}}</strong> em <strong>{{shop_name}}</strong> foi recebido com sucesso!</p>
+      <p>Para finalizar sua compra de <strong>{{all_product_names}}</strong>, por favor, realize o pagamento via PIX utilizando os dados abaixo:</p>
+      
+      <div style="text-align: center; margin: 25px 0; padding: 20px; background-color: #f9f9f9; border-radius: 8px; border: 1px dashed #ccc;">
+        <h3 style="color: #0D9488; margin-top: 0;">Pague com PIX!</h3>
+        <p style="margin-bottom: 15px;">Escaneie o QR Code ou copie o código para pagar:</p>
+        <img src="{{pix_qr_code_image_url}}" alt="PIX QR Code" style="max-width: 200px; height: auto; border: 1px solid #eee; border-radius: 5px; margin-bottom: 15px;">
+        <div style="background-color: #eee; padding: 10px; border-radius: 5px; word-break: break-all; font-family: monospace; font-size: 14px; color: #555;">
+          <strong>Código PIX Copia e Cola:</strong><br>
+          {{pix_copy_paste_code}}
+        </div>
+        <p style="font-size: 12px; color: #777; margin-top: 15px;">Este PIX é válido por um tempo limitado.</p>
+      </div>
+
+      <p><strong>Detalhes do Pedido:</strong></p>
+      {{product_list_html}}
+
+      <p>Se tiver qualquer dúvida, entre em contato conosco. Estamos à disposição para ajudar!</p>
+      <p>Atenciosamente,<br>Equipe <strong>{{shop_name}}</strong></p>
+      <div style="text-align: center; margin-top: 30px; font-size: 12px; color: #999;">
+        <p>&copy; ${new Date().getFullYear()} {{shop_name}}. Todos os direitos reservados.</p>
+      </div>
+    </div>
+  `,
 };
 
 const defaultPixRecoveryConfig: PixRecoveryConfig = {

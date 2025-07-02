@@ -38,6 +38,7 @@ import {
   ExclamationCircleIcon as HeroExclamationCircleIcon, 
   KeyIcon as HeroKeyIcon, 
   DocumentDuplicateIcon as HeroDocumentDuplicateIcon, 
+  ClipboardDocumentIcon as HeroClipboardDocumentIcon, 
   ChartPieIcon as HeroChartPieIcon, 
   SignalIcon as HeroSignalIcon, 
   PaintBrushIcon as HeroPaintBrushIcon,
@@ -86,6 +87,7 @@ export const ExternalLinkIconHero: React.FC<React.SVGProps<SVGSVGElement>> = Her
 export const ExclamationCircleIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroExclamationCircleIcon;
 export const KeyIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroKeyIcon;
 export const DocumentDuplicateIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroDocumentDuplicateIcon;
+export const ClipboardDocumentIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroClipboardDocumentIcon;
 export const ChartPieIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroChartPieIcon; 
 export const CurrencyDollarIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroBanknotesIcon; 
 export const PaintBrushIcon: React.FC<React.SVGProps<SVGSVGElement>> = HeroPaintBrushIcon;
